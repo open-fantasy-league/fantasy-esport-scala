@@ -2,7 +2,6 @@ package models
 
 import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.{Schema, KeyedEntity}
-import org.squeryl.dsl.{CompositeKey2}
 import java.sql.Timestamp
 
 class User(
@@ -18,7 +17,7 @@ class User(
   def this() = this("", "", Some(""), false)
 
   lazy val leagues = AppDB.leagueUserTable.right(this)
-  lazy val achievements = AppDB.userAchievementTable.left(this)
+  lazy val achievements = AppDB.userAchievementTable.right(this)
 }
 
 class APIUser(
@@ -40,7 +39,7 @@ class Game(
 
 class League(
               var name: String,
-              val game: Int,
+              val gameId: Int,
               var isPrivate: Boolean,
               var tournamentId: Int,
               var totalDays: Int,
@@ -65,7 +64,7 @@ class LeagueMiscellaneousInfo(
                             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
-  def this() = this(0, "", "")
+  def this() = this(0, Some(""), Some(""))
 }
 
 class LeagueTransferSettings(
@@ -88,7 +87,7 @@ class LeagueTransferSettings(
 class LeagueStatFields(
                         val name: String,
                         val leagueId: Int
-                      ) extends KeyedEntity[Int] {
+                      ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
 
@@ -243,7 +242,7 @@ class Achievement(
                    var xp: Long
                  ) extends KeyedEntity[Int] {
   val id: Int = 0
-  lazy val users = AppDB.userAchievementTable.right(this)
+  lazy val users = AppDB.userAchievementTable.left(this)
 }
 
 
@@ -282,7 +281,7 @@ object AppDB extends Schema {
   val leagueTable = table[League]
   val gameTable = table[Game]
   val passwordResetTable = table[PasswordReset]
-  val apiUserTable = table[ApiUser]
+  val apiUserTable = table[APIUser]
   val leagueUserStatsTable = table[LeagueUserStats]
   val leagueStatFieldsTable = table[LeagueStatFields]
   val pickeeTable = table[Pickee]
@@ -297,7 +296,6 @@ object AppDB extends Schema {
   val hallOfFameTable = table[HallOfFame]
   val userXpTable = table[UserXp]
   val achievementTable = table[Achievement]
-  val userAchievementTable = table[UserAchievement]
   val notificationTable = table[Notification]
 
   val leagueTransferSettingsTable = table[LeagueTransferSettings]
@@ -309,7 +307,7 @@ object AppDB extends Schema {
   manyToManyRelation(leagueTable, userTable).
     via[LeagueUser]((l, u, lu) => (lu.leagueId === l.id, u.id === lu.userId))
 
-  val userAchivementTable =
+  val userAchievementTable =
     manyToManyRelation(achievementTable, userTable).
       via[UserAchievement]((a, u, ua) => (ua.achievementId === a.id, u.id === ua.userId))
 
@@ -319,11 +317,11 @@ object AppDB extends Schema {
       via((lu, lus) => (lu.id === lus.leagueUserId))
 
   val leagueToLeagueMiscellaneousInfo =
-    oneToOneRelation(leagueTable, leagueMiscellaneousInfoTable).
+    oneToManyRelation(leagueTable, leagueMiscellaneousInfoTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToLeagueTransferInfo =
-    oneToOneRelation(leagueTable, leagueTransferSettingsTable).
+    oneToManyRelation(leagueTable, leagueTransferSettingsTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToLeagueStatFields =
@@ -378,7 +376,7 @@ object AppDB extends Schema {
     oneToManyRelation(userTable, friendTable).
       via((u, o) => (u.id === o.userId))
 
-  val userToFriend =
+  val userToFriendTwo =
     oneToManyRelation(userTable, friendTable).
       via((u, o) => (u.id === o.friendId))
 

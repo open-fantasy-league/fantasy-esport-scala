@@ -17,14 +17,9 @@ class HomeController @Inject()(cc: ControllerComponents) extends AbstractControl
       AppDB.create
     )
     inTransaction(
-      AppDB.gameTable.insert(new Game("Dota", "DOTA", "hero"))
+      AppDB.gameTable.insert(new Game("DotA 2", "DOTA", "hero"))
     )
-//    val name: String,
-//    val code: String,
-//    var pickee: String,  //i.e. Hero, champion, player
-//    var teamSize: Int,
-//    var reserveSize: Int,
-//    var defaultLeague: Long
+
     Ok(views.html.index())
   }
 }
