@@ -3,7 +3,6 @@ package models
 import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.Schema
 
-
 object AppDB extends Schema {
   val userTable = table[User]
   val leagueTable = table[League]
@@ -17,7 +16,8 @@ object AppDB extends Schema {
   val pickeeStatsTable = table[PickeeStats]
   val friendTable = table[Friend]
   val saleTable = table[Sale]
-  val resultTable = table[Result]
+  val transferTable = table[Transfer]
+  val resultTable = table[Resultu]
   val pointsFieldTable = table[PointsField]
   val pointsTable = table[Points]
   val matchTable = table[Matchu]
@@ -25,7 +25,6 @@ object AppDB extends Schema {
   val userXpTable = table[UserXp]
   val achievementTable = table[Achievement]
   val notificationTable = table[Notification]
-
   val leagueTransferSettingsTable = table[LeagueTransferSettings]
   val leaguePrizeTable = table[LeaguePrize]
 
@@ -87,6 +86,10 @@ object AppDB extends Schema {
   val pickeeToSale =
     oneToManyRelation(pickeeTable, saleTable).
       via((p, o) => (p.id === o.pickeeId))
+
+  val leagueUserToTransfer =
+    oneToManyRelation(leagueUserTable, transferTable).
+      via((lu, o) => (lu.id === o.leagueUserId))
 
   val userToNotification =
     oneToManyRelation(userTable, notificationTable).
