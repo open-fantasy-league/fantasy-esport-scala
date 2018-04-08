@@ -3,6 +3,7 @@ package models
 import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.{Schema, KeyedEntity}
 import java.sql.Timestamp
+import play.api.libs.json._
 
 class User(
             var username: String,
@@ -49,22 +50,32 @@ class League(
               var pointsMultiplier: Double = 1.0,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
+              var url: String = ""
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
+
 }
 
-class LeagueMiscellaneousInfo(
-                              val leagueId: Int,
-                              var prizeDescription: Option[String],
-                              var prizeEmail: Option[String],
-                              var url: String = "",
+object League{
+  implicit val implicitWrites = new Writes[League] {
+    def writes(league: League): JsValue = {
+      Json.obj(
+        "name" -> league.name,
+        "gameId" -> league.gameId,
+        "tournamentId" -> league.tournamentId
+      )
+    }
+  }
+}
 
+class LeaguePrize(
+                              val leagueId: Int,
+                              var prizeDescription: String,
+                              var prizeEmail: String,
                             ) extends KeyedEntity[Int] {
   val id: Int = 0
-
-  def this() = this(0, Some(""), Some(""))
 }
 
 class LeagueTransferSettings(
@@ -299,7 +310,7 @@ object AppDB extends Schema {
   val notificationTable = table[Notification]
 
   val leagueTransferSettingsTable = table[LeagueTransferSettings]
-  val leagueMiscellaneousInfoTable = table[LeagueMiscellaneousInfo]
+  val leaguePrizeTable = table[LeaguePrize]
 
   // League User has many to many relation. each user can play in many leagues. each league can have many users
   // TODO this should be true of user achievements as well
@@ -316,8 +327,8 @@ object AppDB extends Schema {
     oneToManyRelation(leagueUserTable, leagueUserStatsTable).
       via((lu, lus) => (lu.id === lus.leagueUserId))
 
-  val leagueToLeagueMiscellaneousInfo =
-    oneToManyRelation(leagueTable, leagueMiscellaneousInfoTable).
+  val leagueToLeaguePrize =
+    oneToManyRelation(leagueTable, leaguePrizeTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToLeagueTransferInfo =
