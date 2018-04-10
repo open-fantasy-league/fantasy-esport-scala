@@ -18,7 +18,8 @@ class League(
               var pointsMultiplier: Double = 1.0,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
-              var url: String = ""
+              var url: String = "",
+              var autoUpdate = true
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 

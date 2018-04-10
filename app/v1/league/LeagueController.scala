@@ -34,6 +34,15 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "totalDays" -> number(min=1, max=100),
         "dayStart" -> longNumber,
         "dayEnd" -> longNumber
+        "teamSize" -> default(number(min=1, max=20), 5),
+        "reserveSize" -> default(number(min=0, max=20), 0),
+        "captain" -> default(boolean, false)
+        "transferLimit" -> default(number, -1), // use -1 for no transfer limit I think
+        "startingMoney" -> default(number, 50)
+        "changeDelay" -> default(number, 0), // change is generic for swap or transfer
+        "factionLimit" -> default(number, -1)
+        "prizeDescription" -> optional(nonEmptyText),
+        "prizeEmail" -> optional(nonEmptyText)
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }
@@ -47,7 +56,9 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "tournamentId" -> optional(number),
         "totalDays" -> optional(number(min=1, max=100)),
         "dayStart" -> optional(longNumber),
-        "dayEnd" -> optional(longNumber)
+        "dayEnd" -> optional(longNumber),
+        "transferOpen" -> optional(boolean),
+        "swapOpen" -> optional(boolean)
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
@@ -110,12 +121,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
 
       val updateLeague = (league: League, input: UpdateLeagueFormInput) => {
         league.name = input.name.getOrElse(league.name)
-//        input.name match {
-//          case Some(newName) => league.name = newName
-//        }
-        input.isPrivate match {
-          case Some(newIsPrivate) => league.isPrivate = newIsPrivate
-        }
+        input.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
         // etc for other fields
         AppDB.leagueTable.update(league)
         Ok("Itwerked")
