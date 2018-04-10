@@ -25,8 +25,8 @@ object AppDB extends Schema {
   val userXpTable = table[UserXp]
   val achievementTable = table[Achievement]
   val notificationTable = table[Notification]
-  val leagueTransferSettingsTable = table[LeagueTransferSettings]
-  val leaguePrizeTable = table[LeaguePrize]
+  val leaguePrizeTable = table[League
+    Prize]
 
   // League User has many to many relation. each user can play in many leagues. each league can have many users
   // TODO this should be true of user achievements as well
@@ -45,10 +45,6 @@ object AppDB extends Schema {
 
   val leagueToLeaguePrize =
     oneToManyRelation(leagueTable, leaguePrizeTable).
-      via((l, o) => (l.id === o.leagueId))
-
-  val leagueToLeagueTransferInfo =
-    oneToManyRelation(leagueTable, leagueTransferSettingsTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToLeagueStatFields =

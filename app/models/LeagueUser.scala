@@ -8,9 +8,8 @@ class LeagueUser(
                   val leagueId: Int,
                   val userId: Int,
                   var money: Double,
-                  var lateStart: Boolean,
+                  var entered: Timestamp,
                   var remainingTransfers: Int,
-                  var lateStartTstamp: Option[Timestamp],
                   var changeTstamp: Option[Timestamp]
                 ) extends KeyedEntity[Long] {
   val id: Long = 0

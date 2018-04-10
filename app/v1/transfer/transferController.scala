@@ -12,8 +12,7 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import models.{AppDB, League}
 
-case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, totalDays: Int,
-                           dayStart: Long, dayEnd: Long)
+case class TransferFormInput(leagueId: Int, userId: Int, pickeeIdentifier: Int, isBuy: Boolean)
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
                                  tournamentId: Option[Int], totalDays: Option[Int],
@@ -23,49 +22,13 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
 class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
-  private val form: Form[LeagueFormInput] = {
+  private val form: Form[TranferFormInput] = {
 
     Form(
       mapping(
-        "name" -> nonEmptyText,
-        "gameId" -> number,
-        "isPrivate" -> boolean,
-        "tournamentId" -> number,
-        "totalDays" -> number(min=1, max=100),
-        "dayStart" -> longNumber,
-        "dayEnd" -> longNumber
-        "teamSize" -> default(number(min=1, max=20), 5),
-        "captain" -> default(boolean, false)
-        "transferLimit" -> default(number, -1), // use -1 for no transfer limit I think
-        "startingMoney" -> default(number, 50)
-        "changeDelay" -> default(number, 0), // change is generic for swap or transfer
-        "factions" -> List of stuff
-    // also singular prize with description and email fields
-        "prizeDescription" -> optional(nonEmptyText),
-        "prizeEmail" -> optional(nonEmptyText),
-         "pickees" ->
-    //
-    var faction: Option[String],
-    var value: Double,
-    var active: Boolean = true//
-    // identifier
+        "transfers" -> List(Sales)number,
+        "userId" -> number
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
-    )
-  }
-
-  private val updateForm: Form[UpdateLeagueFormInput] = {
-
-    Form(
-      mapping(
-        "name" -> optional(nonEmptyText),
-        "isPrivate" -> optional(boolean),
-        "tournamentId" -> optional(number),
-        "totalDays" -> optional(number(min=1, max=100)),
-        "dayStart" -> optional(longNumber),
-        "dayEnd" -> optional(longNumber),
-        "transferOpen" -> optional(boolean),
-        "swapOpen" -> optional(boolean)
-      )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
 
@@ -74,12 +37,12 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     Ok(views.html.index())
   }
 
-  def show(leagueId: String) = Action { implicit request =>
+  def show(id_: String) = Action { implicit request =>
     inTransaction {
       // TODO handle invalid Id
-      val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
-      leagueQuery match{
-        case Some(league) => Created(Json.toJson(league))
+      val query = AppDB.leagueUserTable.lookup(Integer.parseInt(id_))
+      query match{
+        case Some(x) => Created(Json.toJson(x))
         case None => Ok("Yer dun fucked up")
       }
     }
@@ -90,28 +53,31 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
   }
 
   def add = Action.async(BodyParsers.parse.json){ implicit request =>
-    processJsonLeague()
+    processJsonLeagueUser()
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
+  private def processJsonLeagueUser[A]()(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[LeagueFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
     def success(input: LeagueFormInput) = {
       println("yay")
-      inTransaction {
-        val newLeague = AppDB.leagueTable.insert(new League(input.name, input.gameId, input.isPrivate, input.tournamentId,
-          input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd)))
-        for pickee in pickees{
-          val newPickee = AppDB.pickeeTable.insert(new Pickee)
-          for day in blah{
-            PickeeStats
-          }
+      Future {
+        inTransaction {
+          val league = AppDB.leagueTable.lookup(Integer.parseInt(input.leagueId))
+          val newLeagueUser = AppDB.leagueUserTable.insert(new LeagueUser(
+            league.id, input.userId, league.startingMoney, Timestamp(), league.transferLimit, None
+          ))
+          for (leagueUserStatField in blah)
+            for day in seq(0, league.totalDays) // add -1
+          AppDB.leagueUserStatsTable.insert(new LeagueUserStats(
+
+          ))
+          Created(Json.toJson(newLeagueUser))
+          //Future{Ok(views.html.index())}
         }
-        Future {Created(Json.toJson(newLeague)) }
-        //Future{Ok(views.html.index())}
       }
       //scala.concurrent.Future{ Ok(views.html.index())}
 //      postResourceHandler.create(input).map { post =>

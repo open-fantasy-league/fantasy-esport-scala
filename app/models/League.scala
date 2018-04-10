@@ -14,18 +14,26 @@ class League(
               var totalDays: Int,
               var dayStart: Timestamp,
               var dayEnd: Timestamp,
+              val teamSize: Int,
+              //val captain: Boolean,
+              var transferLimit: Int, // use -1 for no transfer limit I think. only applies after day 1 start
+              var startingMoney: Double,
+              var transferDelay: Int = 0, // Only applies for when day 1 has started
+              var refundPeriod: Int = 0,
+              var transferOpen: Boolean = false,
               var currentDay: Int = 0,
               var pointsMultiplier: Double = 1.0,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
               var url: String = "",
-              var autoUpdate = true
+              var autoUpdate = true,
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
-  lazy val transferSettings: ManyToOne[LeagueTransferSettings] = AppDB.leagueToLeagueTransferSettings.right(this)
+
+  def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
 
 }
 
@@ -57,31 +65,22 @@ object League{
 
 class LeaguePrize(
                    val leagueId: Int,
-                   var prizeDescription: String,
-                   var prizeEmail: String,
+                   var description: String,
+                   var email: String,
                  ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
 
-class LeagueTransferSettings(
-                              val leagueId: Int,
-                              val teamSize: Int,
-                              val reserveSize: Int,
-                              val captain: Boolean,
-                              var transferLimit: Int, // use -1 for no transfer limit I think
-                              var startingMoney: Double,
-                              var changeDelay: Int = 0, // change is generic for swap or transfer
-                              var factionLimit: Int = 0,
-                              // Dont allow systems where can clash swapping and transferring.
-                              var transferOpen: Boolean = false,
-                              var swapOpen: Boolean = false,
-
-                            ) extends KeyedEntity[Int] {
+class LeagueFaction(
+                     val leagueId: Int,
+                     var name: String,
+                     var limit: Int = 0  // 0 is essentially no limit
+                   ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
 
 class LeagueStatFields(
-                        val name: String,
+                        val name: String,  // Index this
                         val leagueId: Int
                       ) extends KeyedEntity[Long] {
   val id: Long = 0

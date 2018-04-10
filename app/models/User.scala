@@ -36,6 +36,15 @@ class Sale(
             val cost: Double
           ) extends KeyedEntity[Long] {
   val id: Long = 0
+
+  lazy val tradePickee = (pickeeId: Long, tradeInput: tradeInputForm){
+    if true{
+      tradeInputForm.isBuy match {
+        case true => sfff
+        case false =>
+      }
+    }
+  }
 }
 
 class Transfer(
