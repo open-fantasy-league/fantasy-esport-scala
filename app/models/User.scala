@@ -4,6 +4,7 @@ import java.sql.Timestamp
 
 import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
+import play.api.libs.json._
 
 class User(
             var username: String,
@@ -19,6 +20,19 @@ class User(
 
   lazy val leagues = AppDB.leagueUserTable.right(this)
   //lazy val achievements = AppDB.userAchievementTable.right(this)
+}
+
+object User{
+  implicit val implicitWrites = new Writes[User] {
+    def writes(user: User): JsValue = {
+      Json.obj(
+        "id" -> user.id,
+        "name" -> user.username,
+        "email" -> user.email,
+        "contacable" -> user.contactable
+      )
+    }
+  }
 }
 
 class Friend(

@@ -13,12 +13,12 @@ import org.squeryl.PrimitiveTypeMode._
 class HomeController @Inject()(cc: ControllerComponents) extends AbstractController(cc) {
 
   def index = Action { implicit request =>
-    inTransaction(
-      AppDB.create
-    )
-    inTransaction(
-      AppDB.gameTable.insert(new Game("DotA 2", "DOTA", "hero"))
-    )
+//    inTransaction(
+//      AppDB.create
+//    )
+//    inTransaction(
+//      AppDB.gameTable.insert(new Game("DotA 2", "DOTA", "hero"))
+//    )
 
     Ok(views.html.index())
   }

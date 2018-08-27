@@ -71,3 +71,9 @@ Once the test completes, you'll see an HTML file containing the load test chart:
 ```
 
 That will contain your load test results.
+
+
+
+# for intellij install scala and sbt plugins.
+# also go project structure and find and use jdk 8
+# then edit configurations and add a 'run' for sbt
