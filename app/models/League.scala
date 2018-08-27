@@ -4,7 +4,22 @@ import java.sql.Timestamp
 
 import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
+import org.squeryl.customtypes.CustomTypesMode._
+import org.squeryl.customtypes._
 import play.api.libs.json._
+
+//trait Domain[Int] {
+//  self: CustomType[Int] =>
+//  def label: String
+//  def validate(a: Int): Unit
+//  def value: Int
+//  validate(value)
+//}
+//
+//class TeamSize(v: Int) extends IntField(v) with Domain[Int] {
+//  def validate(teamSize: Int) = assert(1 <= teamSize && teamSize <= 20, "team size must be between 1 and 20, got " + teamSize)
+//  def label = "teamSize"
+//}
 
 class League(
               var name: String,
@@ -14,7 +29,7 @@ class League(
               var totalDays: Int,
               var dayStart: Timestamp,
               var dayEnd: Timestamp,
-              val teamSize: Int,
+              val teamSize: Int = 5,
               //val captain: Boolean,
               var transferLimit: Int, // use -1 for no transfer limit I think. only applies after day 1 start
               var startingMoney: Double,
@@ -26,14 +41,14 @@ class League(
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
               var url: String = "",
-              var autoUpdate = true,
+              var autoUpdate: Boolean = true,
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
-  lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
+  //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
-  def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
+  //def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
 
 }
 
@@ -50,11 +65,11 @@ object League{
         "totalDays" -> league.totalDays,
         "dayStart" -> league.dayStart,
         "dayEnd" -> league.dayEnd,
-        "currentDay" -> league.currentDay,
         "pointsMultiplier" -> league.pointsMultiplier,
-        "unfilledTeamPenaltyMultiplier" -> league.unfilledTeamPenaltyMultiplier,
-        "phase" -> league.phase,
-        "url" -> league.url
+        "teamSize" -> league.teamSize,
+        //val captain: Boolean,
+        "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+        "startingMoney" -> league.startingMoney
       )
     }
   }

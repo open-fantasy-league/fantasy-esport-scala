@@ -15,18 +15,16 @@ object AppDB extends Schema {
   val teamPickeeTable = table[TeamPickee]
   val pickeeStatsTable = table[PickeeStats]
   val friendTable = table[Friend]
-  val saleTable = table[Sale]
   val transferTable = table[Transfer]
   val resultTable = table[Resultu]
   val pointsFieldTable = table[PointsField]
   val pointsTable = table[Points]
   val matchTable = table[Matchu]
-  val hallOfFameTable = table[HallOfFame]
-  val userXpTable = table[UserXp]
-  val achievementTable = table[Achievement]
+//  val hallOfFameTable = table[HallOfFame]
+//  val userXpTable = table[UserXp]
+//  val achievementTable = table[Achievement]
   val notificationTable = table[Notification]
-  val leaguePrizeTable = table[League
-    Prize]
+  val leaguePrizeTable = table[LeaguePrize]
 
   // League User has many to many relation. each user can play in many leagues. each league can have many users
   // TODO this should be true of user achievements as well
@@ -34,9 +32,9 @@ object AppDB extends Schema {
   manyToManyRelation(leagueTable, userTable).
     via[LeagueUser]((l, u, lu) => (lu.leagueId === l.id, u.id === lu.userId))
 
-  val userAchievementTable =
-    manyToManyRelation(achievementTable, userTable).
-      via[UserAchievement]((a, u, ua) => (ua.achievementId === a.id, u.id === ua.userId))
+//  val userAchievementTable =
+//    manyToManyRelation(achievementTable, userTable).
+//      via[UserAchievement]((a, u, ua) => (ua.achievementId === a.id, u.id === ua.userId))
 
   // lets do all our oneToMany foreign keys
   val leagueUserToLeagueUserStats =
@@ -63,9 +61,9 @@ object AppDB extends Schema {
     oneToManyRelation(leagueTable, matchTable).
       via((l, o) => (l.id === o.leagueId))
 
-  val leagueToHallOfFame =
-    oneToManyRelation(leagueTable, hallOfFameTable).
-      via((l, o) => (l.id === o.leagueId))
+//  val leagueToHallOfFame =
+//    oneToManyRelation(leagueTable, hallOfFameTable).
+//      via((l, o) => (l.id === o.leagueId))
 
   val pickeeToTeamPickee =
     oneToManyRelation(pickeeTable, teamPickeeTable).
@@ -79,8 +77,8 @@ object AppDB extends Schema {
     oneToManyRelation(pickeeTable, resultTable).
       via((p, o) => (p.id === o.pickeeId))
 
-  val pickeeToSale =
-    oneToManyRelation(pickeeTable, saleTable).
+  val pickeeToTransfer =
+    oneToManyRelation(pickeeTable, transferTable).
       via((p, o) => (p.id === o.pickeeId))
 
   val leagueUserToTransfer =
@@ -91,9 +89,9 @@ object AppDB extends Schema {
     oneToManyRelation(userTable, notificationTable).
       via((u, o) => (u.id === o.userId))
 
-  val userToUserXp =
-    oneToManyRelation(userTable, userXpTable).
-      via((u, o) => (u.id === o.userId))
+//  val userToUserXp =
+//    oneToManyRelation(userTable, userXpTable).
+//      via((u, o) => (u.id === o.userId))
 
   val userToPasswordReset =
     oneToManyRelation(userTable, passwordResetTable).
@@ -107,16 +105,16 @@ object AppDB extends Schema {
     oneToManyRelation(userTable, friendTable).
       via((u, o) => (u.id === o.friendId))
 
-  val gameToHallOfFame =
-    oneToManyRelation(gameTable, hallOfFameTable).
-      via((g, o) => (g.id === o.gameId))
+//  val gameToHallOfFame =
+//    oneToManyRelation(gameTable, hallOfFameTable).
+//      via((g, o) => (g.id === o.gameId))
 
   val gameToLeague =
     oneToManyRelation(gameTable, leagueTable).
       via((g, o) => (g.id === o.gameId))
 
-  val gameToAchievement =
-    oneToManyRelation(gameTable, achievementTable).
-      via((g, o) => (g.id === o.gameId))
+//  val gameToAchievement =
+//    oneToManyRelation(gameTable, achievementTable).
+//      via((g, o) => (g.id === o.gameId))
 
 }

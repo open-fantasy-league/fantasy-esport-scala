@@ -13,11 +13,12 @@ import play.api.libs.json._
 import models.{AppDB, League}
 
 case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, totalDays: Int,
-                           dayStart: Long, dayEnd: Long)
+                           dayStart: Long, dayEnd: Long, teamSize: Int, transferLimit: Int, startingMoney: Int,
+                           transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String])
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
                                  tournamentId: Option[Int], totalDays: Option[Int],
-                           dayStart: Option[Long], dayEnd: Option[Long])
+                           dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
 
 
 class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
@@ -33,21 +34,19 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "tournamentId" -> number,
         "totalDays" -> number(min=1, max=100),
         "dayStart" -> longNumber,
-        "dayEnd" -> longNumber
+        "dayEnd" -> longNumber,
         "teamSize" -> default(number(min=1, max=20), 5),
-        "captain" -> default(boolean, false)
+        //"captain" -> default(boolean, false),
         "transferLimit" -> default(number, -1), // use -1 for no transfer limit I think
-        "startingMoney" -> default(number, 50)
-        "changeDelay" -> default(number, 0), // change is generic for swap or transfer
-        "factions" -> List of stuff
+        "startingMoney" -> default(number, 50),
+        "transferDelay" -> default(number, 0),
+        //"factions" -> List of stuff
     // also singular prize with description and email fields
         "prizeDescription" -> optional(nonEmptyText),
         "prizeEmail" -> optional(nonEmptyText),
-         "pickees" ->
+         //"pickees" ->
+    //"extraStatFields"  // i.e. pick/win/ban for dota2 heroes
     //
-    var faction: Option[String],
-    var value: Double,
-    var active: Boolean = true//
     // identifier
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
@@ -64,7 +63,6 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "dayStart" -> optional(longNumber),
         "dayEnd" -> optional(longNumber),
         "transferOpen" -> optional(boolean),
-        "swapOpen" -> optional(boolean)
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
@@ -103,13 +101,14 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
       println("yay")
       inTransaction {
         val newLeague = AppDB.leagueTable.insert(new League(input.name, input.gameId, input.isPrivate, input.tournamentId,
-          input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd)))
-        for pickee in pickees{
-          val newPickee = AppDB.pickeeTable.insert(new Pickee)
-          for day in blah{
-            PickeeStats
-          }
-        }
+          input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.teamSize, input.transferLimit,
+          input.startingMoney))
+//        for pickee in pickees{
+//          val newPickee = AppDB.pickeeTable.insert(new Pickee)
+//          for day in blah{
+//            PickeeStats
+//          }
+//        }
         Future {Created(Json.toJson(newLeague)) }
         //Future{Ok(views.html.index())}
       }
@@ -133,7 +132,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
 
       val updateLeague = (league: League, input: UpdateLeagueFormInput) => {
         league.name = input.name.getOrElse(league.name)
-        input.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
+        league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
         // etc for other fields
         AppDB.leagueTable.update(league)
         Ok("Itwerked")

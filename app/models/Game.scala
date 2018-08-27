@@ -11,11 +11,11 @@ class Game(
   val id: Int = 0
 }
 
-class HallOfFame(
-                  val gameId: Int,
-                  val leagueId: Int,
-                  var winnerUserId: Int,
-                  var runnerUpUserId: Int
-                ) extends KeyedEntity[Int] {
-  val id: Int = 0
-}
+//class HallOfFame(
+//                  val gameId: Int,
+//                  val leagueId: Int,
+//                  var winnerUserId: Int,
+//                  var runnerUpUserId: Int
+//                ) extends KeyedEntity[Int] {
+//  val id: Int = 0
+//}

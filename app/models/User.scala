@@ -18,7 +18,7 @@ class User(
   def this() = this("", "", Some(""), false)
 
   lazy val leagues = AppDB.leagueUserTable.right(this)
-  lazy val achievements = AppDB.userAchievementTable.right(this)
+  //lazy val achievements = AppDB.userAchievementTable.right(this)
 }
 
 class Friend(
@@ -28,8 +28,9 @@ class Friend(
   val id: Long = 0
 }
 
-class Sale(
-            val transferId: Long,
+class Transfer(
+                // TODO add in timestamp?
+            val leagueUserId: Long,
             val pickeeId: Long,
             val isBuy: Boolean,
             val isReserve: Boolean,
@@ -37,54 +38,47 @@ class Sale(
           ) extends KeyedEntity[Long] {
   val id: Long = 0
 
-  lazy val tradePickee = (pickeeId: Long, tradeInput: tradeInputForm){
-    if true{
-      tradeInputForm.isBuy match {
-        case true => sfff
-        case false =>
-      }
-    }
-  }
+//  lazy val tradePickee = (pickeeId: Long, tradeInput: tradeInputForm){
+//    if (true){
+//      tradeInputForm.isBuy match {
+//        case true => "aaa"
+//        case false => "bbb"
+//      }
+//    }
+//  }
 }
 
-class Transfer(
-                val leagueUserId: Long,
-                val timestamp: Timestamp,
-              ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
+//class UserXp(
+//              val userId: Int,
+//              var xp: Long,
+//              // had these in python/sql alchemy. they can technically just be queried from league standings
+//              // in the name of doing things properly will leave them out for now unless queries are slow
+//              //highest_daily_pos = Column(Integer)
+//              //highest_weekly_pos = Column(Integer)
+//              //all_time_points = Column(BigInteger, default=0)
+//            ) extends KeyedEntity[Int] {
+//  val id: Int = 0
+//}
 
-class UserXp(
-              val userId: Int,
-              var xp: Long,
-              // had these in python/sql alchemy. they can technically just be queried from league standings
-              // in the name of doing things properly will leave them out for now unless queries are slow
-              //highest_daily_pos = Column(Integer)
-              //highest_weekly_pos = Column(Integer)
-              //all_time_points = Column(BigInteger, default=0)
-            ) extends KeyedEntity[Int] {
-  val id: Int = 0
-}
-
-class Achievement(
-                   val gameId: Int,
-                   var name: String,
-                   var description: String,
-                   var xp: Long
-                 ) extends KeyedEntity[Int] {
-  val id: Int = 0
-  lazy val users = AppDB.userAchievementTable.left(this)
-}
-
-
-class UserAchievement(
-                       val achievementId: Int,
-                       var userId: Int,
-                       var description: String,
-                       var xp: Long
-                     ) extends KeyedEntity[Int] {
-  val id: Int = 0
-}
+//class Achievement(
+//                   val gameId: Int,
+//                   var name: String,
+//                   var description: String,
+//                   var xp: Long
+//                 ) extends KeyedEntity[Int] {
+//  val id: Int = 0
+//  lazy val users = AppDB.userAchievementTable.left(this)
+//}
+//
+//
+//class UserAchievement(
+//                       val achievementId: Int,
+//                       var userId: Int,
+//                       var description: String,
+//                       var xp: Long
+//                     ) extends KeyedEntity[Int] {
+//  val id: Int = 0
+//}
 
 class Notification(
                     var userId: Int,
