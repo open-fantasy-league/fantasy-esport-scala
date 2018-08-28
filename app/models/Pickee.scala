@@ -4,12 +4,12 @@ import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
 
 class Pickee(
+              val leagueId: Int,
               var name: String,
               var identifier: Int, // in the case of dota we have the pickee id which is unique for AM in league 1
               // and AM in league 2. however we still want a field which is always AM hero id
-              val leagueId: Int,
               var faction: Option[String],
-              var value: Double,
+              var value: BigDecimal,
               var active: Boolean = true
             ) extends KeyedEntity[Long] {
   val id: Long = 0
@@ -33,7 +33,7 @@ class PickeeStats(
                    val statFieldId: Long,
                    val pickeeId: Long,
                    val day: Int,
-                   var value: Double,
+                   var value: BigDecimal,
                    var oldRank: Int = 0,
                  ) extends KeyedEntity[Long] {
   val id: Long = 0

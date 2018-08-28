@@ -29,10 +29,11 @@ class League(
               var totalDays: Int,
               var dayStart: Timestamp,
               var dayEnd: Timestamp,
+              var pickeeDescription: String,
               val teamSize: Int = 5,
               //val captain: Boolean,
               var transferLimit: Int, // use -1 for no transfer limit I think. only applies after day 1 start
-              var startingMoney: Double,
+              var startingMoney: BigDecimal,
               var transferDelay: Int = 0, // Only applies for when day 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
@@ -63,6 +64,7 @@ object League{
         "isPrivate" -> league.isPrivate,
         "tournamentId" -> league.tournamentId,
         "totalDays" -> league.totalDays,
+        "pickee" -> league.pickeeDescription,
         "dayStart" -> league.dayStart,
         "dayEnd" -> league.dayEnd,
         "pointsMultiplier" -> league.pointsMultiplier,

@@ -17,7 +17,7 @@ class HomeController @Inject()(cc: ControllerComponents) extends AbstractControl
 //      AppDB.create
 //    )
 //    inTransaction(
-//      AppDB.gameTable.insert(new Game("DotA 2", "DOTA", "hero"))
+//      AppDB.gameTable.insert(new Game("DotA 2", "DOTA"))
 //    )
 
     Ok(views.html.index())

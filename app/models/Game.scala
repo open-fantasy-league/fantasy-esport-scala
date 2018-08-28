@@ -6,7 +6,6 @@ import org.squeryl.KeyedEntity
 class Game(
             val name: String,
             val code: String,
-            var pickee: String, //i.e. Hero, champion, player
           ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
