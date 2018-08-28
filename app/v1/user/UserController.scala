@@ -11,6 +11,7 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import models.{AppDB, User}
+import com.github.t3hnar.bcrypt._
 
 case class UserFormInput(name: String, password: String, email: Option[String], contactable: Boolean)
 
@@ -59,6 +60,7 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     }
   }
 
+  // TODO tolerantJson?
   def update(userId: String) = Action.async(BodyParsers.parse.json) { implicit request =>
     processJsonUpdateUser(userId)
   }
@@ -76,7 +78,7 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     def success(input: UserFormInput) = {
       println("yay")
       inTransaction {
-        val newUser = AppDB.userTable.insert(new User(input.name, input.password, input.email, input.contactable))
+        val newUser = AppDB.userTable.insert(new User(input.name, input.password.bcrypt, input.email, input.contactable))
 //        for pickee in pickees{
 //          val newPickee = AppDB.pickeeTable.insert(new Pickee)
 //          for day in blah{
