@@ -1,5 +1,6 @@
 package v1.league
 
+import scala.collection.mutable.ArrayBuffer
 import java.sql.Timestamp
 
 import javax.inject.Inject
@@ -10,10 +11,10 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import models.{AppDB, League, Pickee}
+import models.{AppDB, League, Pickee, PickeeStats, LeagueFaction, LeagueStatFields}
 
 
-case class FactionFormInput(description: String, limit: Int, names: List[String])
+case class FactionFormInput(description: String, limit: Int)
 
 case class PickeeFormInput(id: Int, name: String, value: BigDecimal, active: Boolean, faction: Option[String])
 
@@ -56,7 +57,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "faction" -> optional(mapping(
           "description" -> nonEmptyText,  // i.e. Team for describing factions as being different teams. Race for sc2 races
           "limit" -> number,  // i.e. 2 for max 2 eg players per team
-          "names" -> list(nonEmptyText)// i.e. Evil Geniuses, Optic Gaming. Zerg/Protoss etc"
+          // dont need a list of factions as input, as we just take them from their entry in pickee list
         )(FactionFormInput.apply)(FactionFormInput.unapply)),
         "extraStats" -> optional(list(nonEmptyText)), // i.e. picks, wins. extra info to display on leaderboards other than points
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
@@ -65,7 +66,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           "name" -> nonEmptyText,
           "value" -> bigDecimal,
           "active" -> default(boolean, true),
-          "faction" -> optional(nonEmptyText)
+          "faction" -> optional(nonEmptyText)  // e.g. Evil Geniuses, Zerg...etc
         )(PickeeFormInput.apply)(PickeeFormInput.unapply))
          //"pickees" ->
 
@@ -136,6 +137,25 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           input.teamSize, input.transferLimit, input.startingMoney
         ))
 
+        var statFields: ArrayBuffer[Long] = ArrayBuffer()
+        val pointsField = AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(
+          newLeague.id, "points"
+        ))
+
+        statFields += pointsField.id
+
+        // TODO make sure stat fields static cant be changed once tournament in progress
+        input.extraStats match {
+          case Some(extraStats) => {
+            for (extraStat <- extraStats) {
+              val newStatField = AppDB.leagueStatFieldsTable.insert (new LeagueStatFields (
+              newLeague.id, extraStat
+              ))
+              statFields += newStatField.id
+            }
+          }
+        }
+
         println(input.pickees.mkString(","))
         for (pickee <- input.pickees) {
           val newPickee = AppDB.pickeeTable.insert(new Pickee(
@@ -147,10 +167,26 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
             pickee.value,
             pickee.active
           ))
-//          for day in blah{
-//            PickeeStats
-//          }
+
+          // -1 is for whole tournament
+          for (day <- -1 until input.totalDays) {
+            for (statFieldId <- statFields) {
+              AppDB.pickeeStatsTable.insert(new PickeeStats(
+                statFieldId, newPickee.id, day
+              ))
+            }
+          }
         }
+        input.faction match {
+          case Some(faction) => {
+            AppDB.leagueFactionTable.insert(new LeagueFaction(
+              newLeague.id,
+              faction.description,
+              faction.limit
+            ))
+          }
+        }
+
         Future {Created(Json.toJson(newLeague)) }
         //Future{Ok(views.html.index())}
       }

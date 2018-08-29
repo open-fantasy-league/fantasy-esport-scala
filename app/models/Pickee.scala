@@ -33,7 +33,7 @@ class PickeeStats(
                    val statFieldId: Long,
                    val pickeeId: Long,
                    val day: Int,
-                   var value: BigDecimal,
+                   var value: BigDecimal = 0.0,
                    var oldRank: Int = 0,
                  ) extends KeyedEntity[Long] {
   val id: Long = 0

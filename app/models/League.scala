@@ -90,15 +90,15 @@ class LeaguePrize(
 
 class LeagueFaction(
                      val leagueId: Int,
-                     var name: String,
+                     var description: String,
                      var limit: Int = 0  // 0 is essentially no limit
                    ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
 
 class LeagueStatFields(
-                        val name: String,  // Index this
-                        val leagueId: Int
+                        val leagueId: Int,
+                        val name: String  // Index this
                       ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
