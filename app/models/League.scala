@@ -8,6 +8,8 @@ import org.squeryl.customtypes.CustomTypesMode._
 import org.squeryl.customtypes._
 import play.api.libs.json._
 
+import scala.collection.mutable.ArrayBuffer
+
 //trait Domain[Int] {
 //  self: CustomType[Int] =>
 //  def label: String
@@ -47,15 +49,23 @@ class League(
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
+  lazy val statFields = AppDB.leagueToLeagueStatFields.left(this)
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   //def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
 
 }
 
+
 object League{
   implicit val implicitWrites = new Writes[League] {
     def writes(league: League): JsValue = {
+//      val lsf = league.statFields
+//      val statFieldNames = lsf.map(_.name)
+      val statFieldNames = List("cat", "dog")
+//      for (l <- league.statFields){
+//        println(l)
+//      }
       Json.obj(
         "id" -> league.id,
         "name" -> league.name,
@@ -71,7 +81,8 @@ object League{
         "teamSize" -> league.teamSize,
         //val captain: Boolean,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
-        "startingMoney" -> league.startingMoney
+        "startingMoney" -> league.startingMoney,
+        "statFields" -> statFieldNames
       )
     }
   }
@@ -101,4 +112,48 @@ class LeagueStatFields(
                         val name: String  // Index this
                       ) extends KeyedEntity[Long] {
   val id: Long = 0
+}
+
+//object LeagueStatFields{
+//  implicit val implicitWrites = new Writes[LeagueStatFields] {
+//    def writes(lsf: LeagueStatFields): JsValue = {
+//      Json.obj(
+//        "name" -> lsf.name
+//      )
+//    }
+//  }
+//}
+
+case class LeaguePlusStuff(league: League, lsf: ArrayBuffer[String])
+
+
+object LeaguePlusStuff{
+  implicit val implicitWrites = new Writes[LeaguePlusStuff] {
+    def writes(leagueps: LeaguePlusStuff): JsValue = {
+      //      val lsf = league.statFields
+      //      val statFieldNames = lsf.map(_.name)
+      //      val statFieldNames = List("cat", "dog")
+      //      for (l <- league.statFields){
+      //        println(l)
+      //      }
+      Json.obj(
+        "id" -> leagueps.league.id,
+        "name" -> leagueps.league.name,
+        "gameId" -> leagueps.league.gameId,
+        "tournamentId" -> leagueps.league.tournamentId,
+        "isPrivate" -> leagueps.league.isPrivate,
+        "tournamentId" -> leagueps.league.tournamentId,
+        "totalDays" -> leagueps.league.totalDays,
+        "pickee" -> leagueps.league.pickeeDescription,
+        "dayStart" -> leagueps.league.dayStart,
+        "dayEnd" -> leagueps.league.dayEnd,
+        "pointsMultiplier" -> leagueps.league.pointsMultiplier,
+        "teamSize" -> leagueps.league.teamSize,
+        //val captain: Boolean,
+        "transferLimit" -> leagueps.league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+        "startingMoney" -> leagueps.league.startingMoney,
+        "statFields" -> leagueps.lsf
+      )
+    }
+  }
 }

@@ -120,4 +120,45 @@ object AppDB extends Schema {
 //    oneToManyRelation(gameTable, achievementTable).
 //      via((g, o) => (g.id === o.gameId))
 
+  val leagueWithPrize =
+    join(leagueTable, leaguePrizeTable.leftOuter)((l, lp) =>
+      select((l, lp))
+      on(l.id === lp.map(_.leagueId))
+    )
+
+//  val fullLeagueInfo =
+//    join(leagueTable, leaguePrizeTable.leftOuter)((l, lp) =>
+//      select(l, lp)
+//        on(l.id === lp.map(_.leagueId))
+//    )
+
+  val leagueWithStatFields =
+    join(leagueTable, leagueStatFieldsTable.leftOuter)((l, lsf) =>
+      select((l, lsf))
+        on(l.id === lsf.map(_.leagueId))
+    )
+
+//  object LeagueWithStatFields{
+//    implicit val implicitWrites = new Writes[League] {
+//      def writes(league: League, statFields: List[Option[LeagueStatFields]] = Nil): JsValue = {
+//        Json.obj(
+//          "id" -> league.id,
+//          "name" -> league.name,
+//          "gameId" -> league.gameId,
+//          "tournamentId" -> league.tournamentId,
+//          "isPrivate" -> league.isPrivate,
+//          "tournamentId" -> league.tournamentId,
+//          "totalDays" -> league.totalDays,
+//          "pickee" -> league.pickeeDescription,
+//          "dayStart" -> league.dayStart,
+//          "dayEnd" -> league.dayEnd,
+//          "pointsMultiplier" -> league.pointsMultiplier,
+//          "teamSize" -> league.teamSize,
+//          //val captain: Boolean,
+//          "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+//          "startingMoney" -> league.startingMoney
+//        )
+//      }
+//    }
+//  }
 }

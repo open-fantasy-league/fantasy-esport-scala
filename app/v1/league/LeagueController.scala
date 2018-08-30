@@ -11,7 +11,7 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import models.{AppDB, League, Pickee, PickeeStats, LeagueFaction, LeagueStatFields}
+import models.{AppDB, League, Pickee, PickeeStats, LeagueFaction, LeagueStatFields, LeaguePlusStuff}
 
 
 case class FactionFormInput(description: String, limit: Int)
@@ -68,18 +68,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           "active" -> default(boolean, true),
           "faction" -> optional(nonEmptyText)  // e.g. Evil Geniuses, Zerg...etc
         )(PickeeFormInput.apply)(PickeeFormInput.unapply))
-         //"pickees" ->
 
-//    var name: String,
-//    var identifier: Int, // in the case of dota we have the pickee id which is unique for AM in league 1
-//    // and AM in league 2. however we still want a field which is always AM hero id
-//    val leagueId: Int,
-//    var faction: Option[String],
-//    var value: BigDecimal,
-//    var active: Boolean = true
-    //"extraStatFields"  // i.e. pick/win/ban for dota2 heroes
-    //
-    // identifier
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }
@@ -91,7 +80,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "name" -> optional(nonEmptyText),
         "isPrivate" -> optional(boolean),
         "tournamentId" -> optional(number),
-        "totalDays" -> optional(number(min=1, max=100)),
+        "totalDays" -> optional(number(min=1, max=100)),  // todo add handling for increasing/decreasing num days
         "dayStart" -> optional(longNumber),
         "dayEnd" -> optional(longNumber),
         "transferOpen" -> optional(boolean),
@@ -107,9 +96,26 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
   def show(leagueId: String) = Action { implicit request =>
     inTransaction {
       // TODO handle invalid Id
+//      val a = AppDB.leagueWithPrize
+//      println(a)
+      val n = AppDB.leagueWithStatFields
+      for(b <- n){
+        println(b._1)
+        println(b._2)
+      }
       val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
+
       leagueQuery match{
-        case Some(league) => Created(Json.toJson(league))
+        case Some(league) => {
+          //val result: Nothing = league.statFields
+          val statFields = ArrayBuffer[String]()
+          for (f <- league.statFields) {
+            println(f.name)
+            statFields += f.name
+          }
+          Created(Json.toJson(LeaguePlusStuff(league, statFields)))
+          //Created(Json.toJson(league))
+        }
         case None => Ok("Yer dun fucked up")
       }
     }
@@ -137,7 +143,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           input.teamSize, input.transferLimit, input.startingMoney
         ))
 
-        var statFields: ArrayBuffer[Long] = ArrayBuffer()
+        val statFields: ArrayBuffer[Long] = ArrayBuffer()
         val pointsField = AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(
           newLeague.id, "points"
         ))
@@ -156,7 +162,6 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           }
         }
 
-        println(input.pickees.mkString(","))
         for (pickee <- input.pickees) {
           val newPickee = AppDB.pickeeTable.insert(new Pickee(
             newLeague.id,
