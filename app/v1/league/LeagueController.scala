@@ -4,7 +4,7 @@ import scala.collection.mutable.ArrayBuffer
 import java.sql.Timestamp
 
 import javax.inject.Inject
-import org.squeryl.PrimitiveTypeMode._
+import entry.SquerylEntrypointForMyApp._
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._
@@ -121,11 +121,11 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     }
   }
 
-  def update(leagueId: String) = Action.async(BodyParsers.parse.json) { implicit request =>
+  def update(leagueId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateLeague(leagueId)
   }
 
-  def add = Action.async(BodyParsers.parse.json){ implicit request =>
+  def add = Action.async(parse.json){ implicit request =>
     processJsonLeague()
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }
@@ -160,6 +160,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
               statFields += newStatField.id
             }
           }
+          case None =>
         }
 
         for (pickee <- input.pickees) {
@@ -190,6 +191,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
               faction.limit
             ))
           }
+          case None =>
         }
 
         Future {Created(Json.toJson(newLeague)) }

@@ -3,9 +3,6 @@ package controllers
 import javax.inject.Inject
 
 import play.api.mvc._
-import models._
-
-import org.squeryl.PrimitiveTypeMode._
 
 /**
   * A very small controller that renders a home page.
@@ -13,6 +10,8 @@ import org.squeryl.PrimitiveTypeMode._
 class HomeController @Inject()(cc: ControllerComponents) extends AbstractController(cc) {
 
   def index = Action { implicit request =>
+//    import models._
+//    import entry.SquerylEntrypointForMyApp._
 //    inTransaction(
 //      AppDB.create
 //    )

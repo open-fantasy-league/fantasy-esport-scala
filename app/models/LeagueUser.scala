@@ -1,6 +1,5 @@
 package models
 
-import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
 

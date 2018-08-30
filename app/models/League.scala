@@ -2,10 +2,7 @@ package models
 
 import java.sql.Timestamp
 
-import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
-import org.squeryl.customtypes.CustomTypesMode._
-import org.squeryl.customtypes._
 import play.api.libs.json._
 
 import scala.collection.mutable.ArrayBuffer

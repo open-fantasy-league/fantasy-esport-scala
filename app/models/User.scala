@@ -1,11 +1,9 @@
 package models
 
-import java.sql.Timestamp
+//import java.sql.Timestamp
 
-import org.squeryl.PrimitiveTypeMode._
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
-import com.github.t3hnar.bcrypt._
 
 class User(
             var username: String,

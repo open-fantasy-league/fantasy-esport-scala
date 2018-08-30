@@ -1,9 +1,7 @@
 package v1.user
 
-import java.sql.Timestamp
-
 import javax.inject.Inject
-import org.squeryl.PrimitiveTypeMode._
+import entry.SquerylEntrypointForMyApp._
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._
@@ -61,11 +59,11 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
   }
 
   // TODO tolerantJson?
-  def update(userId: String) = Action.async(BodyParsers.parse.json) { implicit request =>
+  def update(userId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateUser(userId)
   }
 
-  def add = Action.async(BodyParsers.parse.json){ implicit request =>
+  def add = Action.async(parse.json){ implicit request =>
     processJsonUser()
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }

@@ -3,7 +3,7 @@
 //import java.sql.Timestamp
 //
 //import javax.inject.Inject
-//import org.squeryl.PrimitiveTypeMode._
+//import entry.SquerylEntrypointForMyApp._
 //
 //import scala.concurrent.{ExecutionContext, Future}
 //import play.api.mvc._

@@ -1,6 +1,6 @@
 package models
 
-import org.squeryl.PrimitiveTypeMode._
+import entry.SquerylEntrypointForMyApp._
 import org.squeryl.Schema
 
 object AppDB extends Schema {
