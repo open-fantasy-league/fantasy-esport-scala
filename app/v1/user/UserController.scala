@@ -15,6 +15,8 @@ case class UserFormInput(name: String, password: String, email: Option[String], 
 
 case class UpdateUserFormInput(name: Option[String], email: Option[String], contactable: Option[Boolean])
 
+case class TransferFormInput(buy: Option[List[Int]], sell: Option[List[Int]])
+
 
 class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -42,15 +44,39 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     )
   }
 
-  def index = Action { implicit request =>
+  private val transferForm: Form[TransferFormInput] = {
 
-    Ok(views.html.index())
+    Form(
+      mapping(
+        "buy" -> optional(list(number)),
+        "sell" -> optional(list(number)),
+      )(TransferFormInput.apply)(TransferFormInput.unapply)
+    )
+  }
+
+  def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
+    inTransaction {
+      // check not already joined
+      //
+      AppDB.userTable.lookup(userId.toInt) match {
+        case Some(user) => {
+          AppDB.leagueTable.lookup(leagueId.toInt) match {
+            case Some(league) => {
+              league.users.associate(user)
+              Created("Successfully added user to league")
+            }
+            case None => BadRequest("League does not exist")
+          }
+        }
+        case None => BadRequest("User does not exist")
+      }
+    }
   }
 
   def show(userId: String) = Action { implicit request =>
     inTransaction {
       // TODO handle invalid Id
-      val userQuery = AppDB.userTable.lookup(Integer.parseInt(userId))
+      val userQuery = AppDB.userTable.lookup(userId.toInt)
       userQuery match{
         case Some(user) => Created(Json.toJson(user))
         case None => Ok("Yer dun fucked up")

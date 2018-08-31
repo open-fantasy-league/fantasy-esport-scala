@@ -85,3 +85,4 @@ That will contain your load test results.
 - have add user to league based off of said invite link
 - have result/match addition
 - have update stats/leaderboards loop
+- should go back to one big league table? also remember to add wildcard for leagueUsers
