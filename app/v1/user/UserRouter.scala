@@ -30,8 +30,8 @@ class UserRouter @Inject()(controller: UserController) extends SimpleRouter {
     case PUT(p"/$userId/join/$leagueId") =>
       controller.joinLeague(userId, leagueId)
 
-    case POST(p"/$userId/transfer") =>
-      controller.transfer(userId)
+    case POST(p"/$leagueId/$userId/transfer") =>
+      controller.transfer(userId, leagueId)
   }
 
 }

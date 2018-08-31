@@ -9,6 +9,7 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import models.{AppDB, User}
+import utils.IdParser.parseIntId
 import com.github.t3hnar.bcrypt._
 
 case class UserFormInput(name: String, password: String, email: Option[String], contactable: Boolean)
@@ -54,6 +55,11 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     )
   }
 
+  // todo add a transfer check call
+  def transfer(userId: String, leagueId: String) = Action.async(parse.json) { implicit request =>
+    processJsonTransfer(userId, leagueId)
+  }
+
   def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
     inTransaction {
       // check not already joined
@@ -74,14 +80,15 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
   }
 
   def show(userId: String) = Action { implicit request =>
-    inTransaction {
-      // TODO handle invalid Id
-      val userQuery = AppDB.userTable.lookup(userId.toInt)
-      userQuery match{
-        case Some(user) => Created(Json.toJson(user))
-        case None => Ok("Yer dun fucked up")
+    parseIntId(userId, (convertedId) => {
+      inTransaction {
+        val userQuery = AppDB.userTable.lookup(convertedId)
+        userQuery match{
+          case Some(user) => Created(Json.toJson(user))
+          case None => Ok("Yer dun fucked up")
+        }
       }
-    }
+    })
   }
 
   // TODO tolerantJson?
@@ -154,5 +161,39 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     }
 
     updateForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def processJsonTransfer[A](userId: String, leagueId: String)(implicit request: Request[A]): Future[Result] = {
+    def failure(badForm: Form[TransferFormInput]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(input: TransferFormInput) = {
+      println("yay")
+
+      val updateUser = (user: User, input: TransferFormInput) => {
+        // etc for other fields
+        AppDB.userTable.update(user)
+        Ok("Itwerked")
+        //Future { Ok("Itwerked") }
+      }
+      Future {
+        inTransaction {
+          // TODO handle invalid Id
+          val userQuery = AppDB.userTable.lookup(Integer.parseInt(userId))
+          userQuery match {
+            case Some(user) => updateUser(user, input)
+            case None => Ok("Yer dun fucked up")
+          }
+        }
+      }
+      //scala.concurrent.Future{ Ok(views.html.index())}
+      //      postResourceHandler.create(input).map { post =>
+      //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
+      //      }
+      // TODO good practice post-redirect-get
+    }
+
+    transferForm.bindFromRequest().fold(failure, success)
   }
 }

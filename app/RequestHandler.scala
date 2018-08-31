@@ -31,6 +31,7 @@ class RequestHandler @Inject()(router: Router,
   }
 
   private def isREST(request: RequestHeader) = {
+    println("hello there")
     request.uri match {
       case uri: String if uri.contains("/api/") => true
       case _ => false
