@@ -16,9 +16,6 @@ case class UserFormInput(name: String, password: String, email: Option[String], 
 
 case class UpdateUserFormInput(name: Option[String], email: Option[String], contactable: Option[Boolean])
 
-case class TransferFormInput(buy: Option[List[Int]], sell: Option[List[Int]])
-
-
 class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -45,38 +42,26 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     )
   }
 
-  private val transferForm: Form[TransferFormInput] = {
-
-    Form(
-      mapping(
-        "buy" -> optional(list(number)),
-        "sell" -> optional(list(number)),
-      )(TransferFormInput.apply)(TransferFormInput.unapply)
-    )
-  }
-
-  // todo add a transfer check call
-  def transfer(userId: String, leagueId: String) = Action.async(parse.json) { implicit request =>
-    processJsonTransfer(userId, leagueId)
-  }
-
   def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
-    inTransaction {
-      // check not already joined
-      //
-      AppDB.userTable.lookup(userId.toInt) match {
-        case Some(user) => {
-          AppDB.leagueTable.lookup(leagueId.toInt) match {
-            case Some(league) => {
-              league.users.associate(user)
-              Created("Successfully added user to league")
+    parseIntId(userId, (userId) => {
+      parseIntId(leagueId, (leagueId) => {
+        inTransaction {
+          // TODO check not already joined
+          AppDB.userTable.lookup(userId) match {
+            case Some(user) => {
+              AppDB.leagueTable.lookup(leagueId) match {
+                case Some(league) => {
+                  league.users.associate(user)
+                  Created("Successfully added user to league")
+                }
+                case None => BadRequest("League does not exist")
+              }
             }
-            case None => BadRequest("League does not exist")
+            case None => BadRequest("User does not exist")
           }
         }
-        case None => BadRequest("User does not exist")
-      }
-    }
+      })
+    })
   }
 
   def show(userId: String) = Action { implicit request =>
@@ -144,14 +129,16 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
         //Future { Ok("Itwerked") }
       }
       Future {
-        inTransaction {
-          // TODO handle invalid Id
-          val userQuery = AppDB.userTable.lookup(Integer.parseInt(userId))
-          userQuery match {
-            case Some(user) => updateUser(user, input)
-            case None => Ok("Yer dun fucked up")
+        parseIntId(userId, (userId) => {
+          inTransaction {
+            // TODO handle invalid Id
+            val userQuery = AppDB.userTable.lookup(userId)
+            userQuery match {
+              case Some(user) => updateUser(user, input)
+              case None => Ok("Yer dun fucked up")
+            }
           }
-        }
+        })
       }
       //scala.concurrent.Future{ Ok(views.html.index())}
       //      postResourceHandler.create(input).map { post =>
@@ -161,39 +148,5 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     }
 
     updateForm.bindFromRequest().fold(failure, success)
-  }
-
-  private def processJsonTransfer[A](userId: String, leagueId: String)(implicit request: Request[A]): Future[Result] = {
-    def failure(badForm: Form[TransferFormInput]) = {
-      Future.successful(BadRequest(badForm.errorsAsJson))
-    }
-
-    def success(input: TransferFormInput) = {
-      println("yay")
-
-      val updateUser = (user: User, input: TransferFormInput) => {
-        // etc for other fields
-        AppDB.userTable.update(user)
-        Ok("Itwerked")
-        //Future { Ok("Itwerked") }
-      }
-      Future {
-        inTransaction {
-          // TODO handle invalid Id
-          val userQuery = AppDB.userTable.lookup(Integer.parseInt(userId))
-          userQuery match {
-            case Some(user) => updateUser(user, input)
-            case None => Ok("Yer dun fucked up")
-          }
-        }
-      }
-      //scala.concurrent.Future{ Ok(views.html.index())}
-      //      postResourceHandler.create(input).map { post =>
-      //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-      //      }
-      // TODO good practice post-redirect-get
-    }
-
-    transferForm.bindFromRequest().fold(failure, success)
   }
 }
