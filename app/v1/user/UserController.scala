@@ -4,6 +4,7 @@ import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
@@ -43,37 +44,28 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
   }
 
   def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
-    parseIntId(userId, (userId) => {
-      parseIntId(leagueId, (leagueId) => {
+
         inTransaction {
           // TODO check not already joined
-          AppDB.userTable.lookup(userId) match {
-            case Some(user) => {
-              AppDB.leagueTable.lookup(leagueId) match {
-                case Some(league) => {
-                  league.users.associate(user)
-                  Created("Successfully added user to league")
-                }
-                case None => BadRequest("League does not exist")
-              }
-            }
-            case None => BadRequest("User does not exist")
-          }
+          (for {
+            userId <- parseIntId(userId, "User")
+            leagueId <- parseIntId(leagueId, "League")
+            user <- AppDB.userTable.lookup(userId.toInt).toRight(BadRequest("User does not exist"))
+            league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            added <- Try(league.users.associate(user)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+            success = "Successfully added user to league"
+          } yield success).fold(identity, Created(_))
         }
-      })
-    })
   }
 
   def show(userId: String) = Action { implicit request =>
-    parseIntId(userId, (convertedId) => {
-      inTransaction {
-        val userQuery = AppDB.userTable.lookup(convertedId)
-        userQuery match{
-          case Some(user) => Created(Json.toJson(user))
-          case None => Ok("Yer dun fucked up")
-        }
-      }
-    })
+    inTransaction {
+      (for{
+        userId <- parseIntId(userId, "User")
+        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+        success = Created(Json.toJson(user))
+      } yield success).fold(identity, identity)
+    }
   }
 
   // TODO tolerantJson?
@@ -122,23 +114,15 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     def success(input: UpdateUserFormInput) = {
       println("yay")
 
-      val updateUser = (user: User, input: UpdateUserFormInput) => {
-        // etc for other fields
-        AppDB.userTable.update(user)
-        Ok("Itwerked")
-        //Future { Ok("Itwerked") }
-      }
       Future {
-        parseIntId(userId, (userId) => {
-          inTransaction {
-            // TODO handle invalid Id
-            val userQuery = AppDB.userTable.lookup(userId)
-            userQuery match {
-              case Some(user) => updateUser(user, input)
-              case None => Ok("Yer dun fucked up")
-            }
-          }
-        })
+        inTransaction {
+          (for {
+            userId <- parseIntId(userId, "User")
+            user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+            updateUser <- Try(AppDB.userTable.update(user)).toOption.toRight(InternalServerError("Could not update user"))
+            finished = Ok("User updated")
+          } yield finished).fold(identity, identity)
+        }
       }
       //scala.concurrent.Future{ Ok(views.html.index())}
       //      postResourceHandler.create(input).map { post =>

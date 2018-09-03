@@ -23,6 +23,7 @@ libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "3.1.2
 libraryDependencies += "io.gatling.highcharts" % "gatling-charts-highcharts" % gatlingVersion(scalaBinaryVersion.value) % Test
 libraryDependencies += "io.gatling" % "gatling-test-framework" % gatlingVersion(scalaBinaryVersion.value) % Test
 libraryDependencies += "com.github.t3hnar" %% "scala-bcrypt" % "3.1"
+libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.2.26"
 
 libraryDependencies ++=  Seq(
   jdbc,
