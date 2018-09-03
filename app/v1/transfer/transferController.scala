@@ -1,16 +1,17 @@
 package v1.transfer
 
 import java.sql.Timestamp
-
 import javax.inject.Inject
-import entry.SquerylEntrypointForMyApp._
 
-import scala.concurrent.{ExecutionContext, Future}
+import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import models.{AppDB, League, User, LeagueUser}
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
+import models.{AppDB, League, LeagueUser, User}
+import utils.IdParser
 case class TransferFormInput(buy: Option[List[Int]], sell: Option[List[Int]], isCheck: Boolean)
 
 class TransferController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
@@ -45,21 +46,18 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       // verify doesnt break team size lim
       // verify doesnt break faction limit
 
-      val updateUser = (user: User, input: TransferFormInput) => {
-        // etc for other fields
-        AppDB.userTable.update(user)
-        Ok("Itwerked")
-        //Future { Ok("Itwerked") }
-      }
       Future {
         inTransaction {
           // TODO handle invalid Id
-          val userQuery = AppDB.userTable.lookup(Integer.parseInt(userId))
-          userQuery match {
-            case Some(user) => updateUser(user, input)
-            case None => Ok("Yer dun fucked up")
-          }
+          for {
+            userId <- IdParser.parseIntId(userId, "User")
+            leagueId <- IdParser.parseIntId(leagueId, "League")
+            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
+          // TODO what does single return if no entries?
+            leagueUser <- Try(league.users.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
+          } yield leagueUser
         }
+        Ok("Yer dun fucked up")
       }
       //scala.concurrent.Future{ Ok(views.html.index())}
       //      postResourceHandler.create(input).map { post =>

@@ -39,7 +39,7 @@ lazy val root = (project in file("."))
   .configs(GatlingTest)
   .settings(inConfig(GatlingTest)(Defaults.testSettings): _*)
   .settings(
-    name := """play-scala-rest-api-example""",
+    name := """fantasy-esport-scala""",
     scalaSource in GatlingTest := baseDirectory.value / "/gatling/simulation"
   )
 
