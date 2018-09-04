@@ -6,6 +6,8 @@ GET        /                       controllers.HomeController.index
 
 ->         /api/v1/users              v1.user.UserRouter
 
+->         /api/v1/transfers            v1.transfer.TransferRouter
+
 # Map static resources from the /public folder to the /assets URL path
 GET        /assets/*file        controllers.Assets.at(path="/public", file)
 

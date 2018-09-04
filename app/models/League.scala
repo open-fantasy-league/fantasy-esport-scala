@@ -46,6 +46,7 @@ class League(
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
+  lazy val pickees = AppDB.leagueToPickee.left(this)
   lazy val statFields = AppDB.leagueToLeagueStatFields.left(this)
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 

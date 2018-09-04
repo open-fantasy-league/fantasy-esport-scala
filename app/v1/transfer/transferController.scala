@@ -9,10 +9,12 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.collection.immutable.{List, Set}
 import scala.util.Try
-import models.{AppDB, League, LeagueUser, User}
+import models.{AppDB, LeagueUser, Pickee}
 import utils.IdParser
-case class TransferFormInput(buy: Option[List[Int]], sell: Option[List[Int]], isCheck: Boolean)
+
+case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean)
 
 class TransferController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -21,8 +23,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
     Form(
     mapping(
-    "buy" -> optional(list(number)),
-    "sell" -> optional(list(number)),
+    "buy" -> default(list(number), List()),
+    "sell" -> default(list(number), List()),
     "isCheck" -> boolean
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
@@ -46,18 +48,26 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       // verify doesnt break team size lim
       // verify doesnt break faction limit
 
+      // stop people from buying two of same hero at once
+      // still need further check that hero not already in team
+      val sell = input.sell.toSet
+      val buy = input.buy.toSet
+
       Future {
         inTransaction {
           // TODO handle invalid Id
-          for {
+          (for {
             userId <- IdParser.parseIntId(userId, "User")
             leagueId <- IdParser.parseIntId(leagueId, "League")
             league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           // TODO what does single return if no entries?
-            leagueUser <- Try(league.users.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
-          } yield leagueUser
+            leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
+            newRemaining <- updatedRemainingTransfers(leagueUser, sell)
+            isValidPickees <- validatePickeeIds(league.pickees, sell, buy)
+            newMoney <- updatedMoney(leagueUser, league.pickees, sell, buy)
+            finished = Ok("Transfers successful")
+          } yield finished).fold(identity, identity)
         }
-        Ok("Yer dun fucked up")
       }
       //scala.concurrent.Future{ Ok(views.html.index())}
       //      postResourceHandler.create(input).map { post =>
@@ -67,5 +77,37 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
 
     transferForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Int]): Either[Result, Int] = {
+    val newRemaining = leagueUser.remainingTransfers - toSell.size
+    newRemaining match{
+      case x if x < 0 => Left(BadRequest(
+        f"Insufficient remaining transfers: $leagueUser.remainingTransfers"
+      ))
+      case x => Right(x)
+    }
+  }
+
+  private def validatePickeeIds(pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Boolean] = {
+    // TODO return what ids are invalid
+    (toSell ++ toBuy).subsetOf(pickees.map(_.identifier).toSet) match {
+      case true => Right(true)
+      case false => Left(BadRequest(
+        "Invalid pickee id used"
+      ))
+    }
+  }
+
+  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, BigDecimal] = {
+    val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.identifier)).map(_.value).sum -
+      pickees.filter(p => toBuy.contains(p.identifier)).map(_.value).sum
+    println(updated)
+    updated match {
+      case x if x >= 0.0 => Right(x)
+      case x => Left(BadRequest(
+        f"Insufficient credits. Transfers would leave user at $x credits"
+      ))
+    }
   }
 }
