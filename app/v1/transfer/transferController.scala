@@ -11,7 +11,7 @@ import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
 import scala.util.Try
-import models.{AppDB, LeagueUser, Pickee}
+import models.{AppDB, League, LeagueUser, Pickee, TeamPickee}
 import utils.IdParser
 
 case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean)
@@ -65,6 +65,9 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
             isValidPickees <- validatePickeeIds(league.pickees, sell, buy)
             newMoney <- updatedMoney(leagueUser, league.pickees, sell, buy)
+            currentTeam = List[TeamPickee]()
+            newTeamSize <- updatedTeamSize(currentTeam, league, sell, buy)
+            _ <- validateFactionLimit(currentTeam, league, sell, buy)
             finished = Ok("Transfers successful")
           } yield finished).fold(identity, identity)
         }
@@ -102,12 +105,32 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, BigDecimal] = {
     val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.identifier)).map(_.value).sum -
       pickees.filter(p => toBuy.contains(p.identifier)).map(_.value).sum
-    println(updated)
     updated match {
       case x if x >= 0.0 => Right(x)
       case x => Left(BadRequest(
         f"Insufficient credits. Transfers would leave user at $x credits"
       ))
     }
+  }
+
+  private def updatedTeamSize(currentTeam: List[TeamPickee], league: League, toSell: Set[Int], toBuy: Set[Int]): Either[Result, Int] = {
+    val newSize = currentTeam.length - toSell.size + toBuy.size
+    newSize match {
+      case x if x <= league.teamSize => Right(x)
+      case x => Left(BadRequest(
+        f"Exceeds maximum team size of $league.teamSize"
+      ))
+    }
+  }
+
+  private def validateFactionLimit(currentTeam: List[TeamPickee], league: League, toSell: Set[Int], toBuy: Set[Int]): Either[Result, Any] = {
+    Right("cat")
+//    val newSize = currentTeam.length - toSell.size() + toBuy.size()
+//    newSize match {
+//      case x if x <= league.teamSize => Right(x)
+//      case x => Left(BadRequest(
+//        f"Exceeds maximum team size of $league.teamSize"
+//      ))
+//    }
   }
 }

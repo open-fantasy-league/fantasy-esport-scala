@@ -88,6 +88,10 @@ object AppDB extends Schema {
     oneToManyRelation(leagueUserTable, transferTable).
       via((lu, o) => (lu.id === o.leagueUserId))
 
+  val leagueUserToTeamPickee =
+    oneToManyRelation(leagueUserTable, teamPickeeTable).
+      via((lu, o) => (lu.id === o.leagueUserId))
+
   val userToNotification =
     oneToManyRelation(userTable, notificationTable).
       via((u, o) => (u.id === o.userId))
