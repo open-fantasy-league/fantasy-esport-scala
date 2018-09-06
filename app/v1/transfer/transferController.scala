@@ -12,7 +12,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models.{AppDB, League, LeagueUser, Pickee, TeamPickee}
-import utils.IdParser
+import utils.{IdParser, CostConverter}
 
 case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean)
 
@@ -65,9 +65,13 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
             isValidPickees <- validatePickeeIds(league.pickees, sell, buy)
             newMoney <- updatedMoney(leagueUser, league.pickees, sell, buy)
-            currentTeam = List[TeamPickee]()
-            newTeamSize <- updatedTeamSize(currentTeam, league, sell, buy)
-            _ <- validateFactionLimit(currentTeam, league, sell, buy)
+            currentTeam = leagueUser.team.toList
+          // TODO log internal server errors as well
+            currentTeamIds <- Try(currentTeam.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
+              .toOption.toRight(InternalServerError("Missing pickee identifier"))
+            newTeamIds = currentTeamIds ++ buy -- sell
+            _ <- updatedTeamSize(newTeamIds, league)
+            _ <- validateFactionLimit(newTeamIds, league)
             finished = Ok("Transfers successful")
           } yield finished).fold(identity, identity)
         }
@@ -102,20 +106,19 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, BigDecimal] = {
-    val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.identifier)).map(_.value).sum -
-      pickees.filter(p => toBuy.contains(p.identifier)).map(_.value).sum
+  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Int] = {
+    val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.identifier)).map(_.cost).sum -
+      pickees.filter(p => toBuy.contains(p.identifier)).map(_.cost).sum
     updated match {
-      case x if x >= 0.0 => Right(x)
+      case x if x >= 0 => Right(x)
       case x => Left(BadRequest(
-        f"Insufficient credits. Transfers would leave user at $x credits"
+        f"Insufficient credits. Transfers would leave user at ${CostConverter.convertCost(x)} credits"
       ))
     }
   }
 
-  private def updatedTeamSize(currentTeam: List[TeamPickee], league: League, toSell: Set[Int], toBuy: Set[Int]): Either[Result, Int] = {
-    val newSize = currentTeam.length - toSell.size + toBuy.size
-    newSize match {
+  private def updatedTeamSize(newTeamIds: Set[Int], league: League): Either[Result, Int] = {
+    newTeamIds.size match {
       case x if x <= league.teamSize => Right(x)
       case x => Left(BadRequest(
         f"Exceeds maximum team size of $league.teamSize"
@@ -123,8 +126,21 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def validateFactionLimit(currentTeam: List[TeamPickee], league: League, toSell: Set[Int], toBuy: Set[Int]): Either[Result, Any] = {
-    Right("cat")
+  private def validateFactionLimit(newTeamIds: Set[Int], league: League): Either[Result, Any] = {
+    //Right("cat")
+    // TODO errrm this is a bit messy
+    league.factionLimit match {
+      case Some(factionLimit) => {
+        league.pickees.filter(lp => (newTeamIds).contains(lp.identifier)).groupBy(_.faction)
+          .forall(_._2.size <= factionLimit) match {
+          case true => Right(true)
+          case false => Left(BadRequest(
+            f"Exceeds faction limit of $league.factionLimit"
+          ))
+        }
+      }
+      case None => Right(true)
+    }
 //    val newSize = currentTeam.length - toSell.size() + toBuy.size()
 //    newSize match {
 //      case x if x <= league.teamSize => Right(x)

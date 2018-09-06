@@ -10,7 +10,6 @@ object AppDB extends Schema {
   val passwordResetTable = table[PasswordReset]
   val apiUserTable = table[APIUser]
   val leagueUserStatsTable = table[LeagueUserStats]
-  val leagueFactionTable = table[LeagueFaction]
   val leagueStatFieldsTable = table[LeagueStatFields]
   val pickeeTable = table[Pickee]
   val teamPickeeTable = table[TeamPickee]
@@ -45,8 +44,6 @@ object AppDB extends Schema {
   val leagueToLeaguePrize =
     oneToManyRelation(leagueTable, leaguePrizeTable).
       via((l, o) => (l.id === o.leagueId))
-
-  // TODO leagueFaction relation
 
   val leagueToLeagueStatFields =
     oneToManyRelation(leagueTable, leagueStatFieldsTable).

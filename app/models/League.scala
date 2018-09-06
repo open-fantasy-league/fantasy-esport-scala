@@ -1,6 +1,7 @@
 package models
 
 import java.sql.Timestamp
+import org.joda.time.DateTime
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
@@ -22,6 +23,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class League(
               var name: String,
+              val apiKey: Int, // the api user/platform that created the league
               val gameId: Int,
               var isPrivate: Boolean,
               var tournamentId: Int,
@@ -29,10 +31,12 @@ class League(
               var dayStart: Timestamp,
               var dayEnd: Timestamp,
               var pickeeDescription: String,
-              val teamSize: Int = 5,
               //val captain: Boolean,
-              var transferLimit: Int, // use -1 for no transfer limit I think. only applies after day 1 start
-              var startingMoney: BigDecimal,
+              var transferLimit: Option[Int],
+              var factionLimit: Option[Int],
+              var factionDescription: Option[String],
+              var startingMoney: Int,
+              val teamSize: Int = 5,
               var transferDelay: Int = 0, // Only applies for when day 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
@@ -41,7 +45,7 @@ class League(
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
               var url: String = "",
-              var autoUpdate: Boolean = true,
+              var autoUpdate: Boolean = true
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
@@ -51,6 +55,13 @@ class League(
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   //def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
+
+  // If a class has an Option[] field, it becomes mandatory
+  // to implement a zero argument constructor
+  def this() = this(
+    "", 1, 1, false, 0, 0, new Timestamp(System.currentTimeMillis()), new Timestamp(System.currentTimeMillis()), "", None, None, None, 0, 5, 0,
+    0, false, 0, 1.0, 0.5, 0, "", true
+  )
 
 }
 
@@ -94,14 +105,6 @@ class LeaguePrize(
                    var description: String,
                    var email: String,
                  ) extends KeyedEntity[Int] {
-  val id: Int = 0
-}
-
-class LeagueFaction(
-                     val leagueId: Int,
-                     var description: String,
-                     var limit: Int = 0  // 0 is essentially no limit
-                   ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
 

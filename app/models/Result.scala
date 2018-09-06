@@ -29,7 +29,7 @@ class PointsField(
 class Points(
               val resultId: Long,
               val pointsFieldId: Long,
-              var value: BigDecimal
+              var value: Double
             ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

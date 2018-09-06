@@ -11,17 +11,17 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import models.{AppDB, League, Pickee, PickeeStats, LeagueFaction, LeagueStatFields, LeaguePlusStuff}
+import play.api.data.format.Formats._
+import utils.CostConverter
+import models.{AppDB, League, Pickee, PickeeStats, LeagueStatFields, LeaguePlusStuff}
 
-
-case class FactionFormInput(description: String, limit: Int)
-
-case class PickeeFormInput(id: Int, name: String, value: BigDecimal, active: Boolean, faction: Option[String])
+case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
 
 case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, totalDays: Int,
-                           dayStart: Long, dayEnd: Long, teamSize: Int, transferLimit: Int, startingMoney: Int,
+                           dayStart: Long, dayEnd: Long, teamSize: Int, transferLimit: Option[Int], factionLimit: Option[Int],
+                           factionDescription: Option[String], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
-                           faction: Option[FactionFormInput], extraStats: Option[List[String]],
+                           extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
                            pickeeDescription: String, pickees: List[PickeeFormInput],
                           )
@@ -47,24 +47,22 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         "dayEnd" -> longNumber,
         "teamSize" -> default(number(min=1, max=20), 5),
         //"captain" -> default(boolean, false),
-        "transferLimit" -> default(number, -1), // use -1 for no transfer limit I think
-        "startingMoney" -> default(number, 50),
+        "transferLimit" -> optional(number), // use -1 for no transfer limit I think
+        "factionLimit" -> optional(number),  // i.e. 2 for max 2 eg players per team
+        "factionDescription" -> optional(nonEmptyText),  // i.e. Team for describing factions as being different teams. Race for sc2 races
+        "startingMoney" -> default(of(doubleFormat), 50.0),
         "transferDelay" -> default(number, 0),
         //"factions" -> List of stuff
     // also singular prize with description and email fields
         "prizeDescription" -> optional(nonEmptyText),
         "prizeEmail" -> optional(nonEmptyText),
-        "faction" -> optional(mapping(
-          "description" -> nonEmptyText,  // i.e. Team for describing factions as being different teams. Race for sc2 races
-          "limit" -> number,  // i.e. 2 for max 2 eg players per team
-          // dont need a list of factions as input, as we just take them from their entry in pickee list
-        )(FactionFormInput.apply)(FactionFormInput.unapply)),
+        // dont need a list of factions as input, as we just take them from their entry in pickee list
         "extraStats" -> optional(list(nonEmptyText)), // i.e. picks, wins. extra info to display on leaderboards other than points
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
         "pickees" -> list(mapping(
           "id" -> number,
           "name" -> nonEmptyText,
-          "value" -> bigDecimal,
+          "value" -> of(doubleFormat),
           "active" -> default(boolean, true),
           "faction" -> optional(nonEmptyText)  // e.g. Evil Geniuses, Zerg...etc
         )(PickeeFormInput.apply)(PickeeFormInput.unapply))
@@ -138,9 +136,10 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     def success(input: LeagueFormInput) = {
       println("yay")
       inTransaction {
-        val newLeague = AppDB.leagueTable.insert(new League(input.name, input.gameId, input.isPrivate, input.tournamentId,
+        val newLeague = AppDB.leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
           input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
-          input.teamSize, input.transferLimit, input.startingMoney
+          input.transferLimit, input.factionLimit, input.factionDescription,
+          CostConverter.unconvertCost(input.startingMoney), input.teamSize
         ))
 
         val statFields: ArrayBuffer[Long] = ArrayBuffer()
@@ -170,7 +169,7 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
             pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
           // and AM in league 2. however we still want a field which is always AM hero id
             pickee.faction,
-            pickee.value,
+            CostConverter.unconvertCost(pickee.value),
             pickee.active
           ))
 
@@ -182,16 +181,6 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
               ))
             }
           }
-        }
-        input.faction match {
-          case Some(faction) => {
-            AppDB.leagueFactionTable.insert(new LeagueFaction(
-              newLeague.id,
-              faction.description,
-              faction.limit
-            ))
-          }
-          case None =>
         }
 
         Future {Created(Json.toJson(newLeague)) }

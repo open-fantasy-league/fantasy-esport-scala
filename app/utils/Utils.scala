@@ -10,4 +10,9 @@ object IdParser {
   }
 }
 
-
+object CostConverter {
+  // use Ints to store cost to make calculations easier (avoid floating point).
+  // but divide by 10 for decimal lower cost when display
+  def convertCost(cost: Int): Double = cost / 10.0
+  def unconvertCost(cost: Double): Int = (cost * 10).toInt
+}
