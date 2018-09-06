@@ -63,12 +63,12 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
           // TODO what does single return if no entries?
             leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
-            isValidPickees <- validatePickeeIds(league.pickees, sell, buy)
             newMoney <- updatedMoney(leagueUser, league.pickees, sell, buy)
             currentTeam = leagueUser.team.toList
           // TODO log internal server errors as well
             currentTeamIds <- Try(currentTeam.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
               .toOption.toRight(InternalServerError("Missing pickee identifier"))
+            isValidPickees <- validatePickeeIds(currentTeamIds, league.pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sell
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
@@ -96,13 +96,21 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def validatePickeeIds(pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Boolean] = {
+  private def validatePickeeIds(currentTeamIds: Set[Int], pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Boolean] = {
     // TODO return what ids are invalid
     (toSell ++ toBuy).subsetOf(pickees.map(_.identifier).toSet) match {
-      case true => Right(true)
-      case false => Left(BadRequest(
-        "Invalid pickee id used"
-      ))
+      case true => {
+        (toBuy intersect currentTeamIds).isEmpty match {
+          case true => {
+            (toSell subsetOf currentTeamIds) match {
+              case true => Right(_)
+              case false => Left(BadRequest("Cannot sell hero not in team"))
+            }
+          }
+          case false => Left(BadRequest("Cannot buy hero already in team"))
+        }
+
+      }   case false => Left(BadRequest("Invalid pickee id used"))
     }
   }
 
