@@ -72,7 +72,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newTeamIds = currentTeamIds ++ buy -- sell
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
-            finished = Ok("Transfers successful")
+            finished <- Right(Ok("Transfers are valid")) if input.isCheck else processTransfer()
           } yield finished).fold(identity, identity)
         }
       }
@@ -100,10 +100,10 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     // TODO return what ids are invalid
     (toSell ++ toBuy).subsetOf(pickees.map(_.identifier).toSet) match {
       case true => {
-        (toBuy intersect currentTeamIds).isEmpty match {
+        (toBuy.intersect(currentTeamIds)).isEmpty match {
           case true => {
-            (toSell subsetOf currentTeamIds) match {
-              case true => Right(_)
+            toSell.subsetOf(currentTeamIds) match {
+              case true => Right(true)
               case false => Left(BadRequest("Cannot sell hero not in team"))
             }
           }
