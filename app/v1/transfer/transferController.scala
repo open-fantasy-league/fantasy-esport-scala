@@ -72,7 +72,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newTeamIds = currentTeamIds ++ buy -- sell
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
-            finished <- Right(Ok("Transfers are valid")) if input.isCheck else processTransfer()
+            finished <- Right(Ok("Transfers are valid"))// if input.isCheck else processTransfer()
           } yield finished).fold(identity, identity)
         }
       }

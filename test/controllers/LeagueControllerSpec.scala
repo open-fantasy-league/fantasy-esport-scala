@@ -3,18 +3,20 @@ import org.scalatestplus.play.guice._
 import play.api.test._
 import play.api.test.Helpers._
 import play.api.test.CSRFTokenHelper._
+import v1.league.LeagueController
+import scala.concurrent.{ExecutionContext, Future}
+import play.api.mvc.Result
 
 class LeagueControllerSpec extends PlaySpec with GuiceOneAppPerTest {
 
   "LeagueController" should {
 
-    "show league json" in {
-      val request = FakeRequest(GET, "/v1/leagues/1").withHeaders(HOST -> "localhost:9000").withCSRFToken
-      val league = route(app, request).get
-
-      contentAsString(league) must include ("This is a placeholder page to show you the REST API.")
+    "should be valid" in {
+      val controller = new LeagueController(Helpers.stubControllerComponents())(ExecutionContext.Implicits.global)
+      val result: Future[Result] = controller.show("1").apply(FakeRequest())
+      val bodyText: String = contentAsString(result)
+      bodyText mustBe "ok"
     }
-
   }
 
 }
