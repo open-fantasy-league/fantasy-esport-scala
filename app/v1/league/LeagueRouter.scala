@@ -5,6 +5,7 @@ import javax.inject.Inject
 import play.api.routing.Router.Routes
 import play.api.routing.SimpleRouter
 import play.api.routing.sird._
+import entry.SquerylEntrypointForMyApp._
 
 
 class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter {
@@ -19,13 +20,15 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
   override def routes: Routes = {
 
     case PUT(p"/") =>
-      controller.add
+      inTransaction {
+        controller.add
+      }
 
     case POST(p"/$id") =>
-      controller.update(id)
+      inTransaction {controller.update(id)}
 
     case GET(p"/$id") =>
-      controller.show(id)
+      inTransaction {controller.show(id)}
   }
 
 }

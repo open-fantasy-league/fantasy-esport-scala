@@ -7,7 +7,7 @@ import play.api.mvc.Result
 import v1.league.{LeagueController, LeagueRepository}
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.collection.mutable.ArrayBuffer
+//import scala.collection.mutable.ArrayBuffer
 import org.mockito.Mockito._
 import models.{League}
 
@@ -17,7 +17,7 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
     val leagueRepo = mock[LeagueRepository]
     val fakeLeague = new League()
     when(leagueRepo.show(1)) thenReturn Some(fakeLeague)
-    when(leagueRepo.getStatFields(fakeLeague)) thenReturn ArrayBuffer("wins", "picks", "points")
+    when(leagueRepo.getStatFields(fakeLeague)) thenReturn Array("wins", "picks", "points")
 
     "should be valid" in {
       val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)

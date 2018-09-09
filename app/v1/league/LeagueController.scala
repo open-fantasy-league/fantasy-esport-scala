@@ -150,13 +150,11 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
         //Future { Ok("Itwerked") }
       }
       Future {
-        inTransaction {
-          // TODO handle invalid Id
-          val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
-          leagueQuery match {
-            case Some(league) => updateLeague(league, input)
-            case None => Ok("Yer dun fucked up")
-          }
+        // TODO handle invalid Id
+        val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
+        leagueQuery match {
+          case Some(league) => updateLeague(league, input)
+          case None => Ok("Yer dun fucked up")
         }
       }
       //scala.concurrent.Future{ Ok(views.html.index())}

@@ -16,77 +16,74 @@ class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 trait LeagueRepository{
   def show(id: Int): Option[League]
   def add(formInput: LeagueFormInput): League
-  def getStatFields(league: League): ArrayBuffer[String]
+  def getStatFields(league: League): Array[String]
   //def update()
 }
 
 @Singleton
 class LeagueRepositoryImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepository{
   override def show(id: Int): Option[League] = {
-    inTransaction {AppDB.leagueTable.lookup(id)}
+    AppDB.leagueTable.lookup(id)
   }
 
-  override def getStatFields(league: League): ArrayBuffer[String] = {
-    val statFields = ArrayBuffer[String]()
-    inTransaction {
-      for (f <- league.statFields) {
-        println(f.name)
-        statFields += f.name
-      }
-    }
-    statFields
+  override def getStatFields(league: League): Array[String] = {
+    league.statFields.map(_.name).toArray
+//    val statFields = ArrayBuffer[String]()
+//    for (f <- league.statFields) {
+//      println(f.name)
+//      statFields += f.name
+//    }
+//    statFields
   }
 
   override def add(input: LeagueFormInput): League = {
-    inTransaction {
-      val newLeague = AppDB.leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
-        input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
-        input.transferLimit, input.factionLimit, input.factionDescription,
-        CostConverter.unconvertCost(input.startingMoney), input.teamSize
-      ))
+    val newLeague = AppDB.leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
+      input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
+      input.transferLimit, input.factionLimit, input.factionDescription,
+      CostConverter.unconvertCost(input.startingMoney), input.teamSize
+    ))
 
-      val statFields: ArrayBuffer[Long] = ArrayBuffer()
-      val pointsField = AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(
-        newLeague.id, "points"
-      ))
+    val statFields: ArrayBuffer[Long] = ArrayBuffer()
+    val pointsField = AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(
+      newLeague.id, "points"
+    ))
 
-      statFields += pointsField.id
+    statFields += pointsField.id
 
-      // TODO make sure stat fields static cant be changed once tournament in progress
-      input.extraStats match {
-        case Some(extraStats) => {
-          for (extraStat <- extraStats) {
-            val newStatField = AppDB.leagueStatFieldsTable.insert (new LeagueStatFields (
-              newLeague.id, extraStat
-            ))
-            statFields += newStatField.id
-          }
-        }
-        case None =>
-      }
-
-      for (pickee <- input.pickees) {
-        val newPickee = AppDB.pickeeTable.insert(new Pickee(
-          newLeague.id,
-          pickee.name,
-          pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
-          // and AM in league 2. however we still want a field which is always AM hero id
-          pickee.faction,
-          CostConverter.unconvertCost(pickee.value),
-          pickee.active
-        ))
-
-        // -1 is for whole tournament
-        for (day <- -1 until input.totalDays) {
-          for (statFieldId <- statFields) {
-            AppDB.pickeeStatsTable.insert(new PickeeStats(
-              statFieldId, newPickee.id, day
-            ))
-          }
+    // TODO make sure stat fields static cant be changed once tournament in progress
+    input.extraStats match {
+      case Some(extraStats) => {
+        for (extraStat <- extraStats) {
+          val newStatField = AppDB.leagueStatFieldsTable.insert (new LeagueStatFields (
+            newLeague.id, extraStat
+          ))
+          statFields += newStatField.id
         }
       }
-      newLeague
+      case None =>
     }
+
+    for (pickee <- input.pickees) {
+      val newPickee = AppDB.pickeeTable.insert(new Pickee(
+        newLeague.id,
+        pickee.name,
+        pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
+        // and AM in league 2. however we still want a field which is always AM hero id
+        pickee.faction,
+        CostConverter.unconvertCost(pickee.value),
+        pickee.active
+      ))
+
+      // -1 is for whole tournament
+      for (day <- -1 until input.totalDays) {
+        for (statFieldId <- statFields) {
+          AppDB.pickeeStatsTable.insert(new PickeeStats(
+            statFieldId, newPickee.id, day
+          ))
+        }
+      }
+    }
+    newLeague
   }
 }
 

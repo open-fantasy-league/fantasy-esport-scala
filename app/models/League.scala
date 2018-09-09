@@ -125,7 +125,7 @@ class LeagueStatFields(
 //  }
 //}
 
-case class LeaguePlusStuff(league: League, lsf: ArrayBuffer[String])
+case class LeaguePlusStuff(league: League, lsf: Array[String])
 
 
 object LeaguePlusStuff{
