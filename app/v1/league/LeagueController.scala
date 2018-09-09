@@ -31,7 +31,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                            dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
 
 
-class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepository)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[LeagueFormInput] = {
@@ -86,36 +86,20 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     )
   }
 
-  def index = Action { implicit request =>
-
-    Ok(views.html.index())
-  }
-
   def show(leagueId: String) = Action { implicit request =>
-    inTransaction {
-      // TODO handle invalid Id
+    // TODO handle invalid Id
 //      val a = AppDB.leagueWithPrize
 //      println(a)
-      val n = AppDB.leagueWithStatFields
-      for(b <- n){
-        println(b._1)
-        println(b._2)
-      }
-      val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
+    val leagueQuery = leagueRepo.show(Integer.parseInt(leagueId))
 
-      leagueQuery match{
-        case Some(league) => {
-          //val result: Nothing = league.statFields
-          val statFields = ArrayBuffer[String]()
-          for (f <- league.statFields) {
-            println(f.name)
-            statFields += f.name
-          }
-          Created(Json.toJson(LeaguePlusStuff(league, statFields)))
-          //Created(Json.toJson(league))
-        }
-        case None => Ok("Yer dun fucked up")
+    leagueQuery match{
+      case Some(league) => {
+        //val result: Nothing = league.statFields
+        val statFields = leagueRepo.getStatFields(league)
+        Created(Json.toJson(LeaguePlusStuff(league, statFields)))
+        //Created(Json.toJson(league))
       }
+      case None => Ok("Yer dun fucked up")
     }
   }
 
@@ -135,57 +119,10 @@ class LeagueController @Inject()(cc: ControllerComponents)(implicit ec: Executio
 
     def success(input: LeagueFormInput) = {
       println("yay")
-      inTransaction {
-        val newLeague = AppDB.leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
-          input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
-          input.transferLimit, input.factionLimit, input.factionDescription,
-          CostConverter.unconvertCost(input.startingMoney), input.teamSize
-        ))
+      val newLeague = leagueRepo.add(input)
 
-        val statFields: ArrayBuffer[Long] = ArrayBuffer()
-        val pointsField = AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(
-          newLeague.id, "points"
-        ))
-
-        statFields += pointsField.id
-
-        // TODO make sure stat fields static cant be changed once tournament in progress
-        input.extraStats match {
-          case Some(extraStats) => {
-            for (extraStat <- extraStats) {
-              val newStatField = AppDB.leagueStatFieldsTable.insert (new LeagueStatFields (
-              newLeague.id, extraStat
-              ))
-              statFields += newStatField.id
-            }
-          }
-          case None =>
-        }
-
-        for (pickee <- input.pickees) {
-          val newPickee = AppDB.pickeeTable.insert(new Pickee(
-            newLeague.id,
-            pickee.name,
-            pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
-          // and AM in league 2. however we still want a field which is always AM hero id
-            pickee.faction,
-            CostConverter.unconvertCost(pickee.value),
-            pickee.active
-          ))
-
-          // -1 is for whole tournament
-          for (day <- -1 until input.totalDays) {
-            for (statFieldId <- statFields) {
-              AppDB.pickeeStatsTable.insert(new PickeeStats(
-                statFieldId, newPickee.id, day
-              ))
-            }
-          }
-        }
-
-        Future {Created(Json.toJson(newLeague)) }
-        //Future{Ok(views.html.index())}
-      }
+      Future {Created(Json.toJson(newLeague)) }
+      //Future{Ok(views.html.index())}
       //scala.concurrent.Future{ Ok(views.html.index())}
 //      postResourceHandler.create(input).map { post =>
 //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)

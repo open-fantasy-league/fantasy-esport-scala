@@ -20,10 +20,10 @@ libraryDependencies += "com.netaporter" %% "scala-uri" % "0.4.16"
 libraryDependencies += "net.codingwell" %% "scala-guice" % "4.1.1"
 
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "3.1.2" % Test
+libraryDependencies += "org.mockito" % "mockito-core" % "1.9.5" % Test
 libraryDependencies += "io.gatling.highcharts" % "gatling-charts-highcharts" % gatlingVersion(scalaBinaryVersion.value) % Test
 libraryDependencies += "io.gatling" % "gatling-test-framework" % gatlingVersion(scalaBinaryVersion.value) % Test
 libraryDependencies += "com.github.t3hnar" %% "scala-bcrypt" % "3.1"
-libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.2.26"
 
 libraryDependencies ++=  Seq(
   jdbc,
