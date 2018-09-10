@@ -4,6 +4,7 @@ import org.scalatest.mockito.MockitoSugar
 import play.api.test._
 import play.api.test.Helpers._
 import play.api.mvc.Result
+import play.api.libs.json._
 import v1.league.{LeagueController, LeagueRepository}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -19,11 +20,21 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
     when(leagueRepo.show(1)) thenReturn Some(fakeLeague)
     when(leagueRepo.getStatFields(fakeLeague)) thenReturn Array("wins", "picks", "points")
 
-    "should be valid" in {
+    when(leagueRepo.show(2)) thenReturn None
+
+    "league should exist" in {
       val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)
       val result: Future[Result] = controller.show("1").apply(FakeRequest())
-      val bodyText: String = contentAsString(result)
-      bodyText mustBe "ok"
+      val bodyJson: JsValue = contentAsJson(result)
+      status(result) mustEqual OK
+      bodyJson("statFields") mustEqual Json.toJson(Seq("wins", "picks", "points"))
+    }
+
+    "league should not exist" in {
+      val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)
+      val result: Future[Result] = controller.show("2").apply(FakeRequest())
+      val bodyJson: JsValue = contentAsJson(result)
+      status(result) mustEqual NOT_FOUND
     }
   }
 

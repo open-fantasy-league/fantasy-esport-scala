@@ -96,10 +96,10 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
       case Some(league) => {
         //val result: Nothing = league.statFields
         val statFields = leagueRepo.getStatFields(league)
-        Created(Json.toJson(LeaguePlusStuff(league, statFields)))
+        Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
         //Created(Json.toJson(league))
       }
-      case None => Ok("Yer dun fucked up")
+      case None => NotFound(f"League id $leagueId does not exist")
     }
   }
 
