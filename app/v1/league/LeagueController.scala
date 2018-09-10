@@ -12,7 +12,7 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
-import utils.CostConverter
+import utils.{CostConverter, IdParser}
 import models.{AppDB, League, Pickee, PickeeStats, LeagueStatFields, LeaguePlusStuff}
 
 case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
@@ -87,20 +87,12 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
   }
 
   def show(leagueId: String) = Action { implicit request =>
-    // TODO handle invalid Id
-//      val a = AppDB.leagueWithPrize
-//      println(a)
-    val leagueQuery = leagueRepo.show(Integer.parseInt(leagueId))
-
-    leagueQuery match{
-      case Some(league) => {
-        //val result: Nothing = league.statFields
-        val statFields = leagueRepo.getStatFields(league)
-        Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
-        //Created(Json.toJson(league))
-      }
-      case None => NotFound(f"League id $leagueId does not exist")
-    }
+    (for {
+      leagueId <- IdParser.parseIntId(leagueId, "league")
+      league <- leagueRepo.show(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+      statFields = leagueRepo.getStatFields(league)
+      finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
+    } yield finished).fold(identity, identity)
   }
 
   def update(leagueId: String) = Action.async(parse.json) { implicit request =>

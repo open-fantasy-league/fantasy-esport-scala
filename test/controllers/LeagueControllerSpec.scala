@@ -21,20 +21,24 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
     when(leagueRepo.getStatFields(fakeLeague)) thenReturn Array("wins", "picks", "points")
 
     when(leagueRepo.show(2)) thenReturn None
+    val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)
 
-    "league should exist" in {
-      val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)
+
+    "matching leagueId league should exist" in {
       val result: Future[Result] = controller.show("1").apply(FakeRequest())
       val bodyJson: JsValue = contentAsJson(result)
       status(result) mustEqual OK
       bodyJson("statFields") mustEqual Json.toJson(Seq("wins", "picks", "points"))
     }
 
-    "league should not exist" in {
-      val controller = new LeagueController(Helpers.stubControllerComponents(), leagueRepo)(ExecutionContext.Implicits.global)
+    "unmatching leagueId league should return not found" in {
       val result: Future[Result] = controller.show("2").apply(FakeRequest())
-      val bodyJson: JsValue = contentAsJson(result)
       status(result) mustEqual NOT_FOUND
+    }
+
+    "non-int leagueId should return error" in {
+      val result: Future[Result] = controller.show("one").apply(FakeRequest())
+      status(result) mustEqual BAD_REQUEST
     }
   }
 
