@@ -111,7 +111,24 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
 
     def success(input: LeagueFormInput) = {
       println("yay")
-      val newLeague = leagueRepo.add(input)
+      val newLeague = leagueRepo.insertLeague(input)
+
+      val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
+      val statFields: List[Long] = List(pointsField.id)
+
+      // TODO make sure stat fields static cant be changed once tournament in progress
+      //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
+
+      for (pickee <- input.pickees) {
+        val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
+
+        // -1 is for whole tournament
+        for (day <- -1 until input.totalDays) {
+          (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
+            statFieldId => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, day)
+          })
+        }
+      }
 
       Future {Created(Json.toJson(newLeague)) }
       //Future{Ok(views.html.index())}
