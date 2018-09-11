@@ -40,11 +40,15 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
       val result: Future[Result] = controller.show("one").apply(FakeRequest())
       status(result) mustEqual BAD_REQUEST
     }
-//
-//    "add league should return new league" in {
-//      val result: Future[Result] = controller.add().apply(FakeRequest())
-//      status(result) mustEqual BAD_REQUEST
-//    }
+
+    "add league should return new league" in {
+      val request = FakeRequest(PUT, "/").withJsonBody(Json.parse(
+        """{"name": "cat3", "isPrivate": true, "tournamentId": 5401, "totalDays": 5, "dayStart": 1122,
+          | "dayEnd": 113345, "transferOpen": false}""".stripMargin
+      ))
+      val result: Future[Result] = controller.add().apply(FakeRequest())
+      status(result) mustEqual BAD_REQUEST
+    }
   }
 
 }
