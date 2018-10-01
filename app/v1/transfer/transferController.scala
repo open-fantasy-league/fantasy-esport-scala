@@ -72,7 +72,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newTeamIds = currentTeamIds ++ buy -- sell
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
-            finished <- Right(Ok("Transfers are valid"))// if input.isCheck else processTransfer()
+            finished <- if (input.isCheck) Right(Ok("Transfers are valid")) else
+              processTransfer(sell, buy, league.pickees, leagueUser, league.currentDay, newMoney, newRemaining)
           } yield finished).fold(identity, identity)
         }
       }
@@ -156,5 +157,23 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 //        f"Exceeds maximum team size of $league.teamSize"
 //      ))
 //    }
+  }
+
+//  private def processTransferOrJustCheck() = {
+//    Right(Ok("Transfers are valid")) if input.isCheck else processTransfer(sell, buy, pickees, leagueUser.id, league.currentDay)
+//  }
+
+  private def processTransfer(toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser, day: Int, newMoney: Int, newRemaining: Int): Either[Result, Result] = {
+    // TODO cleaner way?
+    if (toSell.nonEmpty) {
+      AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
+    }
+    if (toBuy.nonEmpty) {
+      AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id, day)))
+    }
+    leagueUser.money = newMoney
+    leagueUser.remainingTransfers = newRemaining
+    AppDB.leagueUserTable.update(leagueUser)
+    Right(Ok("Transfers successfully processed"))
   }
 }
