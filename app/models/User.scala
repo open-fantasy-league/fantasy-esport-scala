@@ -1,6 +1,6 @@
 package models
 
-//import java.sql.Timestamp
+import java.sql.Timestamp
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
@@ -44,12 +44,13 @@ class Friend(
 
 class Transfer(
                 // TODO add in timestamp?
-            val leagueUserId: Long,
-            val pickeeId: Long,
-            val isBuy: Boolean,
-            val isReserve: Boolean,
-            val cost: Double
-          ) extends KeyedEntity[Long] {
+                val leagueUserId: Long,
+                val pickeeId: Long,
+                val isBuy: Boolean,
+                val scheduledFor: Timestamp,
+                val cost: Double,
+                val processed: Boolean = false
+) extends KeyedEntity[Long] {
   val id: Long = 0
 
 //  lazy val tradePickee = (pickeeId: Long, tradeInput: tradeInputForm){

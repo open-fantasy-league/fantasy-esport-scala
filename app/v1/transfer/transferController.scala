@@ -165,14 +165,32 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
   private def processTransfer(toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser, day: Int, newMoney: Int, newRemaining: Int): Either[Result, Result] = {
     // TODO cleaner way?
+
+//    class Transfer(
+//                    // TODO add in timestamp?
+//                    val leagueUserId: Long,
+//                    val pickeeId: Long,
+//                    val isBuy: Boolean,
+//                    val scheduledFor: Timestamp,
+//                    val cost: Double,
+//                    val processed: Boolean = false
+    val scheduledUpdateTime = new Timestamp(System.currentTimeMillis())
     if (toSell.nonEmpty) {
-      AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
+      AppDB.transferTable.insert(toSell.map(pickees.find(_.identifier == tb).get).map(
+        p => new Transfer(leagueUser.id, p.id, false, scheduledUpdateTime, p.value)
+      )
+      // TODO dont delete. just make not
+      //AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
     }
     if (toBuy.nonEmpty) {
-      AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id, day)))
+      AppDB.transferTable.insert(toSell.map(pickees.find(_.identifier == tb).get).map(
+        p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime, p.value)
+      )
+      //AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id, day)))
     }
     leagueUser.money = newMoney
     leagueUser.remainingTransfers = newRemaining
+    leagueUser.changeTstamp = scheduledUpdateTime
     AppDB.leagueUserTable.update(leagueUser)
     Right(Ok("Transfers successfully processed"))
   }
