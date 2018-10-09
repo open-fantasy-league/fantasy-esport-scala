@@ -24,6 +24,8 @@ class TeamPickee(
                   val day: Int,
                   // different field for active and reserve because with delays, a hero can be scheduled to be moved into
                   // reserves, but still be currently earning points.
+                // soldTstamp
+                // boughtTstamp
                   var active: Boolean = true,
                   var reserve: Boolean = false
                 ) extends KeyedEntity[Long] {
