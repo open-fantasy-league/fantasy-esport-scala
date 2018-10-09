@@ -48,8 +48,7 @@ class Transfer(
                 val pickeeId: Long,
                 val isBuy: Boolean,
                 val scheduledFor: Timestamp,
-                val cost: Double,
-                val processed: Boolean = false
+                val cost: Double
 ) extends KeyedEntity[Long] {
   val id: Long = 0
 

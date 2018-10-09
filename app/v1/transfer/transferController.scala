@@ -38,15 +38,17 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
   def processTransfersReq(leagueId: String) = Action.async(parse.json) { implicit request =>
     Future {
-      (for {
-        leagueId <- IdParser.parseIntId(leagueId, "League")
-        league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
-        currentTime = new Timestamp(System.currentTimeMillis())
-        // TODO better way? hard with squeryls weird dsl
-        updates = league.users.associations.where(lu => lu.changeTstamp.nonEmpty === true and lu.changeTstamp.get > currentTime)
-          .map(processLeagueUserTransfer)
-        finished <- Right(Ok("Transfer updates processed"))
-      } yield finished).fold(identity, identity)
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "League")
+          league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
+          currentTime = new Timestamp(System.currentTimeMillis())
+          // TODO better way? hard with squeryls weird dsl
+          updates = league.users.associations.where(lu => lu.changeTstamp.nonEmpty === true and lu.changeTstamp.get > currentTime)
+            .map(processLeagueUserTransfer)
+          finished <- Right(Ok("Transfer updates processed"))
+        } yield finished).fold(identity, identity)
+      }
     }
   }
 
@@ -201,8 +203,10 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       //            currentTeam = leagueUser.team.toList
       // TODO log internal server errors as well
       //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
-      val heroesToSell = leagueUser.team.where(h => h.pickeeId in toSell.map(ts => pickees.find(_.identifier == ts).get))
-      AppDB.teamPickeeTable.update(heroesToSell.map(h =>{h.reserve := true; h}))
+      val toSellIds = toSell.map(ts => pickees.find(_.identifier == ts).get.id)
+      val heroesToSell = leagueUser.team.where(h => h.pickeeId in toSellIds)
+      val updatedHeroes = heroesToSell.map(h =>{h.scheduledForSale = true; h})
+      AppDB.teamPickeeTable.update(updatedHeroes)
 //      update(leagueUser.team)(h =>
 //        where(h.active === false)
 //          set(h.active := true)
@@ -215,7 +219,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       ))
       // TODO day -1
       // TODO have active before tounr,manet start, but not after it started
-      AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id, day, false, false)))
+      AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id, false, false)))
     }
     leagueUser.money = newMoney
     leagueUser.remainingTransfers = newRemaining
@@ -225,12 +229,12 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   }
 
   private def processLeagueUserTransfer(leagueUser: LeagueUser) = {
-    AppDB.teamPickeeTable.update(leagueUser.team.filter(!_.active).map(h => {h.active := true; h}))
+    AppDB.teamPickeeTable.update(leagueUser.team.filter(!_.scoring).map(h => {h.scoring := true; h}))
 //    update(leagueUser.team)(h =>
 //      where(h.active === false)
 //      set(h.active := true)
 //    )
-    AppDB.teamPickeeTable.deleteWhere(tp => tp.reserve === true and tp.leagueUserId === leagueUser.id)
+    AppDB.teamPickeeTable.deleteWhere(tp => tp.scheduledForSale === true and tp.leagueUserId === leagueUser.id)
     //leagueUser.team.deleteWhere(h => h.reserve === true)
   }
 //  private def processTransfers(leagueId: Int): Either[Result, Result] = {

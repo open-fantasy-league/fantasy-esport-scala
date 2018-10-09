@@ -86,13 +86,17 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
     )
   }
 
-  def show(leagueId: String) = Action { implicit request =>
-    (for {
-      leagueId <- IdParser.parseIntId(leagueId, "league")
-      league <- leagueRepo.show(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-      statFields = leagueRepo.getStatFields(league)
-      finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
-    } yield finished).fold(identity, identity)
+  def show(leagueId: String) = Action.async { implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.show(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+          statFields = leagueRepo.getStatFields(league)
+          finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
+        } yield finished).fold(identity, identity)
+      }
+    }
   }
 
   def update(leagueId: String) = Action.async(parse.json) { implicit request =>
@@ -111,32 +115,36 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
 
     def success(input: LeagueFormInput) = {
       println("yay")
-      val newLeague = leagueRepo.insertLeague(input)
+      inTransaction {
+        val newLeague = leagueRepo.insertLeague(input)
 
-      val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
-      val statFields: List[Long] = List(pointsField.id)
+        val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
+        val statFields: List[Long] = List(pointsField.id)
 
-      // TODO make sure stat fields static cant be changed once tournament in progress
-      //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
+        // TODO make sure stat fields static cant be changed once tournament in progress
+        //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
-      for (pickee <- input.pickees) {
-        val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
+        for (pickee <- input.pickees) {
+          val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
 
-        // -1 is for whole tournament
-        for (day <- -1 until input.totalDays) {
-          (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
-            statFieldId => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, day)
-          })
+          // -1 is for whole tournament
+          for (day <- -1 until input.totalDays) {
+            (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
+              statFieldId => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, day)
+            })
+          }
         }
-      }
 
-      Future {Created(Json.toJson(newLeague)) }
-      //Future{Ok(views.html.index())}
-      //scala.concurrent.Future{ Ok(views.html.index())}
-//      postResourceHandler.create(input).map { post =>
-//      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-//      }
-      // TODO good practice post-redirect-get
+        Future {
+          Created(Json.toJson(newLeague))
+        }
+        //Future{Ok(views.html.index())}
+        //scala.concurrent.Future{ Ok(views.html.index())}
+        //      postResourceHandler.create(input).map { post =>
+        //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
+        //      }
+        // TODO good practice post-redirect-get
+      }
     }
 
     form.bindFromRequest().fold(failure, success)
@@ -149,28 +157,30 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
 
     def success(input: UpdateLeagueFormInput) = {
       println("yay")
+      inTransaction {
 
-      val updateLeague = (league: League, input: UpdateLeagueFormInput) => {
-        league.name = input.name.getOrElse(league.name)
-        league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
-        // etc for other fields
-        AppDB.leagueTable.update(league)
-        Ok("Itwerked")
-        //Future { Ok("Itwerked") }
-      }
-      Future {
-        // TODO handle invalid Id
-        val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
-        leagueQuery match {
-          case Some(league) => updateLeague(league, input)
-          case None => Ok("Yer dun fucked up")
+        val updateLeague = (league: League, input: UpdateLeagueFormInput) => {
+          league.name = input.name.getOrElse(league.name)
+          league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
+          // etc for other fields
+          AppDB.leagueTable.update(league)
+          Ok("Itwerked")
+          //Future { Ok("Itwerked") }
         }
+        Future {
+          // TODO handle invalid Id
+          val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
+          leagueQuery match {
+            case Some(league) => updateLeague(league, input)
+            case None => Ok("Yer dun fucked up")
+          }
+        }
+        //scala.concurrent.Future{ Ok(views.html.index())}
+        //      postResourceHandler.create(input).map { post =>
+        //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
+        //      }
+        // TODO good practice post-redirect-get
       }
-      //scala.concurrent.Future{ Ok(views.html.index())}
-      //      postResourceHandler.create(input).map { post =>
-      //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-      //      }
-      // TODO good practice post-redirect-get
     }
 
     updateForm.bindFromRequest().fold(failure, success)

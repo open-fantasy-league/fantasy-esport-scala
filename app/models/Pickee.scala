@@ -19,16 +19,21 @@ class Pickee(
 class TeamPickee(
                   var pickeeId: Long,
                   var leagueUserId: Long,
-                  // have a day = -1 for live team
-                  // then we can copy/duplicate team-pickee for storing historic team throughout league
-                  val day: Int,
-                  // different field for active and reserve because with delays, a hero can be scheduled to be moved into
-                  // reserves, but still be currently earning points.
+                  // different field for scoring and scheduledForSale because with delays, a hero can be scheduled to be sold
+                  // but still be currently earning points.
                 // soldTstamp
                 // boughtTstamp
-                  var active: Boolean = true,
-                  var reserve: Boolean = false
+                  var scoring: Boolean = true,
+                  var scheduledForSale: Boolean = false
                 ) extends KeyedEntity[Long] {
+  val id: Long = 0
+}
+
+class HistoricTeamPickee(
+                          var pickeeId: Long,
+                          var leagueUserId: Long,
+                          val day: Int
+                        ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
 

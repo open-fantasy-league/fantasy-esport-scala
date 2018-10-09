@@ -10,8 +10,8 @@ import play.api.mvc._
 class HomeController @Inject()(cc: ControllerComponents) extends AbstractController(cc) {
 
   def index = Action { implicit request =>
-    import models._
-    import entry.SquerylEntrypointForMyApp._
+//    import models._
+//    import entry.SquerylEntrypointForMyApp._
 //    inTransaction(
 //      AppDB.create
 //    )
