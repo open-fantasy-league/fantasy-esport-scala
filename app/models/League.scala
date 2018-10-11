@@ -45,7 +45,9 @@ class League(
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
               var url: String = "",
-              var autoUpdate: Boolean = true
+              var autoUpdate: Boolean = true,
+              var started: Boolean = false,
+              var ended: Boolean = false
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
@@ -60,7 +62,7 @@ class League(
   // to implement a zero argument constructor
   def this() = this(
     "", 1, 1, false, 0, 0, new Timestamp(System.currentTimeMillis()), new Timestamp(System.currentTimeMillis()), "", None, None, None, 0, 5, 0,
-    0, false, 0, 1.0, 0.5, 0, "", true
+    0, false, 0, 1.0, 0.5, 0, "", true, false, false
   )
 
 }
