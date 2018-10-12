@@ -128,11 +128,9 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
           val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
 
           // -1 is for whole tournament
-          for (day <- -1 until input.totalDays) {
-            (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
-              statFieldId => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, day)
-            })
-          }
+          (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
+            statFieldId => (-1 until input.totalDays).map(d => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, d))
+          })
         }
 
         Future {

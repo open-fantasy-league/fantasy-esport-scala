@@ -9,6 +9,6 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="scala-sdk-2.12.6" level="application" />
-    <orderEntry type="library" name="sbt-launch" level="project" />
+    <orderEntry type="library" exported="" name="sbt-launch" level="project" />
   </component>
 </module>

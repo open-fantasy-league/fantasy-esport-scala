@@ -23,7 +23,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class League(
               var name: String,
-              val apiKey: Int, // the api user/platform that created the league
+              val apiUserId: Int, // the api user/platform that created the league
               val gameId: Int,
               var isPrivate: Boolean,
               var tournamentId: Int,
@@ -105,7 +105,7 @@ object League{
 class LeaguePrize(
                    val leagueId: Int,
                    var description: String,
-                   var email: String,
+                   var email: String
                  ) extends KeyedEntity[Int] {
   val id: Int = 0
 }

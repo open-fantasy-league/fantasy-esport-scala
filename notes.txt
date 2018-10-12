@@ -3,3 +3,5 @@ curl -v -H "Content-Type: application/json" -X POST -d '{"name": "cat3", "tourna
 curl -v -H "Content-Type: application/json" -X PUT -d '{"name": "cat", "password": "pword", "contactable": false}' localhost:9000/api/v1/users
 
 curl -X PUT localhost:9000/api/v1/users/1/join/1
+
+curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"identifier": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost:9000/api/v1/results/1
