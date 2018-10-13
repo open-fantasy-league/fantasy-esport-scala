@@ -94,6 +94,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
             insertedMatch <- newMatch(input, league)
             insertedResults <- newResults(input, league, insertedMatch)
             insertedStats <- newStats(input, league, insertedResults)
+            updatePickeeStats <-
             success = "Successfully added results"
           } yield success).fold(identity, Created(_))
           //Future{Ok(views.html.index())}
@@ -127,14 +128,33 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
   }
 
   private def newStats(input: ResultFormInput, league: League, results: List[Resultu]): Either[Result, Unit] = {
+    // doing add results, add points to pickee, and to league user all at once
+    // (was not like this in python)
+    // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
+    // i.e. avoidss what i was worried about where if user transferred a hero midway through processing, maybe they can
+    // score points from hero they were selling, then also hero they were buying, with rrace condition
+    // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
     // TODO log/get original stack trace
-    //               val resultId: Long,
-    //val pointsFieldId: Long,
-    //var value: Double
+    /*
+    class PickeeStats(
+                   val statFieldId: Long,
+                   val pickeeId: Long,
+                   val day: Int,
+                   var value: Double = 0.0,
+                   var oldRank: Int = 0
+     */
     val newStats = input.pickees.zipWithIndex.flatMap({case (ip, ind) => ip.stats.map(s => {
       val points = if (s.field == "points") s.value * league.pointsMultiplier else s.value
       new Points(results(ind).id, AppDB.leagueStatFieldsTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points)
     })})
+    newStats.foreach(s => {
+      val pickeeStats = AppDB.pickeeStatsTable.where(
+        ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === s.result.pickeeId and ps.day === league.currentDay
+      )
+      AppDB.pickeeStatsTable.update(pickeeStats.map(ps => {ps.value += s.value}))
+      // now update league user points if pickee in team
+    })
+    AppDB.pickeeStatsTable.update(newStats.map(s => {}))
     Try(AppDB.pointsTable.insert(newStats)).toOption.toRight(InternalServerError("Internal server error adding result"))
 //    Try(AppDB.pointsTable.insert(input.pickees.map(ip => new Resultu(
 //      matchu.id, AppDB.pickeeTable.where(p => p.leagueId === league.id and p.identifier === ip.identifier).single.id,

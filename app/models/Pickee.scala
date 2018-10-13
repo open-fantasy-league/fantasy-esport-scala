@@ -5,8 +5,8 @@ import org.squeryl.KeyedEntity
 class Pickee(
               val leagueId: Int,
               var name: String,
-              var identifier: Int, // in the case of dota we have the pickee id which is unique for AM in league 1
-              // and AM in league 2. however we still want a field which is always AM hero id
+              var identifier: Int, // in the case of dota we have the pickee id which is unique for Antimage in league 1
+              // and Antimage in league 2. however we still want a field which is always AM hero id
               var faction: Option[String],
               var cost: Int,
               var active: Boolean = true
@@ -18,13 +18,11 @@ class Pickee(
 
 class TeamPickee(
                   var pickeeId: Long,
-                  var leagueUserId: Long,
+                  var leagueUserId: Long
                   // different field for scoring and scheduledForSale because with delays, a hero can be scheduled to be sold
                   // but still be currently earning points.
                 // soldTstamp
                 // boughtTstamp
-                  var scoring: Boolean = true,
-                  var scheduledForSale: Boolean = false
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
