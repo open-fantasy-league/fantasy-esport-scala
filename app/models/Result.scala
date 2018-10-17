@@ -23,7 +23,7 @@ class Points(
               var value: Double
             ) extends KeyedEntity[Long] {
   val id: Long = 0
-  lazy val result = AppDB.resultTable.right(this)
+  lazy val result = AppDB.resultToPoints.right(this)
 }
 
 class Matchu( // because match is an sql keyword

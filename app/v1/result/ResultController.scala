@@ -22,6 +22,8 @@ case class ResultFormInput(
 
 case class PickeeFormInput(identifier: Int, isTeamOne: Boolean, stats: List[StatsFormInput])
 
+case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
+
 case class StatsFormInput(field: String, value: Double)
 
 class ResultController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
@@ -91,10 +93,10 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           (for {
             leagueId <- parseIntId(leagueId, "League")
             league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
             insertedMatch <- newMatch(input, league)
             insertedResults <- newResults(input, league, insertedMatch)
-            insertedStats <- newStats(input, league, insertedResults)
-            updatePickeeStats <-
+            insertedStats <- newStats(input, league, insertedMatch.id, internalPickee)
             success = "Successfully added results"
           } yield success).fold(identity, Created(_))
           //Future{Ok(views.html.index())}
@@ -108,6 +110,13 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     }
 
     form.bindFromRequest().fold(failure, success)
+  }
+
+  private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: League): List[InternalPickee] = {
+    pickees.map(ip => {
+      val internalId = AppDB.pickeeTable.where(p => p.leagueId === league.id and p.identifier === ip.identifier).single.id
+      InternalPickee(internalId, ip.isTeamOne, ip.stats)
+    })
   }
 
   private def newMatch(input: ResultFormInput, league: League): Either[Result, Matchu] = {
@@ -127,7 +136,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     Try({AppDB.resultTable.insert(newRes); newRes}).toOption.toRight(InternalServerError("Internal server error adding result"))
   }
 
-  private def newStats(input: ResultFormInput, league: League, results: List[Resultu]): Either[Result, Unit] = {
+  private def newStats(input: ResultFormInput, league: League, matchId: Long, pickees: List[InternalPickee]): Either[Result, Any] = {
     // doing add results, add points to pickee, and to league user all at once
     // (was not like this in python)
     // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
@@ -143,19 +152,32 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
                    var value: Double = 0.0,
                    var oldRank: Int = 0
      */
-    val newStats = input.pickees.zipWithIndex.flatMap({case (ip, ind) => ip.stats.map(s => {
+    //val results = AppDB.resultTable.where(r => r.matchId === matchId)
+    // DOLIST actually creatte leagueuserstats tables
+    val newStats = pickees.flatMap(ip => ip.stats.map(s => {
+      val result = AppDB.resultTable.where(
+        r => r.matchId === matchId and r.pickeeId === ip.id
+        ).single
       val points = if (s.field == "points") s.value * league.pointsMultiplier else s.value
-      new Points(results(ind).id, AppDB.leagueStatFieldsTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points)
-    })})
-    newStats.foreach(s => {
+      (new Points(result.id, AppDB.leagueStatFieldsTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
+        ip.id)
+    }))
+    val out = Try(AppDB.pointsTable.insert(newStats.map(_._1))).toOption.toRight(InternalServerError("Internal server error adding result"))
+    newStats.foreach({ case (s, pickeeId) => {
+      println(s.result.getClass.getMethods.map(_.getName).mkString(","))
       val pickeeStats = AppDB.pickeeStatsTable.where(
-        ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === s.result.pickeeId and ps.day === league.currentDay
+        ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === pickeeId and ps.day === league.currentDay
       )
-      AppDB.pickeeStatsTable.update(pickeeStats.map(ps => {ps.value += s.value}))
+      AppDB.pickeeStatsTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
+      val leagueUsers = from(AppDB.leagueUserTable)(lu =>
+        where(lu.leagueId === league.id and (pickeeId in lu.team.map(_.pickeeId)))
+        select(lu.id)
+      )
+      val leagueUserStats = AppDB.leagueUserStatsTable.where(lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId)
+      AppDB.leagueUserStatsTable.update(leagueUserStats.map(lus => {lus.value += s.value; lus}))
       // now update league user points if pickee in team
-    })
-    AppDB.pickeeStatsTable.update(newStats.map(s => {}))
-    Try(AppDB.pointsTable.insert(newStats)).toOption.toRight(InternalServerError("Internal server error adding result"))
+    }})
+    out
 //    Try(AppDB.pointsTable.insert(input.pickees.map(ip => new Resultu(
 //      matchu.id, AppDB.pickeeTable.where(p => p.leagueId === league.id and p.identifier === ip.identifier).single.id,
 //      input.startTstamp, new Timestamp(System.currentTimeMillis()), ip.isTeamOne

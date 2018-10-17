@@ -17,7 +17,6 @@ object AppDB extends Schema {
   val friendTable = table[Friend]
   val transferTable = table[Transfer]
   val resultTable = table[Resultu]
-  val pointsFieldTable = table[PointsField]
   val pointsTable = table[Points]
   val matchTable = table[Matchu]
 //  val hallOfFameTable = table[HallOfFame]
@@ -53,10 +52,6 @@ object AppDB extends Schema {
     oneToManyRelation(leagueTable, pickeeTable).
       via((l, o) => (l.id === o.leagueId))
 
-  val leagueToPointsField =
-    oneToManyRelation(leagueTable, pointsFieldTable).
-      via((l, o) => (l.id === o.leagueId))
-
   val leagueToMatch =
     oneToManyRelation(leagueTable, matchTable).
       via((l, o) => (l.id === o.leagueId))
@@ -88,6 +83,10 @@ object AppDB extends Schema {
   val leagueUserToTeamPickee =
     oneToManyRelation(leagueUserTable, teamPickeeTable).
       via((lu, o) => (lu.id === o.leagueUserId))
+
+  val resultToPoints =
+    oneToManyRelation(resultTable, pointsTable).
+      via((r, p) => (r.id === p.resultId))
 
   val userToNotification =
     oneToManyRelation(userTable, notificationTable).

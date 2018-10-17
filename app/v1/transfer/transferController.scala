@@ -189,16 +189,6 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
                                 toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser,
                                 day: Int, newMoney: Int, newRemaining: Int, transferDelay: Option[Int]
                               ): Either[Result, Result] = {
-    // TODO cleaner way?
-
-//    class Transfer(
-//                    // TODO add in timestamp?
-//                    val leagueUserId: Long,
-//                    val pickeeId: Long,
-//                    val isBuy: Boolean,
-//                    val scheduledFor: Timestamp,
-//                    val cost: Double,
-//                    val processed: Boolean = false
     val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(td)))
     if (toSell.nonEmpty) {
       AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.identifier == ts).get).map(
@@ -207,22 +197,11 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             scheduledUpdateTime.isEmpty, p.cost
           )
       ))
-      // TODO dont delete. just make not
-      //            currentTeam = leagueUser.team.toList
       // TODO log internal server errors as well
       //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
       if (scheduledUpdateTime.isEmpty) {
         AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
       }
-      val toSellIds = toSell.map(ts => pickees.find(_.identifier == ts).get.id)
-      val heroesToSell = leagueUser.team.where(h => h.pickeeId in toSellIds)
-      val updatedHeroes = heroesToSell.map(h =>{h.scheduledForSale = true; h})
-      AppDB.teamPickeeTable.update(updatedHeroes)
-//      update(leagueUser.team)(h =>
-//        where(h.active === false)
-//          set(h.active := true)
-//      )
-      //AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
     }
     if (toBuy.nonEmpty) {
       AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.identifier == tb).get).map(

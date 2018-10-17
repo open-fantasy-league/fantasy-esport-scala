@@ -119,7 +119,7 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
         val newLeague = leagueRepo.insertLeague(input)
 
         val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
-        val statFields: List[Long] = List(pointsField.id)
+        val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
         // TODO make sure stat fields static cant be changed once tournament in progress
         //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
@@ -128,7 +128,7 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
           val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
 
           // -1 is for whole tournament
-          (statFields ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)).foreach({
+          statFields.foreach({
             statFieldId => (-1 until input.totalDays).map(d => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, d))
           })
         }
