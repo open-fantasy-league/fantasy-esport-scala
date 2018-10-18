@@ -5,7 +5,7 @@ import org.squeryl.KeyedEntity
 class Pickee(
               val leagueId: Int,
               var name: String,
-              var identifier: Int, // in the case of dota we have the pickee id which is unique for Antimage in league 1
+              var externalId: Int, // in the case of dota we have the pickee id which is unique for Antimage in league 1
               // and Antimage in league 2. however we still want a field which is always AM hero id
               var faction: Option[String],
               var cost: Int,
@@ -35,12 +35,25 @@ class HistoricTeamPickee(
   val id: Long = 0
 }
 
-class PickeeStats(
-                   val statFieldId: Long,
-                   val pickeeId: Long,
-                   val day: Int,
-                   var value: Double = 0.0,
-                   var oldRank: Int = 0
-                 ) extends KeyedEntity[Long] {
+class PickeeStat(
+                       val statFieldId: Long,
+                       val pickeeId: Long,
+                     ) extends KeyedEntity[Long] {
+  val id: Long = 0
+}
+
+class PickeeStatDaily(
+                            val pickeeStatId: Long,
+                            val day: Int,
+                            var value: Double = 0.0
+                          ) extends KeyedEntity[Long] {
+  val id: Long = 0
+}
+
+class PickeeStatOverall(
+                              val pickeeStatId: Long,
+                              var value: Double = 0.0,
+                              var oldRank: Int = 0,
+                            ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

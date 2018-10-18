@@ -87,8 +87,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             newMoney <- updatedMoney(leagueUser, league.pickees, sell, buy)
             currentTeam = leagueUser.team.toList
           // TODO log internal server errors as well
-            currentTeamIds <- Try(currentTeam.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
-              .toOption.toRight(InternalServerError("Missing pickee identifier"))
+            currentTeamIds <- Try(currentTeam.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
+              .toOption.toRight(InternalServerError("Missing pickee externalId"))
             isValidPickees <- validatePickeeIds(currentTeamIds, league.pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sell
             _ <- updatedTeamSize(newTeamIds, league)
@@ -109,19 +109,20 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     transferForm.bindFromRequest().fold(failure, success)
   }
 
-  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Int]): Either[Result, Int] = {
+  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Int]): Either[Result, Option[Int]] = {
     val newRemaining = leagueUser.remainingTransfers - toSell.size
-    newRemaining match{
-      case x if x < 0 => Left(BadRequest(
+    leagueUser.remainingTransfers match{
+      case Some(x) if x - toSell.size < 0 => Left(BadRequest(
         f"Insufficient remaining transfers: $leagueUser.remainingTransfers"
       ))
-      case x => Right(x)
+      case Some(x) => Right(Some(x))
+      case None => Right(None)
     }
   }
 
   private def validatePickeeIds(currentTeamIds: Set[Int], pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Boolean] = {
     // TODO return what ids are invalid
-    (toSell ++ toBuy).subsetOf(pickees.map(_.identifier).toSet) match {
+    (toSell ++ toBuy).subsetOf(pickees.map(_.externalId).toSet) match {
       case true => {
         (toBuy.intersect(currentTeamIds)).isEmpty match {
           case true => {
@@ -138,8 +139,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   }
 
   private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Int] = {
-    val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.identifier)).map(_.cost).sum -
-      pickees.filter(p => toBuy.contains(p.identifier)).map(_.cost).sum
+    val updated = leagueUser.money + pickees.filter(p => toSell.contains(p.externalId)).map(_.cost).sum -
+      pickees.filter(p => toBuy.contains(p.externalId)).map(_.cost).sum
     updated match {
       case x if x >= 0 => Right(x)
       case x => Left(BadRequest(
@@ -162,7 +163,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     // TODO errrm this is a bit messy
     league.factionLimit match {
       case Some(factionLimit) => {
-        league.pickees.filter(lp => newTeamIds.contains(lp.identifier)).groupBy(_.faction)
+        league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).groupBy(_.faction)
           .forall(_._2.size <= factionLimit) match {
           case true => Right(true)
           case false => Left(BadRequest(
@@ -187,31 +188,31 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
   private def updateDBScheduleTransfer(
                                 toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser,
-                                day: Int, newMoney: Int, newRemaining: Int, transferDelay: Option[Int]
+                                day: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int]
                               ): Either[Result, Result] = {
     val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(td)))
     if (toSell.nonEmpty) {
-      AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.identifier == ts).get).map(
+      AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.externalId == ts).get).map(
         p => new Transfer(
           leagueUser.id, p.id, false, scheduledUpdateTime.getOrElse(new Timestamp(System.currentTimeMillis())),
             scheduledUpdateTime.isEmpty, p.cost
           )
       ))
       // TODO log internal server errors as well
-      //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.identifier).toSet)
+      //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
       if (scheduledUpdateTime.isEmpty) {
-        AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.identifier == ts).get.id))
+        AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.externalId == ts).get.id))
       }
     }
     if (toBuy.nonEmpty) {
-      AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.identifier == tb).get).map(
+      AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.externalId == tb).get).map(
         p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime.getOrElse(new Timestamp(System.currentTimeMillis())),
           scheduledUpdateTime.isEmpty, p.cost)
       ))
       // TODO day -1
       // TODO have active before tounr,manet start, but not after it started
       if (scheduledUpdateTime.isEmpty) {
-        AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.identifier == tb).get.id, leagueUser.id)))
+        AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.externalId == tb).get.id, leagueUser.id)))
       }
     }
     leagueUser.money = newMoney

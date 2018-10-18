@@ -13,7 +13,7 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
-import models.{AppDB, League, Pickee, PickeeStats, LeagueStatFields, LeaguePlusStuff}
+import models.{AppDB, League, Pickee, PickeeStat, LeagueStatFields, LeaguePlusStuff}
 
 case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
 
@@ -23,7 +23,7 @@ case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tourna
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
-                           pickeeDescription: String, pickees: List[PickeeFormInput],
+                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int]
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
@@ -65,8 +65,8 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
           "value" -> of(doubleFormat),
           "active" -> default(boolean, true),
           "faction" -> optional(nonEmptyText)  // e.g. Evil Geniuses, Zerg...etc
-        )(PickeeFormInput.apply)(PickeeFormInput.unapply))
-
+        )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
+        "users" -> list(number)
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }
@@ -128,8 +128,26 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
           val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
 
           // -1 is for whole tournament
-          statFields.foreach({
-            statFieldId => (-1 until input.totalDays).map(d => leagueRepo.insertPickeeStats(statFieldId, newPickee.id, d))
+          statFields.foreach(
+            statFieldId => {
+              val newPickeeStat = leagueRepo.insertPickeeStat(statFieldId, newPickee.id)
+              val newPickeeStatOverall = leagueRepo.insertPickeeStatOverall(newPickeeStat.id)
+              (1 to input.totalDays).foreach(d => {
+                leagueRepo.insertPickeeStatDaily(newPickeeStat.id, d)
+              })
+          })
+        }
+
+        for (userId <- input.users) {
+          val newLeagueUser = leagueRepo.insertLeagueUser(newLeague, userId)
+
+          statFields.foreach(
+            statFieldId => {
+              val newLeagueUserStat = leagueRepo.insertLeagueUserStat(statFieldId, newLeagueUser.id)
+              val newLeagueUserStatOverall = leagueRepo.insertLeagueUserStatOverall(newLeagueUserStat.id)
+              (1 to input.totalDays).foreach(d => {
+                leagueRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, d)
+              })
           })
         }
 

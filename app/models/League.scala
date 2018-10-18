@@ -71,12 +71,6 @@ class League(
 object League{
   implicit val implicitWrites = new Writes[League] {
     def writes(league: League): JsValue = {
-//      val lsf = league.statFields
-//      val statFieldNames = lsf.map(_.name)
-      val statFieldNames = List("cat", "dog")
-//      for (l <- league.statFields){
-//        println(l)
-//      }
       Json.obj(
         "id" -> league.id,
         "name" -> league.name,
@@ -93,7 +87,6 @@ object League{
         //val captain: Boolean,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
-        "statFields" -> statFieldNames
       )
     }
   }
@@ -133,12 +126,6 @@ case class LeaguePlusStuff(league: League, lsf: Array[String])
 object LeaguePlusStuff{
   implicit val implicitWrites = new Writes[LeaguePlusStuff] {
     def writes(leagueps: LeaguePlusStuff): JsValue = {
-      //      val lsf = league.statFields
-      //      val statFieldNames = lsf.map(_.name)
-      //      val statFieldNames = List("cat", "dog")
-      //      for (l <- league.statFields){
-      //        println(l)
-      //      }
       Json.obj(
         "id" -> leagueps.league.id,
         "name" -> leagueps.league.name,

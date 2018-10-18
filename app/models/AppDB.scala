@@ -9,11 +9,15 @@ object AppDB extends Schema {
   val gameTable = table[Game]
   val passwordResetTable = table[PasswordReset]
   val apiUserTable = table[APIUser]
-  val leagueUserStatsTable = table[LeagueUserStats]
+  val leagueUserStatTable = table[LeagueUserStat]
+  val leagueUserStatDailyTable = table[LeagueUserStatDaily]
+  val leagueUserStatOverallTable = table[LeagueUserStatOverall]
   val leagueStatFieldsTable = table[LeagueStatFields]
   val pickeeTable = table[Pickee]
   val teamPickeeTable = table[TeamPickee]
-  val pickeeStatsTable = table[PickeeStats]
+  val pickeeStatTable = table[PickeeStat]
+  val pickeeStatDailyTable = table[PickeeStatDaily]
+  val pickeeStatOverallTable = table[PickeeStatOverall]
   val friendTable = table[Friend]
   val transferTable = table[Transfer]
   val resultTable = table[Resultu]
@@ -36,9 +40,17 @@ object AppDB extends Schema {
 //      via[UserAchievement]((a, u, ua) => (ua.achievementId === a.id, u.id === ua.userId))
 
   // lets do all our oneToMany foreign keys
-  val leagueUserToLeagueUserStats =
-    oneToManyRelation(leagueUserTable, leagueUserStatsTable).
+  val leagueUserToLeagueUserStat =
+    oneToManyRelation(leagueUserTable, leagueUserStatTable).
       via((lu, lus) => (lu.id === lus.leagueUserId))
+
+  val leagueUserStatToLeagueUserStatDaily =
+    oneToManyRelation(leagueUserStatTable, leagueUserStatDailyTable).
+      via((lu, o) => (lu.id === o.leagueUserStatId))
+
+  val leagueUserStatToLeagueUserStatOverall =
+    oneToManyRelation(leagueUserStatTable, leagueUserStatOverallTable).
+      via((lu, o) => (lu.id === o.leagueUserStatId))
 
   val leagueToLeaguePrize =
     oneToManyRelation(leagueTable, leaguePrizeTable).
@@ -64,9 +76,17 @@ object AppDB extends Schema {
     oneToManyRelation(pickeeTable, teamPickeeTable).
       via((p, o) => (p.id === o.pickeeId))
 
-  val pickeeToPickeeStats =
-    oneToManyRelation(pickeeTable, pickeeStatsTable).
+  val pickeeToPickeeStat =
+    oneToManyRelation(pickeeTable, pickeeStatTable).
       via((p, o) => (p.id === o.pickeeId))
+
+  val pickeeStatToPickeeStatDaily =
+    oneToManyRelation(pickeeStatTable, pickeeStatDailyTable).
+      via((p, o) => (p.id === o.pickeeStatId))
+
+  val pickeeStatToPickeeStatOverall =
+    oneToManyRelation(pickeeStatTable, pickeeStatOverallTable).
+      via((p, o) => (p.id === o.pickeeStatId))
 
   val pickeeToResult =
     oneToManyRelation(pickeeTable, resultTable).

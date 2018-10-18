@@ -19,7 +19,13 @@ trait LeagueRepository{
   def getStatFields(league: League): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatFields
   def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
-  def insertPickeeStats(statFieldId: Long, pickeeId: Long, day: Int): PickeeStats
+  def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
+  def insertPickeeStatDaily(pickeeStatId: Long, day: Int): PickeeStatDaily
+  def insertPickeeStatOverall(pickeeStatId: Long): PickeeStatOverall
+  def insertLeagueUser(league: League, userId: Int): LeagueUser
+  def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
+  def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Int): LeagueUserStatDaily
+  def insertLeagueUserStatOverall(leagueUserStatId: Long): LeagueUserStatOverall
   //def update()
 }
 
@@ -60,11 +66,47 @@ class LeagueRepositoryImpl @Inject()()(implicit ec: LeagueExecutionContext) exte
       CostConverter.unconvertCost(pickee.value),
       pickee.active
     ))
-
   }
-  override def insertPickeeStats(statFieldId: Long, pickeeId: Long, day: Int): PickeeStats = {
-    AppDB.pickeeStatsTable.insert(new PickeeStats(
-      statFieldId, pickeeId, day
+  //insertPickeeStatDaily
+  override def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat = {
+    AppDB.pickeeStatTable.insert(new PickeeStat(
+      statFieldId, pickeeId
+    ))
+  }
+
+  override def insertPickeeStatDaily(pickeeStatId: Long, day: Int): PickeeStatDaily = {
+    AppDB.pickeeStatDailyTable.insert(new PickeeStatDaily(
+      pickeeStatId, day
+    ))
+  }
+
+  override def insertPickeeStatOverall(pickeeStatId: Long): PickeeStatOverall = {
+    AppDB.pickeeStatOverallTable.insert(new PickeeStatOverall(
+      pickeeStatId
+    ))
+  }
+
+  override def insertLeagueUser(league: League, userId: Int): LeagueUser = {
+    AppDB.leagueUserTable.insert(new LeagueUser(
+      league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit
+    ))
+  }
+
+  override def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat = {
+    AppDB.leagueUserStatTable.insert(new LeagueUserStat(
+      statFieldId, leagueUserId
+    ))
+  }
+
+  override def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Int): LeagueUserStatDaily = {
+    AppDB.leagueUserStatDailyTable.insert(new LeagueUserStatDaily(
+      leagueUserStatId, day
+    ))
+  }
+
+  override def insertLeagueUserStatOverall(leagueUserStatId: Long): LeagueUserStatOverall = {
+    AppDB.leagueUserStatOverallTable.insert(new LeagueUserStatOverall(
+      leagueUserStatId
     ))
   }
 }
