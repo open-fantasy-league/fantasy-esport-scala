@@ -5,6 +5,8 @@ import net.codingwell.scalaguice.ScalaModule
 import play.api.{Configuration, Environment}
 import v1.post._
 import v1.league.{LeagueRepo, LeagueRepoImpl}
+import v1.pickee.{PickeeRepo, PickeeRepoImpl}
+import v1.leagueuser.{LeagueUserRepo, LeagueUserRepoImpl}
 
 /**
   * Sets up custom components for Play.
@@ -18,6 +20,8 @@ class Module(environment: Environment, configuration: Configuration)
   override def configure() = {
     bind[PostRepo].to[PostRepoImpl].in[Singleton]
     bind[LeagueRepo].to[LeagueRepoImpl].in[Singleton]
+    bind[PickeeRepo].to[PickeeRepoImpl].in[Singleton]
+    bind[LeagueUserRepo].to[LeagueUserRepoImpl].in[Singleton]
     println("configure called")
     bind(classOf[SquerylInitialization]).asEagerSingleton()
   }

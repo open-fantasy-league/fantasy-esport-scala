@@ -14,8 +14,8 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
 import models.{AppDB, League, Pickee, PickeeStat, LeagueStatFields, LeaguePlusStuff}
-
-case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
+import v1.leagueuser.LeagueUserRepo
+import v1.pickee.{PickeeRepo, PickeeFormInput}
 
 case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, totalDays: Int,
                            dayStart: Long, dayEnd: Long, teamSize: Int, transferLimit: Option[Int], factionLimit: Option[Int],
@@ -31,7 +31,10 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                            dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
 
 
-class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class LeagueController @Inject()(
+                                  cc: ControllerComponents, leagueRepo: LeagueRepo,
+                                  leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
+                                )(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[LeagueFormInput] = {
@@ -177,28 +180,28 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
         //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
         for (pickee <- input.pickees) {
-          val newPickee = leagueRepo.insertPickee(newLeague.id, pickee)
+          val newPickee = pickeeRepo.insertPickee(newLeague.id, pickee)
 
           // -1 is for whole tournament
           statFields.foreach(
             statFieldId => {
-              val newPickeeStat = leagueRepo.insertPickeeStat(statFieldId, newPickee.id)
-              val newPickeeStatOverall = leagueRepo.insertPickeeStatOverall(newPickeeStat.id)
+              val newPickeeStat = pickeeRepo.insertPickeeStat(statFieldId, newPickee.id)
+              val newPickeeStatOverall = pickeeRepo.insertPickeeStatOverall(newPickeeStat.id)
               (1 to input.totalDays).foreach(d => {
-                leagueRepo.insertPickeeStatDaily(newPickeeStat.id, d)
+                pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, d)
               })
           })
         }
 
         for (userId <- input.users) {
-          val newLeagueUser = leagueRepo.insertLeagueUser(newLeague, userId)
+          val newLeagueUser = leagueUserRepo.insertLeagueUser(newLeague, userId)
 
           statFields.foreach(
             statFieldId => {
-              val newLeagueUserStat = leagueRepo.insertLeagueUserStat(statFieldId, newLeagueUser.id)
-              val newLeagueUserStatOverall = leagueRepo.insertLeagueUserStatOverall(newLeagueUserStat.id)
+              val newLeagueUserStat = leagueUserRepo.insertLeagueUserStat(statFieldId, newLeagueUser.id)
+              val newLeagueUserStatOverall = leagueUserRepo.insertLeagueUserStatOverall(newLeagueUserStat.id)
               (1 to input.totalDays).foreach(d => {
-                leagueRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, d)
+                leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, d)
               })
           })
         }
