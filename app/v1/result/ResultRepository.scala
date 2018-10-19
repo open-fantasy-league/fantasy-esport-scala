@@ -7,14 +7,12 @@ import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models._
-import utils.CostConverter
-
 import scala.collection.mutable.ArrayBuffer
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait ResultRepository{
-  def show(id: Long): Option[Result]
+  def show(id: Long): Option[Resultu]
 //  def insertLeague(formInput: LeagueFormInput): League
 //  def getStatFields(league: League): Array[String]
 //  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatFields
@@ -31,7 +29,7 @@ trait ResultRepository{
 
 @Singleton
 class ResultRepositoryImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepository{
-  override def show(id: Long): Option[Result] = {
+  override def show(id: Long): Option[Resultu] = {
     AppDB.resultTable.lookup(id)
   }
 

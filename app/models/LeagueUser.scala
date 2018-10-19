@@ -13,6 +13,7 @@ class LeagueUser(
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val team = AppDB.leagueUserToTeamPickee.left(this)
+  lazy val league = AppDB.leagueUserTable.leftTable
 }
 
 
@@ -21,6 +22,7 @@ class LeagueUserStat(
                        val leagueUserId: Long,
                      ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val leagueUser = AppDB.leagueUserToLeagueUserStat.right(this)
 }
 
 class LeagueUserStatDaily(
@@ -37,4 +39,10 @@ class LeagueUserStatOverall(
                             var oldRank: Int = 0,
                           ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val leagueUserStat = AppDB.leagueUserStatToLeagueUserStatOverall.right(this)
+  lazy val leagueUser = AppDB.leagueUserToLeagueUserStat.right(
+    AppDB.leagueUserStatToLeagueUserStatOverall.right(this).single)
+  lazy val leagueId = AppDB.leagueUserToLeagueUserStat.rightStateful(
+    AppDB.leagueUserStatToLeagueUserStatOverall.rightStateful(this)).league.id
+  //lazy val league = AppDB.leagueUserToLeagueUserStat.right(this.leagueUserStat).league
 }

@@ -3,6 +3,7 @@ package utils
 import scala.util.Try
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
+import entry.SquerylEntrypointForMyApp._
 
 object IdParser {
   def parseIntId(id: String, idName: String): Either[Result, Int] = {
@@ -16,3 +17,14 @@ object CostConverter {
   def convertCost(cost: Int): Double = cost / 10.0
   def unconvertCost(cost: Double): Int = (cost * 10).toInt
 }
+
+object TryInserter {
+
+  def tryInsert[T](block: () => T, errorResponse: Result): Either[Result, T] = {
+    Try(block()).toOption.toRight(errorResponse)
+  }
+}
+
+//object TryInsert {
+//
+//}

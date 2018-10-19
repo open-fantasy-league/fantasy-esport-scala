@@ -1,4 +1,4 @@
-curl -v -H "Content-Type: application/json" -X PUT -d '{"name": "cat", "password": "pword", "contactable": false}' localhost:9000/api/v1/users
+curl -v -H "Content-Type: application/json" -X POST -d '{"name": "cat", "password": "pword", "contactable": false}' localhost:9000/api/v1/users
 
 curl -v -H "Content-Type: application/json" -X POST -d '{"name": "cat3", "tournamentId": 5401, "totalDays": 5, "dayStart": 1122, "dayEnd": 113345, "transferOpen": false, "gameId": 1, "pickeeDescription": "Hero", "pickees": [{"id": 1, "name": "dog", "value": 20.0, "faction": "animal"}, {"id": 2, "name": "Lich", "value": 10.1, "faction": "yep"}], "factionLimit": 2, "factionDescription": "Team", "extraStats": ["wins", "picks", "bans"], "users": [1]}' localhost:9000/api/v1/leagues
 

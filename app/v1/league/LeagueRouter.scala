@@ -27,6 +27,13 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
 
     case GET(p"/$id") =>
       controller.show(id)
+
+    // called at end of day when matches over
+    case POST(p"/updateOldRanksAndHistoricTeams/$id") =>
+      controller.updateOldRanksAndHistoricTeams(id)
+
+    case POST(p"/incrementDay/$id") =>
+      controller.incrementDay(id)
   }
 
 }

@@ -18,7 +18,7 @@ class UserRouter @Inject()(controller: UserController) extends SimpleRouter {
 
   override def routes: Routes = {
 
-    case PUT(p"/") =>
+    case POST(p"/") =>
       controller.add
 
     case POST(p"/$id") =>

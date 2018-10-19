@@ -108,6 +108,20 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
+  def updateOldRanksAndHistoricTeams(leagueId: String) = Action.async(parse.json){ implicit request =>
+    Future {
+      IdParser.parseIntId(leagueId, "league") match {
+        case Left(x) => x
+        case Right(leagueId) => {
+          updateOldRanks(leagueId)
+          updateHistoricTeam(leagueId)
+          Ok("Updated old ranks and historic team")
+        }
+      }
+    }
+    //    scala.concurrent.Future{ Ok(views.html.index())}
+  }
+
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[LeagueFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
@@ -200,5 +214,25 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
     }
 
     updateForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def updateOldRanks(leagueId: Int): Future[Either[Result, Any]] = {
+    Future{
+      val leagueUsers = AppDB.leagueUserTable.where(lu => lu.leagueId === leagueId)
+      val leagueUserStatsOverall = AppDB.leagueUserStatOverallTable.where(
+        lu => lu.leagueId === leagueId).
+        orderBy(lu.value desc)
+      val newLeagueUserStatsOverall = leagueUserStatsOverall.zipWithIndex.map(
+        {(luso, i) => luso.oldRank = i + 1; luso}
+      )
+      AppDB.leagueUserStatOverallTable.update(newLeagueUserStatsOverall)
+      Left(true)
+    }
+  }
+
+  private def updateHistoricTeam(leagueId: Int): Future[Result] = {
+    Future{
+      Ok("yeah boi")
+    }
   }
 }

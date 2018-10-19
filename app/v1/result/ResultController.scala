@@ -14,6 +14,7 @@ import play.api.data.format.Formats._
 import scala.util.Try
 import models.{AppDB, League, Matchu, Resultu, Points}
 import utils.IdParser.parseIntId
+import utils.TryInserter.tryInsert
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Int, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -122,10 +123,10 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
 
   private def newMatch(input: ResultFormInput, league: League): Either[Result, Matchu] = {
     // TODO log/get original stack trace
-    Try(AppDB.matchTable.insert(new Matchu(
+    tryInsert[Matchu](() => AppDB.matchTable.insert(new Matchu(
       league.id, input.matchId, league.currentDay, input.tournamentId, input.teamOne, input.teamTwo,
       input.teamOneVictory
-    ))).toOption.toRight(InternalServerError("Internal server error adding match"))
+    )), InternalServerError("Internal server error adding match"))
   }
 
   private def newResults(input: ResultFormInput, league: League, matchu: Matchu, pickees: List[InternalPickee]): Either[Result, List[Resultu]] = {
