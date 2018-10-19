@@ -31,7 +31,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                            dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
 
 
-class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepository)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[LeagueFormInput] = {
@@ -108,14 +108,52 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  def updateOldRanksAndHistoricTeams(leagueId: String) = Action.async(parse.json){ implicit request =>
+  def showRankingsReq(leagueId: String, statFieldName: String) = Action.async(parse.json){ implicit request =>
+    Future {
+      IdParser.parseIntId(leagueId, "league") match {
+        case Left(x) => x
+        case Right(leagueId) => {
+          Ok("Test")
+          Ok("Updated old ranking")
+        }
+      }
+    }
+    //    scala.concurrent.Future{ Ok(views.html.index())}
+  }
+
+  def updateOldRanksReq(leagueId: String) = Action.async(parse.json){ implicit request =>
     Future {
       IdParser.parseIntId(leagueId, "league") match {
         case Left(x) => x
         case Right(leagueId) => {
           updateOldRanks(leagueId)
-          updateHistoricTeam(leagueId)
+          Ok("Updated old ranking")
+        }
+      }
+    }
+    //    scala.concurrent.Future{ Ok(views.html.index())}
+  }
+
+  def storeHistoricTeamsReq(leagueId: String) = Action.async(parse.json){ implicit request =>
+    Future {
+      IdParser.parseIntId(leagueId, "league") match {
+        case Left(x) => x
+        case Right(leagueId) => {
+          storeHistoricTeam(leagueId)
           Ok("Updated old ranks and historic team")
+        }
+      }
+    }
+    //    scala.concurrent.Future{ Ok(views.html.index())}
+  }
+
+  def incrementDayReq(leagueId: String) = Action.async(parse.json){ implicit request =>
+    Future {
+      IdParser.parseIntId(leagueId, "league") match {
+        case Left(x) => x
+        case Right(leagueId) => {
+          incrementDay(leagueId)
+          Ok("Incremented Day")
         }
       }
     }
@@ -217,20 +255,29 @@ class LeagueController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRep
   }
 
   private def updateOldRanks(leagueId: Int): Future[Either[Result, Any]] = {
+    // TODO also update pickee ranks
     Future{
-      val leagueUsers = AppDB.leagueUserTable.where(lu => lu.leagueId === leagueId)
-      val leagueUserStatsOverall = AppDB.leagueUserStatOverallTable.where(
-        lu => lu.leagueId === leagueId).
-        orderBy(lu.value desc)
+      val leagueUserStatsOverall = from(
+        AppDB.leagueTable, AppDB.leagueUserTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatOverallTable
+      )((l, lu, lus, luso) =>
+        where(luso.leagueUserStatId === lus.id and lus.leagueUserId === lu.id and lu.leagueId === leagueId)
+        select(luso) orderBy(luso.value desc)
+      )
       val newLeagueUserStatsOverall = leagueUserStatsOverall.zipWithIndex.map(
-        {(luso, i) => luso.oldRank = i + 1; luso}
+        {case (luso, i) => luso.oldRank = i + 1; luso}
       )
       AppDB.leagueUserStatOverallTable.update(newLeagueUserStatsOverall)
-      Left(true)
+      Right(true)
     }
   }
 
-  private def updateHistoricTeam(leagueId: Int): Future[Result] = {
+  private def storeHistoricTeam(leagueId: Int): Future[Result] = {
+    Future{
+      Ok("yeah boi")
+    }
+  }
+
+  private def incrementDay(leagueId: Int): Future[Result] = {
     Future{
       Ok("yeah boi")
     }

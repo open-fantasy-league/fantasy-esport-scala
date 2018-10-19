@@ -40,9 +40,4 @@ class LeagueUserStatOverall(
                           ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val leagueUserStat = AppDB.leagueUserStatToLeagueUserStatOverall.right(this)
-  lazy val leagueUser = AppDB.leagueUserToLeagueUserStat.right(
-    AppDB.leagueUserStatToLeagueUserStatOverall.right(this).single)
-  lazy val leagueId = AppDB.leagueUserToLeagueUserStat.rightStateful(
-    AppDB.leagueUserStatToLeagueUserStatOverall.rightStateful(this)).league.id
-  //lazy val league = AppDB.leagueUserToLeagueUserStat.right(this.leagueUserStat).league
 }

@@ -6,7 +6,7 @@ import play.api.test.Helpers._
 import play.api.mvc.Result
 import play.api.mvc.ControllerComponents
 import play.api.libs.json._
-import v1.league.{LeagueController, LeagueRepository}
+import v1.league.{LeagueController, LeagueRepo}
 import akka.stream.{ActorMaterializer, Materializer}
 import akka.actor.ActorSystem
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -20,7 +20,7 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
   //implicit lazy val materializer: Materializer = app.materializer
 
   "LeagueController" should {
-    val leagueRepo = mock[LeagueRepository]
+    val leagueRepo = mock[LeagueRepo]
     val fakeLeague = new League()
     when(leagueRepo.show(1)) thenReturn Some(fakeLeague)
     when(leagueRepo.getStatFields(fakeLeague)) thenReturn Array("wins", "picks", "points")

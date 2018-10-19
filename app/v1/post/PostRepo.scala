@@ -25,9 +25,9 @@ object PostId {
 class PostExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 /**
-  * A pure non-blocking interface for the PostRepository.
+  * A pure non-blocking interface for the PostRepo.
   */
-trait PostRepository {
+trait PostRepo {
   def create(data: PostData)(implicit mc: MarkerContext): Future[PostId]
 
   def list()(implicit mc: MarkerContext): Future[Iterable[PostData]]
@@ -36,14 +36,14 @@ trait PostRepository {
 }
 
 /**
-  * A trivial implementation for the Post Repository.
+  * A trivial implementation for the Post Repo.
   *
   * A custom execution context is used here to establish that blocking operations should be
   * executed in a different thread than Play's ExecutionContext, which is used for CPU bound tasks
   * such as rendering.
   */
 @Singleton
-class PostRepositoryImpl @Inject()()(implicit ec: PostExecutionContext) extends PostRepository {
+class PostRepoImpl @Inject()()(implicit ec: PostExecutionContext) extends PostRepo {
 
   private val logger = Logger(this.getClass)
 

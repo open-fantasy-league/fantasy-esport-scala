@@ -11,7 +11,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-trait ResultRepository{
+trait ResultRepo{
   def show(id: Long): Option[Resultu]
 //  def insertLeague(formInput: LeagueFormInput): League
 //  def getStatFields(league: League): Array[String]
@@ -28,7 +28,7 @@ trait ResultRepository{
 }
 
 @Singleton
-class ResultRepositoryImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepository{
+class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepo{
   override def show(id: Long): Option[Resultu] = {
     AppDB.resultTable.lookup(id)
   }

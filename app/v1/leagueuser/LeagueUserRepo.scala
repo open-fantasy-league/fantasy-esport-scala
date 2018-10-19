@@ -1,4 +1,4 @@
-package v1.league
+package v1.leagueuser
 
 import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
@@ -13,7 +13,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-trait LeagueRepository{
+trait LeagueUserRepo{
   def show(id: Int): Option[League]
   def insertLeague(formInput: LeagueFormInput): League
   def getStatFields(league: League): Array[String]
@@ -30,7 +30,7 @@ trait LeagueRepository{
 }
 
 @Singleton
-class LeagueRepositoryImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepository{
+class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
   override def show(id: Int): Option[League] = {
     AppDB.leagueTable.lookup(id)
   }
