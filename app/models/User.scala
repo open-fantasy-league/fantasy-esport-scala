@@ -28,11 +28,10 @@ object User{
         "id" -> user.id,
         "name" -> user.username,
         "email" -> user.email,
-        "contacable" -> user.contactable
+        "contactable" -> user.contactable
       )
     }
   }
-
 }
 
 class Friend(

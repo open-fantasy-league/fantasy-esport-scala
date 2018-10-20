@@ -12,7 +12,7 @@ object AppDB extends Schema {
   val leagueUserStatTable = table[LeagueUserStat]
   val leagueUserStatDailyTable = table[LeagueUserStatDaily]
   val leagueUserStatOverallTable = table[LeagueUserStatOverall]
-  val leagueStatFieldsTable = table[LeagueStatFields]
+  val leagueStatFieldTable = table[LeagueStatField]
   val pickeeTable = table[Pickee]
   val teamPickeeTable = table[TeamPickee]
   val pickeeStatTable = table[PickeeStat]
@@ -56,8 +56,8 @@ object AppDB extends Schema {
     oneToManyRelation(leagueTable, leaguePrizeTable).
       via((l, o) => (l.id === o.leagueId))
 
-  val leagueToLeagueStatFields =
-    oneToManyRelation(leagueTable, leagueStatFieldsTable).
+  val leagueToLeagueStatField =
+    oneToManyRelation(leagueTable, leagueStatFieldTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToPickee =
@@ -153,14 +153,14 @@ object AppDB extends Schema {
 //    )
 
   val leagueWithStatFields =
-    join(leagueTable, leagueStatFieldsTable.leftOuter)((l, lsf) =>
+    join(leagueTable, leagueStatFieldTable.leftOuter)((l, lsf) =>
       select((l, lsf))
         on(l.id === lsf.map(_.leagueId))
     )
 
 //  object LeagueWithStatFields{
 //    implicit val implicitWrites = new Writes[League] {
-//      def writes(league: League, statFields: List[Option[LeagueStatFields]] = Nil): JsValue = {
+//      def writes(league: League, statFields: List[Option[LeagueStatField]] = Nil): JsValue = {
 //        Json.obj(
 //          "id" -> league.id,
 //          "name" -> league.name,

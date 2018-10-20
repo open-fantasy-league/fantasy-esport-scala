@@ -14,26 +14,20 @@ import scala.collection.mutable.ArrayBuffer
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait LeagueRepo{
-  def show(id: Int): Option[League]
+  def get(id: Int): Option[League]
   def insertLeague(formInput: LeagueFormInput): League
   def getStatFields(league: League): Array[String]
-  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatFields
+  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
 }
 
 @Singleton
 class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
-  override def show(id: Int): Option[League] = {
+  override def get(id: Int): Option[League] = {
     AppDB.leagueTable.lookup(id)
   }
 
   override def getStatFields(league: League): Array[String] = {
     league.statFields.map(_.name).toArray
-//    val statFields = ArrayBuffer[String]()
-//    for (f <- league.statFields) {
-//      println(f.name)
-//      statFields += f.name
-//    }
-//    statFields
   }
 
   override def insertLeague(input: LeagueFormInput): League = {
@@ -44,8 +38,8 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     ))
   }
 
-  override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatFields = {
-    AppDB.leagueStatFieldsTable.insert(new LeagueStatFields(leagueId, name))
+  override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField = {
+    AppDB.leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
   }
 }
 

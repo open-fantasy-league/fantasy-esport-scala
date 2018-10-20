@@ -53,7 +53,7 @@ class League(
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
-  lazy val statFields = AppDB.leagueToLeagueStatFields.left(this)
+  lazy val statFields = AppDB.leagueToLeagueStatField.left(this)
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   //def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
@@ -103,16 +103,16 @@ class LeaguePrize(
   val id: Int = 0
 }
 
-class LeagueStatFields(
+class LeagueStatField(
                         val leagueId: Int,
                         val name: String  // Index this
                       ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
 
-//object LeagueStatFields{
-//  implicit val implicitWrites = new Writes[LeagueStatFields] {
-//    def writes(lsf: LeagueStatFields): JsValue = {
+//object LeagueStatField{
+//  implicit val implicitWrites = new Writes[LeagueStatField] {
+//    def writes(lsf: LeagueStatField): JsValue = {
 //      Json.obj(
 //        "name" -> lsf.name
 //      )

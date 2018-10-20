@@ -153,7 +153,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         ).single
       println(result)
       val points = if (s.field == "points") s.value * league.pointsMultiplier else s.value
-      (new Points(result.id, AppDB.leagueStatFieldsTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
+      (new Points(result.id, AppDB.leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
         ip.id)
     }))
     // TODO try top option right func

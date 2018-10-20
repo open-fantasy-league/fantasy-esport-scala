@@ -15,7 +15,7 @@ trait ResultRepo{
   def show(id: Long): Option[Resultu]
 //  def insertLeague(formInput: LeagueFormInput): League
 //  def getStatFields(league: League): Array[String]
-//  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatFields
+//  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
 //  def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
 //  def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
 //  def insertPickeeStatDaily(pickeeStatId: Long, day: Int): PickeeStatDaily

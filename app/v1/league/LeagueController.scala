@@ -13,7 +13,7 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
-import models.{AppDB, League, Pickee, PickeeStat, LeagueStatFields, LeaguePlusStuff}
+import models.{AppDB, League, Pickee, PickeeStat, LeagueStatField, LeaguePlusStuff}
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
@@ -89,12 +89,12 @@ class LeagueController @Inject()(
     )
   }
 
-  def show(leagueId: String) = Action.async { implicit request =>
+  def get(leagueId: String) = Action.async { implicit request =>
     Future {
       inTransaction {
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
-          league <- leagueRepo.show(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+          league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           statFields = leagueRepo.getStatFields(league)
           finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
         } yield finished).fold(identity, identity)
@@ -111,13 +111,17 @@ class LeagueController @Inject()(
 //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  def showRankingsReq(leagueId: String, statFieldName: String) = Action.async(parse.json){ implicit request =>
+  def getRankingsReq(leagueId: String, statFieldName: String) = Action.async { implicit request =>
     Future {
-      IdParser.parseIntId(leagueId, "league") match {
-        case Left(x) => x
-        case Right(leagueId) => {
-          Ok("Test")
-          Ok("Updated old ranking")
+      inTransaction {
+        IdParser.parseIntId(leagueId, "league") match {
+          case Left(x) => x
+          case Right(leagueId) => {
+            val statField = leagueUserRepo.getStatField(leagueId, statFieldName).get
+            val league = leagueRepo.get(leagueId).get
+            leagueUserRepo.getRankings(league, statField, None)
+            Ok(Json.toJson(leagueUserRepo.getRankings(league, statField, None)))
+          }
         }
       }
     }
