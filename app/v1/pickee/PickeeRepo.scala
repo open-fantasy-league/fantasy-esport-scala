@@ -18,8 +18,7 @@ case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean
 trait PickeeRepo{
   def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
-  def insertPickeeStatDaily(pickeeStatId: Long, day: Int): PickeeStatDaily
-  def insertPickeeStatOverall(pickeeStatId: Long): PickeeStatOverall
+  def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
 }
 
 @Singleton
@@ -43,15 +42,9 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     ))
   }
 
-  override def insertPickeeStatDaily(pickeeStatId: Long, day: Int): PickeeStatDaily = {
+  override def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily = {
     AppDB.pickeeStatDailyTable.insert(new PickeeStatDaily(
       pickeeStatId, day
-    ))
-  }
-
-  override def insertPickeeStatOverall(pickeeStatId: Long): PickeeStatOverall = {
-    AppDB.pickeeStatOverallTable.insert(new PickeeStatOverall(
-      pickeeStatId
     ))
   }
 }

@@ -44,16 +44,8 @@ class PickeeStat(
 
 class PickeeStatDaily(
                             val pickeeStatId: Long,
-                            val day: Int,
+                            val day: Option[Int],
                             var value: Double = 0.0
                           ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
-
-class PickeeStatOverall(
-                              val pickeeStatId: Long,
-                              var value: Double = 0.0,
-                              var oldRank: Int = 0,
-                            ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

@@ -11,13 +11,11 @@ object AppDB extends Schema {
   val apiUserTable = table[APIUser]
   val leagueUserStatTable = table[LeagueUserStat]
   val leagueUserStatDailyTable = table[LeagueUserStatDaily]
-  val leagueUserStatOverallTable = table[LeagueUserStatOverall]
   val leagueStatFieldTable = table[LeagueStatField]
   val pickeeTable = table[Pickee]
   val teamPickeeTable = table[TeamPickee]
   val pickeeStatTable = table[PickeeStat]
   val pickeeStatDailyTable = table[PickeeStatDaily]
-  val pickeeStatOverallTable = table[PickeeStatOverall]
   val friendTable = table[Friend]
   val transferTable = table[Transfer]
   val resultTable = table[Resultu]
@@ -46,10 +44,6 @@ object AppDB extends Schema {
 
   val leagueUserStatToLeagueUserStatDaily =
     oneToManyRelation(leagueUserStatTable, leagueUserStatDailyTable).
-      via((lu, o) => (lu.id === o.leagueUserStatId))
-
-  val leagueUserStatToLeagueUserStatOverall =
-    oneToManyRelation(leagueUserStatTable, leagueUserStatOverallTable).
       via((lu, o) => (lu.id === o.leagueUserStatId))
 
   val leagueToLeaguePrize =
@@ -82,10 +76,6 @@ object AppDB extends Schema {
 
   val pickeeStatToPickeeStatDaily =
     oneToManyRelation(pickeeStatTable, pickeeStatDailyTable).
-      via((p, o) => (p.id === o.pickeeStatId))
-
-  val pickeeStatToPickeeStatOverall =
-    oneToManyRelation(pickeeStatTable, pickeeStatOverallTable).
       via((p, o) => (p.id === o.pickeeStatId))
 
   val pickeeToResult =

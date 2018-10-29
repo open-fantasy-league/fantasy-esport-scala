@@ -13,7 +13,9 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
-import models.{AppDB, League, Pickee, PickeeStat, LeagueStatField, LeaguePlusStuff}
+import utils.TryHelper._
+import models.AppDB._
+import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, LeaguePlusStuff}
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
@@ -95,7 +97,7 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-          statFields = leagueRepo.getStatFields(league)
+          statFields = leagueRepo.getStatFieldNames(league.statFields)
           finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
         } yield finished).fold(identity, identity)
       }
@@ -114,47 +116,44 @@ class LeagueController @Inject()(
   def getRankingsReq(leagueId: String, statFieldName: String) = Action.async { implicit request =>
     Future {
       inTransaction {
-        IdParser.parseIntId(leagueId, "league") match {
-          case Left(x) => x
-          case Right(leagueId) => {
-            val statField = leagueUserRepo.getStatField(leagueId, statFieldName).get
-            val league = leagueRepo.get(leagueId).get
-            leagueUserRepo.getRankings(league, statField, None)
-            Ok(Json.toJson(leagueUserRepo.getRankings(league, statField, None)))
-          }
-        }
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          statField <- leagueUserRepo.getStatField(leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          rankings <- tryOrResponse(
+            () => leagueUserRepo.getRankings(league, statField, None), InternalServerError("internal Server Error")
+          )
+          out = Ok(Json.toJson(rankings))
+        } yield out).fold(identity, identity)
       }
     }
-    //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
   def updateOldRanksReq(leagueId: String) = Action.async(parse.json){ implicit request =>
     Future {
-      IdParser.parseIntId(leagueId, "league") match {
-        case Left(x) => x
-        case Right(leagueId) => {
-          updateOldRanks(leagueId)
-          Ok("Updated old ranking")
-        }
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          _ <- updateOldRanks(leagueId)
+          out = Ok("Updated old ranking")
+        } yield out).fold(identity, identity)
       }
     }
-    //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  def storeHistoricTeamsReq(leagueId: String) = Action.async(parse.json){ implicit request =>
+  def storeHistoricTeamsReq(leagueId: String) = Action.async { implicit request =>
     Future {
-      IdParser.parseIntId(leagueId, "league") match {
-        case Left(x) => x
-        case Right(leagueId) => {
-          storeHistoricTeam(leagueId)
-          Ok("Updated old ranks and historic team")
-        }
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          out <- storeHistoricTeam(leagueId)
+        } yield out).fold(identity, identity)
       }
     }
-    //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  def incrementDayReq(leagueId: String) = Action.async(parse.json){ implicit request =>
+  def incrementDayReq(leagueId: String) = Action.async { implicit request =>
     Future {
       IdParser.parseIntId(leagueId, "league") match {
         case Left(x) => x
@@ -175,7 +174,7 @@ class LeagueController @Inject()(
     def success(input: LeagueFormInput) = {
       println("yay")
       inTransaction {
-        val newLeague = leagueRepo.insertLeague(input)
+        val newLeague = leagueRepo.insert(input)
 
         val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
         val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
@@ -190,9 +189,9 @@ class LeagueController @Inject()(
           statFields.foreach(
             statFieldId => {
               val newPickeeStat = pickeeRepo.insertPickeeStat(statFieldId, newPickee.id)
-              val newPickeeStatOverall = pickeeRepo.insertPickeeStatOverall(newPickeeStat.id)
+              pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, None)
               (1 to input.totalDays).foreach(d => {
-                pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, d)
+                pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, Some(d))
               })
           })
         }
@@ -203,9 +202,9 @@ class LeagueController @Inject()(
           statFields.foreach(
             statFieldId => {
               val newLeagueUserStat = leagueUserRepo.insertLeagueUserStat(statFieldId, newLeagueUser.id)
-              val newLeagueUserStatOverall = leagueUserRepo.insertLeagueUserStatOverall(newLeagueUserStat.id)
+              leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, None)
               (1 to input.totalDays).foreach(d => {
-                leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, d)
+                leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, Some(d))
               })
           })
         }
@@ -232,22 +231,13 @@ class LeagueController @Inject()(
 
     def success(input: UpdateLeagueFormInput) = {
       println("yay")
-      inTransaction {
-
-        val updateLeague = (league: League, input: UpdateLeagueFormInput) => {
-          league.name = input.name.getOrElse(league.name)
-          league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
-          // etc for other fields
-          AppDB.leagueTable.update(league)
-          Ok("Itwerked")
-          //Future { Ok("Itwerked") }
-        }
-        Future {
+      Future {
+        inTransaction {
           // TODO handle invalid Id
-          val leagueQuery = AppDB.leagueTable.lookup(Integer.parseInt(leagueId))
+          val leagueQuery = leagueRepo.get(Integer.parseInt(leagueId))
           leagueQuery match {
-            case Some(league) => updateLeague(league, input)
-            case None => Ok("Yer dun fucked up")
+            case Some(league) => Ok(Json.toJson(leagueRepo.update(league, input)))
+            case None => BadRequest("Specified league id does not exist")
           }
         }
         //scala.concurrent.Future{ Ok(views.html.index())}
@@ -261,27 +251,29 @@ class LeagueController @Inject()(
     updateForm.bindFromRequest().fold(failure, success)
   }
 
-  private def updateOldRanks(leagueId: Int): Future[Either[Result, Any]] = {
+  private def updateOldRanks(leagueId: Int): Either[Result, Any] = {
     // TODO also update pickee ranks
-    Future{
-      val leagueUserStatsOverall = from(
-        AppDB.leagueTable, AppDB.leagueUserTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatOverallTable
-      )((l, lu, lus, luso) =>
-        where(luso.leagueUserStatId === lus.id and lus.leagueUserId === lu.id and lu.leagueId === leagueId)
-        select(luso) orderBy(luso.value desc)
-      )
-      val newLeagueUserStatsOverall = leagueUserStatsOverall.zipWithIndex.map(
-        {case (luso, i) => luso.oldRank = i + 1; luso}
-      )
-      AppDB.leagueUserStatOverallTable.update(newLeagueUserStatsOverall)
-      Right(true)
-    }
+    // TODO this needs to group by the stat field.
+    // currently will do weird ranks
+    for {
+      league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
+      statFieldIds = league.statFields.map(_.id)
+      _ = statFieldIds.map(sId => {
+        //val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat(leagueId, sId, None, false)
+        // [(LeagueUserStat, LeagueUserStatDaily)].map(_._1)
+        val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat[(LeagueUserStat, LeagueUserStatDaily)](leagueId, sId, None, false).map(_._1)
+        val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
+          { case (lus, i) => lus.previousRank = i + 1; lus }
+        )
+        // can do all update in one call if append then update outside loop
+        leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
+      })
+      out = Right(Ok("Updated previous ranks"))
+    } yield out
   }
 
-  private def storeHistoricTeam(leagueId: Int): Future[Result] = {
-    Future{
-      Ok("yeah boi")
-    }
+  private def storeHistoricTeam(leagueId: Int): Either[Result, Result] = {
+    Right(Ok("Updated old ranks and historic team"))
   }
 
   private def incrementDay(leagueId: Int): Future[Result] = {

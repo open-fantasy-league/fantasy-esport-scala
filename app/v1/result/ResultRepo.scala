@@ -6,7 +6,8 @@ import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
-import models._
+import models.AppDB._
+import models.{Resultu}
 import scala.collection.mutable.ArrayBuffer
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -30,7 +31,7 @@ trait ResultRepo{
 @Singleton
 class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepo{
   override def show(id: Long): Option[Resultu] = {
-    AppDB.resultTable.lookup(id)
+    resultTable.lookup(id)
   }
 
 

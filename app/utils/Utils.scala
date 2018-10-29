@@ -18,9 +18,9 @@ object CostConverter {
   def unconvertCost(cost: Double): Int = (cost * 10).toInt
 }
 
-object TryInserter {
+object TryHelper {
 
-  def tryInsert[T](block: () => T, errorResponse: Result): Either[Result, T] = {
+  def tryOrResponse[T](block: () => T, errorResponse: Result): Either[Result, T] = {
     Try(block()).toOption.toRight(errorResponse)
   }
 }

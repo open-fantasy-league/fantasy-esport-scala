@@ -6,7 +6,8 @@ import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
-import models._
+import models.AppDB._
+import models.{League, LeagueStatField}
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -15,31 +16,40 @@ class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 
 trait LeagueRepo{
   def get(id: Int): Option[League]
-  def insertLeague(formInput: LeagueFormInput): League
-  def getStatFields(league: League): Array[String]
+  def insert(formInput: LeagueFormInput): League
+  def update(league: League, input: UpdateLeagueFormInput): League
+  def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
 }
 
 @Singleton
 class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
   override def get(id: Int): Option[League] = {
-    AppDB.leagueTable.lookup(id)
+    leagueTable.lookup(id)
   }
 
-  override def getStatFields(league: League): Array[String] = {
-    league.statFields.map(_.name).toArray
+  override def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String] = {
+    statFields.map(_.name).toArray
   }
 
-  override def insertLeague(input: LeagueFormInput): League = {
-    AppDB.leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
+  override def insert(input: LeagueFormInput): League = {
+    leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
       input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
       input.transferLimit, input.factionLimit, input.factionDescription,
       CostConverter.unconvertCost(input.startingMoney), input.teamSize
     ))
   }
 
+  override def update(league: League, input: UpdateLeagueFormInput): League = {
+    league.name = input.name.getOrElse(league.name)
+    league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
+    // etc for other fields
+    leagueTable.update(league)
+    league
+  }
+
   override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField = {
-    AppDB.leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
+    leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
   }
 }
 
