@@ -14,6 +14,7 @@ object AppDB extends Schema {
   val leagueStatFieldTable = table[LeagueStatField]
   val pickeeTable = table[Pickee]
   val teamPickeeTable = table[TeamPickee]
+  val historicTeamPickeeTable = table[HistoricTeamPickee]
   val pickeeStatTable = table[PickeeStat]
   val pickeeStatDailyTable = table[PickeeStatDaily]
   val friendTable = table[Friend]

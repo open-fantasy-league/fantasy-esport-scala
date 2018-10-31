@@ -147,7 +147,7 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          out <- storeHistoricTeam(leagueId)
+          out <- addHistoricTeam(leagueId)
         } yield out).fold(identity, identity)
       }
     }
@@ -259,9 +259,7 @@ class LeagueController @Inject()(
       league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
       statFieldIds = league.statFields.map(_.id)
       _ = statFieldIds.map(sId => {
-        //val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat(leagueId, sId, None, false)
-        // [(LeagueUserStat, LeagueUserStatDaily)].map(_._1)
-        val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat[(LeagueUserStat, LeagueUserStatDaily)](leagueId, sId, None, false).map(_._1)
+        val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat(leagueId, sId, None).map(_._1)
         val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
           { case (lus, i) => lus.previousRank = i + 1; lus }
         )
@@ -272,8 +270,12 @@ class LeagueController @Inject()(
     } yield out
   }
 
-  private def storeHistoricTeam(leagueId: Int): Either[Result, Result] = {
-    Right(Ok("Updated old ranks and historic team"))
+  private def addHistoricTeam(leagueId: Int): Either[Result, Result] = {
+    for {
+      league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
+      _ = leagueUserRepo.addHistoricTeams(league)
+      out <- Right(Ok("Updated old ranks and historic team"))
+    } yield out
   }
 
   private def incrementDay(leagueId: Int): Future[Result] = {

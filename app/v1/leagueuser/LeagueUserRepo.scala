@@ -10,7 +10,7 @@ import play.api.libs.json._
 import scala.util.Try
 
 import models.AppDB._
-import models.{League, User, LeagueUser, LeagueStatField, LeagueUserStat, LeagueUserStatDaily}
+import models.{League, User, LeagueUser, LeagueStatField, LeagueUserStat, LeagueUserStatDaily, TeamPickee, HistoricTeamPickee}
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -54,13 +54,12 @@ trait LeagueUserRepo{
   def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Int, statFieldName: String): Option[LeagueStatField]
   def getRankings(league: League, statField: LeagueStatField, day: Option[Int]): LeagueRankings
-  def getLeagueUserStat[T](leagueId: Int, statFieldId: Long, day: Option[Int], withUser: Boolean): Query[T]
-//  def getLeagueUserStatOverallWithUser(leagueId: Int, statFieldId: Long): Query[(User, LeagueUserStatOverall)]
-//  def getLeagueUserStatDaily(leagueId: Int, statFieldId: Long): Query[LeagueUserStatOverall]
-//  def getLeagueUserStatDailyWithUser(leagueId: Int, statFieldId: Long): Query[(User, LeagueUserStatOverall)]
-//  def updateLeagueUserStat(newLeagueUserStatsOverall: Iterable[LeagueUserStatOverall]): Unit
+  def getLeagueUserStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStatWithUser(leagueId: Int, statFieldId: Long, day: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
+  def addHistoricTeams(league: League)
+  def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int)
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
 }
@@ -93,65 +92,58 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getRankings(league: League, statField: LeagueStatField, day: Option[Int]): LeagueRankings = {
-    val rankings = this.getLeagueUserStat[(User, LeagueUserStat, LeagueUserStatDaily)](league.id, statField.id, day, true)
+    val rankings = this.getLeagueUserStatWithUser(league.id, statField.id, day)
     LeagueRankings(
       league.id, league.name, statField.name,
       rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, Some(q._2.previousRank))})
     )
   }
-  override def getLeagueUserStat[T](leagueId: Int, statFieldId: Long, day: Option[Int], withUser: Boolean): Query[T] = {
-    // TODO conditionally return user and stats, or just stats
-    withUser match {
-      case false => {
-        from(
-          leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
-        )((lu, lus, s) =>
-          where(
-            lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-              lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
-          )
-            select (lus, s)
-            orderBy (s.value desc)
-        )
-      }
-      case true => {
-        from(
-          userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
-        )((u, lu, lus, s) =>
-          where(
-            lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-              lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
-          )
-            select ((u, lus, s))
-            orderBy (s.value desc)
-        )
-      }
-    }
+  override def getLeagueUserStat(
+                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                ): Query[(LeagueUserStat, LeagueUserStatDaily)] = {
+    from(
+      leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
+    )((lu, lus, s) =>
+      where(
+        lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
+      )
+        select (lus, s)
+        orderBy (s.value desc)
+    )
   }
-//  //TODO dry above and below
-//  override def getLeagueUserStatOverallWithUser(leagueId: Int, statFieldId: Long): Query[(User, LeagueUserStatOverall)] = {
-//    // TODO conditionally return user and stats, or just stats
-//    //TODO just npass in table?
-//    //val statTable = leagueUserStatOverallTable
-//    from (
-//      userTable, leagueUserTable, leagueUserStatTable, table
-//    )((u, lu, lus, s) =>
-//      where(
-//        lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-//          lu.leagueId === leagueId and lus.statFieldId === statFieldId
-//      )
-//        // TODO add s.oldrank
-//        select((u, s))
-//        orderBy(s.value desc)
-//    )
-//  }
-//
+
+  override def getLeagueUserStatWithUser(
+                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                ): Query[(User, LeagueUserStat, LeagueUserStatDaily)] = {
+      from(
+        userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
+      )((u, lu, lus, s) =>
+        where(
+          lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
+            lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
+        )
+          select ((u, lus, s))
+          orderBy (s.value desc)
+      )
+  }
+
   override def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily]): Unit = {
     leagueUserStatDailyTable.update(newLeagueUserStatsDaily)
   }
 
   override def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat]): Unit = {
     leagueUserStatTable.update(newLeagueUserStats)
+  }
+
+  override def addHistoricTeams(league: League): Unit ={
+    (for{
+      _ <- league.users.associations.map(_.team).map(addHistoricPickee(_, league.currentDay))
+    } yield None)
+  }
+
+  override def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int) = {
+    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentDay)))
   }
 }
 
