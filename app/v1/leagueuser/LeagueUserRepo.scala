@@ -60,6 +60,7 @@ trait LeagueUserRepo{
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def addHistoricTeams(league: League)
   def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int)
+  def getHistoricTeams(league: League, day: Int): Map[User, Iterable[(HistoricTeamPickee, User, LeagueUser)]]
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
 }
@@ -145,5 +146,11 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   override def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int) = {
     historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentDay)))
   }
+
+  override def getHistoricTeams(league: League, day: Int): Map[User, Iterable[(HistoricTeamPickee, User, LeagueUser)]] = {
+    from(historicTeamPickeeTable, leagueUserTable, leagueTable, userTable)(
+      (h, lu, l, u) => where(lu.leagueId === league.id and h.day === day and u.id === lu.userId)
+        select ((h, u, lu))
+  ).groupBy(_._2)}
 }
 

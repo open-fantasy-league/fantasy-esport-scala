@@ -71,6 +71,10 @@ object AppDB extends Schema {
     oneToManyRelation(pickeeTable, teamPickeeTable).
       via((p, o) => (p.id === o.pickeeId))
 
+  val pickeeToHistoricTeamPickee =
+    oneToManyRelation(pickeeTable, historicTeamPickeeTable).
+      via((p, o) => (p.id === o.pickeeId))
+
   val pickeeToPickeeStat =
     oneToManyRelation(pickeeTable, pickeeStatTable).
       via((p, o) => (p.id === o.pickeeId))

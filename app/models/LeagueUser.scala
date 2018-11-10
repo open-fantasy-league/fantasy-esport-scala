@@ -2,6 +2,7 @@ package models
 
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
+import play.api.libs.json._
 
 class LeagueUser(
                   val leagueId: Int,
@@ -14,6 +15,18 @@ class LeagueUser(
   val id: Long = 0
   lazy val team = AppDB.leagueUserToTeamPickee.left(this)
   lazy val league = AppDB.leagueUserTable.leftTable
+}
+
+object LeagueUser{
+  implicit val implicitWrites = new Writes[LeagueUser] {
+    def writes(lu: LeagueUser): JsValue = {
+      Json.obj(
+        "id" -> lu.id,
+        "userId" -> lu.userId,
+        "leagueId" -> lu.leagueId,
+      )
+    }
+  }
 }
 
 

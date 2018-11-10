@@ -20,6 +20,7 @@ trait LeagueRepo{
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
+  def incrementDay(league: League)
 }
 
 @Singleton
@@ -50,6 +51,12 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
 
   override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField = {
     leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
+  }
+
+  override def incrementDay(league: League) = {
+    // check if is above max?
+    league.currentDay += 1
+    leagueTable.update(league)
   }
 }
 

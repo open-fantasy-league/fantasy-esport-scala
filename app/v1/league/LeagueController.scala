@@ -153,17 +153,30 @@ class LeagueController @Inject()(
     }
   }
 
-  def incrementDayReq(leagueId: String) = Action.async { implicit request =>
+  def getHistoricTeamsReq(leagueId: String, day: String) = Action.async { implicit request =>
     Future {
-      IdParser.parseIntId(leagueId, "league") match {
-        case Left(x) => x
-        case Right(leagueId) => {
-          incrementDay(leagueId)
-          Ok("Incremented Day")
-        }
+      inTransaction {
+        (for {
+          day <- IdParser.parseIntId(day, "day")
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, day)))
+        } yield out).fold(identity, identity)
       }
     }
-    //    scala.concurrent.Future{ Ok(views.html.index())}
+  }
+
+  def incrementDayReq(leagueId: String) = Action.async { implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          _ = leagueRepo.incrementDay(league)
+          out = Ok("Incremented day")
+        } yield out).fold(identity, identity)
+      }
+    }
   }
 
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
@@ -276,11 +289,5 @@ class LeagueController @Inject()(
       _ = leagueUserRepo.addHistoricTeams(league)
       out <- Right(Ok("Updated old ranks and historic team"))
     } yield out
-  }
-
-  private def incrementDay(leagueId: Int): Future[Result] = {
-    Future{
-      Ok("yeah boi")
-    }
   }
 }

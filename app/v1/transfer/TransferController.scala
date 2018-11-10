@@ -40,7 +40,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   def processTransfersReq(leagueId: String) = Action.async(parse.json) { implicit request =>
     Future {
       inTransaction {
-        org.squeryl.Session.currentSession.setLogger(String => Unit)
+        //org.squeryl.Session.currentSession.setLogger(String => Unit)
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
