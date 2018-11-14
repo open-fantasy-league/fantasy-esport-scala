@@ -32,6 +32,12 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                                  tournamentId: Option[Int], totalDays: Option[Int],
                            dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
 
+case class RepricePickeeFormInput(id: Long, cost: Double)
+
+case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
+
+//case class RepriceFormInput(data: List[])
+
 
 class LeagueController @Inject()(
                                   cc: ControllerComponents, leagueRepo: LeagueRepo,
@@ -88,6 +94,29 @@ class LeagueController @Inject()(
         "dayEnd" -> optional(longNumber),
         "transferOpen" -> optional(boolean),
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
+    )
+  }
+
+//  private val repriceForm: Form[RepricePickeeFormInputList] = {
+//
+//    Form(
+//      mapping("pickees" -> list(
+//        mapping("id" -> of(longFormat), "isInternalId" -> default(boolean, false), "price" -> of(doubleFormat))
+//      (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
+//      ))(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
+//    )
+//  }
+
+  private val repriceForm: Form[RepricePickeeFormInputList] = {
+
+    Form(
+      mapping(
+        "isInternalId" -> default(boolean, false),
+        "pickees" -> list(
+          mapping("id" -> of(longFormat), "cost" -> of(doubleFormat))
+          (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
+        )
+      )(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
     )
   }
 
@@ -177,6 +206,47 @@ class LeagueController @Inject()(
         } yield out).fold(identity, identity)
       }
     }
+  }
+
+  def recalibratePickees(leagueId: String) = Action.async { implicit request =>
+
+    def failure(badForm: Form[RepricePickeeFormInputList]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(inputs: RepricePickeeFormInputList) = {
+      Future {
+        inTransaction {
+          (for {
+            leagueId <- IdParser.parseIntId(leagueId, "league")
+            leaguePickees = leagueRepo.getPickees(leagueId)
+            pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
+            _ = pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
+              // TODO need convert cost
+              p.cost = CostConverter.unconvertCost(pickees.get(p.id).get.cost); p
+            }))
+            out = BadRequest("Specified league id does not exist")
+          } yield out).fold(identity, identity)
+        }
+        //scala.concurrent.Future{ Ok(views.html.index())}
+        //      postResourceHandler.create(input).map { post =>
+        //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
+        //      }
+        // TODO good practice post-redirect-get
+      }
+    }
+
+    repriceForm.bindFromRequest().fold(failure, success)
+//    Future {
+//      inTransaction {
+//        (for {
+//          leagueId <- IdParser.parseIntId(leagueId, "league")
+//          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+//          _ = leagueRepo.incrementDay(league)
+//          out = Ok("Incremented day")
+//        } yield out).fold(identity, identity)
+//      }
+//    }
   }
 
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {

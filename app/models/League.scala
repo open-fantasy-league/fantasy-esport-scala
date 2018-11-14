@@ -82,9 +82,9 @@ object League{
         "pickee" -> league.pickeeDescription,
         "dayStart" -> league.dayStart,
         "dayEnd" -> league.dayEnd,
+        "currentDay" -> league.currentDay,
         "pointsMultiplier" -> league.pointsMultiplier,
         "teamSize" -> league.teamSize,
-        //val captain: Boolean,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
       )

@@ -103,6 +103,10 @@ object AppDB extends Schema {
     oneToManyRelation(resultTable, pointsTable).
       via((r, p) => (r.id === p.resultId))
 
+  val statFieldToPoints =
+    oneToManyRelation(leagueStatFieldTable, pointsTable).
+      via((s, p) => (s.id === p.pointsFieldId))
+
   val userToNotification =
     oneToManyRelation(userTable, notificationTable).
       via((u, o) => (u.id === o.userId))

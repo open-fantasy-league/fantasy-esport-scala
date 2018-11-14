@@ -51,15 +51,24 @@ class Transfer(
                 val cost: Double
 ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val pickee = AppDB.pickeeToTransfer.right(this).single
+}
 
-//  lazy val tradePickee = (pickeeId: Long, tradeInput: tradeInputForm){
-//    if (true){
-//      tradeInputForm.isBuy match {
-//        case true => "aaa"
-//        case false => "bbb"
-//      }
-//    }
-//  }
+object Transfer{
+  implicit val implicitWrites = new Writes[Transfer] {
+    def writes(t: Transfer): JsValue = {
+      Json.obj(
+        "isBuy" -> t.isBuy,
+        "scheduledFor" -> t.scheduledFor,
+        "processed" -> t.processed,
+        "cost" -> t.cost,
+        "internalPickeeId" -> t.pickeeId,
+        "externalPickeeId" -> t.pickee.externalId,
+        "pickeeName" -> t.pickee.name
+        // TODO add external id
+      )
+    }
+  }
 }
 
 //class UserXp(

@@ -6,7 +6,8 @@ import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
-import models._
+import models.AppDB._
+import models.{Pickee, PickeeStat, PickeeStatDaily}
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -19,13 +20,15 @@ trait PickeeRepo{
   def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
   def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
+  def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Iterable[(Pickee, PickeeStat, PickeeStatDaily)]
+  //def getPickees(leagueId: Int): Iterable[Pickee]
 }
 
 @Singleton
 class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends PickeeRepo{
 
   override def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee = {
-    AppDB.pickeeTable.insert(new Pickee(
+    pickeeTable.insert(new Pickee(
       leagueId,
       pickee.name,
       pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
@@ -37,15 +40,32 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat = {
-    AppDB.pickeeStatTable.insert(new PickeeStat(
+    pickeeStatTable.insert(new PickeeStat(
       statFieldId, pickeeId
     ))
   }
 
   override def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily = {
-    AppDB.pickeeStatDailyTable.insert(new PickeeStatDaily(
+    pickeeStatDailyTable.insert(new PickeeStatDaily(
       pickeeStatId, day
     ))
   }
+
+  override def getPickeeStat(
+                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                ): Iterable[(Pickee, PickeeStat, PickeeStatDaily)] = {
+    from(
+      pickeeTable, pickeeStatTable, pickeeStatDailyTable
+    )((p, ps, s) =>
+      where(
+        ps.pickeeId === p.id and s.pickeeStatId === ps.id and
+          p.leagueId === leagueId and ps.statFieldId === statFieldId and s.day === day
+      )
+        select (p, ps, s)
+        orderBy (s.value desc)
+    )
+  }
+
+  //override def getPickees(leagueId: Int): Iterable[Pickee]
 }
 

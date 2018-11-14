@@ -52,31 +52,6 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
     )
   }
 
-//  def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
-//
-//    inTransaction {
-//      // TODO check not already joined
-//      (for {
-//        userId <- parseIntId(userId, "User")
-//        leagueId <- parseIntId(leagueId, "League")
-//        user <- AppDB.userTable.lookup(userId.toInt).toRight(BadRequest("User does not exist"))
-//        league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
-//        added <- Try(league.users.associate(user)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
-//        success = "Successfully added user to league"
-//      } yield success).fold(identity, Created(_))
-//    }
-//  }
-
-//  def show(userId: String) = Action { implicit request =>
-//    inTransaction {
-//      (for{
-//        userId <- parseIntId(userId, "User")
-//        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-//        success = Created(Json.toJson(user))
-//      } yield success).fold(identity, identity)
-//    }
-//  }
-
   def add(leagueId: String) = Action.async(parse.json){ implicit request =>
     processJsonResult(leagueId)
     //    scala.concurrent.Future{ Ok(views.html.index())}
@@ -192,5 +167,22 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         // now update league user points if pickee in team
     }})).toOption.toRight(InternalServerError("Internal server error updating stats"))
 
+  }
+
+  def getReq(leagueId: String) = Action.async { implicit request =>
+    Future{
+      inTransaction {
+        (for {
+          leagueId <- parseIntId(leagueId, "League")
+          league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+          day <- request.getQueryString("day") match{
+            case Some(d) => parseIntId(d, "day");
+            case None => Right(None)
+          }
+          success = "Successfully added results"
+        } yield success).fold(identity, Created(_))
+        //Future{Ok(views.html.index())}
+      }
+    }
   }
 }

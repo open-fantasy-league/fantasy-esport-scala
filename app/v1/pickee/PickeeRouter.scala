@@ -1,4 +1,4 @@
-package v1.result
+package v1.pickee
 
 import javax.inject.Inject
 
@@ -7,8 +7,8 @@ import play.api.routing.SimpleRouter
 import play.api.routing.sird._
 
 
-class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter {
-  val prefix = "/v1/results"
+class PickeeRouter @Inject()(controller: PickeeController) extends SimpleRouter {
+  val prefix = "/v1/pickees"
 
   def link(id: Int): String = {
     import com.netaporter.uri.dsl._
@@ -18,8 +18,8 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
 
   override def routes: Routes = {
 
-    case POST(p"/$leagueId") =>
-      controller.add(leagueId)
+//    case POST(p"/$leagueId") =>
+//      controller.add(leagueId)
 
     case GET(p"/$leagueId") =>
       controller.getReq(leagueId)

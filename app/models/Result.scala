@@ -2,6 +2,7 @@ package models
 
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
+import play.api.libs.json._
 
 class Resultu(  // Result is play/scala keyword. renaming makes things simpler/more obvious
               val matchId: Long,
@@ -13,6 +14,21 @@ class Resultu(  // Result is play/scala keyword. renaming makes things simpler/m
               // rather than having to sum points matches every time want to show match results.
             ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val pickee = AppDB.pickeeToResult.right(this)
+}
+
+object Resultu{
+  implicit val implicitWrites = new Writes[Resultu] {
+    def writes(r: Resultu): JsValue = {
+      Json.obj(
+        "id" -> r.matchId,
+        "startTime" -> r.startTstamp,
+        "addedTime" -> r.addedTstamp,
+        "pickee" -> r.pickee.single
+        //"contactable" -> user.contactable
+      )
+    }
+  }
 }
 
 class Points(
@@ -22,6 +38,17 @@ class Points(
             ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val result = AppDB.resultToPoints.right(this)
+  lazy val statField = AppDB.statFieldToPoints.right(this)
+}
+
+object Points{
+  implicit val implicitWrites = new Writes[Points] {
+    def writes(p: Points): JsValue = {
+      Json.obj(
+        p.statField.single.name -> p.value
+      )
+    }
+  }
 }
 
 class Matchu( // because match is an sql keyword
@@ -36,4 +63,14 @@ class Matchu( // because match is an sql keyword
             )
   extends KeyedEntity[Long] {
   val id: Long = 0
+}
+
+object Matchu{
+  implicit val implicitWrites = new Writes[Matchu] {
+    def writes(m: Matchu): JsValue = {
+      Json.obj(
+        "id" -> m.id,
+      )
+    }
+  }
 }
