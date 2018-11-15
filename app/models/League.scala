@@ -7,6 +7,7 @@ import org.squeryl.KeyedEntity
 import play.api.libs.json._
 
 import scala.collection.mutable.ArrayBuffer
+import entry.SquerylEntrypointForMyApp._
 
 //trait Domain[Int] {
 //  self: CustomType[Int] =>
@@ -53,7 +54,7 @@ class League(
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
-  lazy val statFields = AppDB.leagueToLeagueStatField.left(this)
+  lazy val statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   //def dayIter: Iter[Int] = Seq(0, this.totalDays) // append -1
@@ -65,6 +66,23 @@ class League(
     0, false, 0, 1.0, 0.5, 0, "", true, false, false
   )
 
+}
+
+class LeagueStatField(
+                       val leagueId: Int,
+                       val name: String  // Index this
+                     ) extends KeyedEntity[Long] {
+  val id: Long = 0
+}
+
+object LeagueStatField{
+  implicit val implicitWrites = new Writes[LeagueStatField] {
+    def writes(lsf: LeagueStatField): JsValue = {
+      Json.obj(
+        "name" -> lsf.name
+      )
+    }
+  }
 }
 
 
@@ -87,6 +105,7 @@ object League{
         "teamSize" -> league.teamSize,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
+        "statFields" -> league.statFields
       )
     }
   }
@@ -102,23 +121,6 @@ class LeaguePrize(
                  ) extends KeyedEntity[Int] {
   val id: Int = 0
 }
-
-class LeagueStatField(
-                        val leagueId: Int,
-                        val name: String  // Index this
-                      ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
-
-//object LeagueStatField{
-//  implicit val implicitWrites = new Writes[LeagueStatField] {
-//    def writes(lsf: LeagueStatField): JsValue = {
-//      Json.obj(
-//        "name" -> lsf.name
-//      )
-//    }
-//  }
-//}
 
 case class LeaguePlusStuff(league: League, lsf: Array[String])
 

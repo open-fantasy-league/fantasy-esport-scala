@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
-import models.{Pickee, PickeeStat, PickeeStatDaily}
+import models.{Pickee, PickeeStat, PickeeStatDaily, LeagueStatField}
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -20,7 +20,7 @@ trait PickeeRepo{
   def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
   def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
-  def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Iterable[(Pickee, PickeeStat, PickeeStatDaily)]
+  def getPickeeStats(leagueId: Int, day: Option[Int]): Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField)]
   //def getPickees(leagueId: Int): Iterable[Pickee]
 }
 
@@ -51,17 +51,18 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     ))
   }
 
-  override def getPickeeStat(
-                                  leagueId: Int, statFieldId: Long, day: Option[Int]
-                                ): Iterable[(Pickee, PickeeStat, PickeeStatDaily)] = {
+  override def getPickeeStats(
+                                  leagueId: Int, day: Option[Int]
+                                ): Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField)] = {
     from(
-      pickeeTable, pickeeStatTable, pickeeStatDailyTable
-    )((p, ps, s) =>
+      pickeeTable, pickeeStatTable, pickeeStatDailyTable, leagueStatFieldTable
+    )((p, ps, s, lsf) =>
       where(
         ps.pickeeId === p.id and s.pickeeStatId === ps.id and
-          p.leagueId === leagueId and ps.statFieldId === statFieldId and s.day === day
+          p.leagueId === leagueId and ps.statFieldId === lsf.id and s.day === day
       )
-        select (p, ps, s)
+        select (p, ps, s, lsf)
+        orderBy (lsf)
         orderBy (s.value desc)
     )
   }

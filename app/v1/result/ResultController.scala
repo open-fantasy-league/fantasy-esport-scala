@@ -175,10 +175,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         (for {
           leagueId <- parseIntId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
-          day <- request.getQueryString("day") match{
-            case Some(d) => parseIntId(d, "day");
-            case None => Right(None)
-          }
+          day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
           success = "Successfully added results"
         } yield success).fold(identity, Created(_))
         //Future{Ok(views.html.index())}

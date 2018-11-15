@@ -16,7 +16,7 @@ import models.AppDB._
 import utils.IdParser.parseIntId
 import utils.TryHelper.tryOrResponse
 
-class PickeeController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   def getReq(leagueId: String) = Action.async { implicit request =>
@@ -27,7 +27,19 @@ class PickeeController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           league <- leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
           out = Ok(Json.toJson(league.pickees.where(_ => _).toSeq))
         } yield out).fold(identity, identity)
-        //Future{Ok(views.html.index())}
+      }
+    }
+  }
+
+  def getStatsReq(leagueId: String) = Action.async { implicit request =>
+    Future{
+      inTransaction {
+        (for {
+          leagueId <- parseIntId(leagueId, "League")
+          league <- leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+          day <- tryOrResponse(() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, day)))
+        } yield out).fold(identity, identity)
       }
     }
   }
