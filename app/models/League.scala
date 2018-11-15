@@ -75,15 +75,15 @@ class LeagueStatField(
   val id: Long = 0
 }
 
-object LeagueStatField{
-  implicit val implicitWrites = new Writes[LeagueStatField] {
-    def writes(lsf: LeagueStatField): JsValue = {
-      Json.obj(
-        "name" -> lsf.name
-      )
-    }
-  }
-}
+//object LeagueStatField{
+//  implicit val implicitWrites = new Writes[LeagueStatField] {
+//    def writes(lsf: LeagueStatField): JsValue = {
+//      Json.obj(
+//        "name" -> lsf.name
+//      )
+//    }
+//  }
+//}
 
 
 object League{
@@ -105,14 +105,11 @@ object League{
         "teamSize" -> league.teamSize,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
-        "statFields" -> league.statFields
+        "statFields" -> league.statFields.map(_.name)
       )
     }
   }
 }
-
-// var (\w+): \w+[^,\n]+
-// "$1" -> league.$1
 
 class LeaguePrize(
                    val leagueId: Int,
@@ -120,32 +117,4 @@ class LeaguePrize(
                    var email: String
                  ) extends KeyedEntity[Int] {
   val id: Int = 0
-}
-
-case class LeaguePlusStuff(league: League, lsf: Array[String])
-
-
-object LeaguePlusStuff{
-  implicit val implicitWrites = new Writes[LeaguePlusStuff] {
-    def writes(leagueps: LeaguePlusStuff): JsValue = {
-      Json.obj(
-        "id" -> leagueps.league.id,
-        "name" -> leagueps.league.name,
-        "gameId" -> leagueps.league.gameId,
-        "tournamentId" -> leagueps.league.tournamentId,
-        "isPrivate" -> leagueps.league.isPrivate,
-        "tournamentId" -> leagueps.league.tournamentId,
-        "totalDays" -> leagueps.league.totalDays,
-        "pickee" -> leagueps.league.pickeeDescription,
-        "dayStart" -> leagueps.league.dayStart,
-        "dayEnd" -> leagueps.league.dayEnd,
-        "pointsMultiplier" -> leagueps.league.pointsMultiplier,
-        "teamSize" -> leagueps.league.teamSize,
-        //val captain: Boolean,
-        "transferLimit" -> leagueps.league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
-        "startingMoney" -> leagueps.league.startingMoney,
-        "statFields" -> leagueps.lsf
-      )
-    }
-  }
 }

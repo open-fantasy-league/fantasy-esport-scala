@@ -15,7 +15,7 @@ import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
 import utils.TryHelper._
 import models.AppDB._
-import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, LeaguePlusStuff}
+import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField}
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
@@ -126,8 +126,7 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-          statFields = leagueRepo.getStatFieldNames(league.statFields)
-          finished = Ok(Json.toJson(LeaguePlusStuff(league, statFields)))
+          finished = Ok(Json.toJson(league))
         } yield finished).fold(identity, identity)
       }
     }
