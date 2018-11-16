@@ -108,7 +108,6 @@ class LeagueController @Inject()(
 
   def add = Action.async(parse.json){ implicit request =>
     processJsonLeague()
-//    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
   def getRankingsReq(leagueId: String, statFieldName: String) = Action.async { implicit request =>
@@ -223,12 +222,6 @@ class LeagueController @Inject()(
         Future {
           Created(Json.toJson(newLeague))
         }
-        //Future{Ok(views.html.index())}
-        //scala.concurrent.Future{ Ok(views.html.index())}
-        //      postResourceHandler.create(input).map { post =>
-        //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-        //      }
-        // TODO good practice post-redirect-get
       }
     }
 
@@ -244,18 +237,12 @@ class LeagueController @Inject()(
       println("yay")
       Future {
         inTransaction {
-          // TODO handle invalid Id
-          val leagueQuery = leagueRepo.get(Integer.parseInt(leagueId))
-          leagueQuery match {
-            case Some(league) => Ok(Json.toJson(leagueRepo.update(league, input)))
-            case None => BadRequest("Specified league id does not exist")
-          }
+          (for {
+            leagueId <- IdParser.parseIntId(leagueId, "league")
+            league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+            out = Ok(Json.toJson(leagueRepo.update(league, input)))
+          } yield out).fold(identity, identity)
         }
-        //scala.concurrent.Future{ Ok(views.html.index())}
-        //      postResourceHandler.create(input).map { post =>
-        //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-        //      }
-        // TODO good practice post-redirect-get
       }
     }
 
@@ -263,19 +250,25 @@ class LeagueController @Inject()(
   }
 
   private def updateOldRanks(leagueId: Int): Either[Result, Any] = {
-    // TODO also update pickee ranks
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
     for {
       league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
       statFieldIds = league.statFields.map(_.id)
       _ = statFieldIds.map(sId => {
-        val leagueUserStatsOverall = leagueUserRepo.getLeagueUserStat(leagueId, sId, None).map(_._1)
+        val leagueUserStatsOverall: Query[LeagueUserStat] =
+          leagueUserRepo.getLeagueUserStat(leagueId, sId, None).map(_._1)
         val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
           { case (lus, i) => lus.previousRank = i + 1; lus }
         )
         // can do all update in one call if append then update outside loop
         leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
+        val pickeeStatsOverall = pickeeRepo.getPickeeStat(leagueId, sId, None).map(_._1)
+        val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
+          { case (p, i) => p.previousRank = i + 1; p }
+        )
+        // can do all update in one call if append then update outside loop
+        pickeeStatTable.update(newPickeeStat)
       })
       out = Right(Ok("Updated previous ranks"))
     } yield out

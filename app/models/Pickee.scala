@@ -78,6 +78,7 @@ object HistoricTeamPickee{
 class PickeeStat(
                        val statFieldId: Long,
                        val pickeeId: Long,
+                       var previousRank: Int = 0
                      ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
