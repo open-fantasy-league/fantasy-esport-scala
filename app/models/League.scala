@@ -75,16 +75,6 @@ class LeagueStatField(
   val id: Long = 0
 }
 
-//object LeagueStatField{
-//  implicit val implicitWrites = new Writes[LeagueStatField] {
-//    def writes(lsf: LeagueStatField): JsValue = {
-//      Json.obj(
-//        "name" -> lsf.name
-//      )
-//    }
-//  }
-//}
-
 
 object League{
   implicit val implicitWrites = new Writes[League] {

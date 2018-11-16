@@ -21,7 +21,6 @@ trait LeagueRepo{
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
   def incrementDay(league: League)
-  def getPickees(leagueId: Int): Iterable[Pickee]
 }
 
 @Singleton
@@ -58,13 +57,6 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     // check if is above max?
     league.currentDay += 1
     leagueTable.update(league)
-  }
-
-  override def getPickees(leagueId: Int): Iterable[Pickee] = {
-    from(pickeeTable, leagueTable)(
-      (p, l) => where(p.leagueId === l.id)
-      select(p)
-    )
   }
 }
 

@@ -43,4 +43,42 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       }
     }
   }
+
+  private val repriceForm: Form[RepricePickeeFormInputList] = {
+
+    Form(
+      mapping(
+        "isInternalId" -> default(boolean, false),
+        "pickees" -> list(
+          mapping("id" -> of(longFormat), "cost" -> of(doubleFormat))
+          (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
+        )
+      )(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
+    )
+  }
+
+  def recalibratePickees(leagueId: String) = Action.async { implicit request =>
+
+    def failure(badForm: Form[RepricePickeeFormInputList]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(inputs: RepricePickeeFormInputList) = {
+      Future {
+        inTransaction {
+          (for {
+            leagueId <- IdParser.parseIntId(leagueId, "league")
+            leaguePickees = leagueRepo.getPickees(leagueId)
+            pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
+            _ = pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
+              // TODO need convert cost
+              p.cost = CostConverter.unconvertCost(pickees.get(p.id).get.cost); p
+            }))
+            out = BadRequest("Specified league id does not exist")
+          } yield out).fold(identity, identity)
+        }
+      }
+    }
+    repriceForm.bindFromRequest().fold(failure, success)
+  }
 }

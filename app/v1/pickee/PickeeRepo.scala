@@ -17,6 +17,10 @@ class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 
 case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
 
+case class RepricePickeeFormInput(id: Long, cost: Double)
+
+case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
+
 case class PickeeStatOutput(statField: String, value: Double)
 case class PickeeOutput(externalId: Int, name: String, stats: List[PickeeStatOutput])
 
@@ -52,7 +56,7 @@ trait PickeeRepo{
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
   def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
   def getPickeeStats(leagueId: Int, day: Option[Int]): List[PickeeOutput]
-  //def getPickees(leagueId: Int): Iterable[Pickee]
+  def getPickees(leagueId: Int): Iterable[Pickee]
 }
 
 @Singleton
@@ -95,13 +99,16 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         select (p, ps, s, lsf)
         orderBy (lsf.name, s.value desc)
     )
-    // inputs.pickees.map(p => p.id -> p).toMap
-    //.groupBy(_._1).mapValues(_.groupBy(_._2).mapValues(_.map(_._3)))
     val grouped = query.groupBy(_._1).mapValues(_.groupBy(_._4).mapValues(_.head._3))
     grouped.map({case (k, v) =>
       PickeeOutput(k.externalId, k.name, v.map({case (k2, v2) => PickeeStatOutput(k2.name, v2.value)}).toList)}).toList
   }
 
-  //override def getPickees(leagueId: Int): Iterable[Pickee]
+  override def getPickees(leagueId: Int): Iterable[Pickee] = {
+    from(pickeeTable, leagueTable)(
+      (p, l) => where(p.leagueId === l.id)
+        select(p)
+    )
+  }
 }
 
