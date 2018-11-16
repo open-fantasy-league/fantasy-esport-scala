@@ -13,6 +13,7 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import scala.util.Try
 import models.AppDB._
+import utils.CostConverter.unconvertCost
 import utils.IdParser.parseIntId
 import utils.TryHelper.tryOrResponse
 
@@ -68,10 +69,10 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         inTransaction {
           (for {
             leagueId <- parseIntId(leagueId, "league")
-            leaguePickees = leagueRepo.getPickees(leagueId)
+            leaguePickees = pickeeRepo.getPickees(leagueId)
             pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             _ = pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
-              p.cost = CostConverter.unconvertCost(pickees.get(p.id).get.cost); p
+              p.cost = unconvertCost(pickees.get(p.id).get.cost); p
             }))
             out = BadRequest("Specified league id does not exist")
           } yield out).fold(identity, identity)

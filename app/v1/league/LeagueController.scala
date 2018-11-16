@@ -256,7 +256,7 @@ class LeagueController @Inject()(
       league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
       statFieldIds = league.statFields.map(_.id)
       _ = statFieldIds.map(sId => {
-        val leagueUserStatsOverall: Query[LeagueUserStat] =
+        val leagueUserStatsOverall: Iterable[LeagueUserStat] =
           leagueUserRepo.getLeagueUserStat(leagueId, sId, None).map(_._1)
         val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
           { case (lus, i) => lus.previousRank = i + 1; lus }

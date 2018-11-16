@@ -57,7 +57,7 @@ trait PickeeRepo{
   def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
   def getPickeeStats(leagueId: Int, day: Option[Int]): List[PickeeOutput]
   def getPickees(leagueId: Int): Iterable[Pickee]
-  def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Query[(PickeeStat, PickeeStatDaily)]
+  def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
 }
 
 @Singleton
@@ -114,12 +114,12 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
   override def getPickeeStat(
                                   leagueId: Int, statFieldId: Long, day: Option[Int]
-                                ): Query[(PickeeStat, PickeeStatDaily)] = {
+                                ): Iterable[(PickeeStat, PickeeStatDaily)] = {
     from(
-      pickeeTable, pickeeTableStatTable, pickeeTableStatDailyTable
+      pickeeTable, pickeeStatTable, pickeeStatDailyTable
     )((p, ps, s) =>
       where(
-        ps.pickeeTableId === p.id and s.pickeeTableStatId === ps.id and
+        ps.pickeeId === p.id and s.pickeeStatId === ps.id and
           p.leagueId === leagueId and ps.statFieldId === statFieldId and s.day === day
       )
         select (ps, s)
