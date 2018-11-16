@@ -35,10 +35,6 @@ object Pickee{
 class TeamPickee(
                   var pickeeId: Long,
                   var leagueUserId: Long
-                  // different field for scoring and scheduledForSale because with delays, a hero can be scheduled to be sold
-                  // but still be currently earning points.
-                // soldTstamp
-                // boughtTstamp
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single

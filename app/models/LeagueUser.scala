@@ -20,31 +20,6 @@ class LeagueUser(
   lazy val transfers = AppDB.leagueUserToTransfer.left(this)
 }
 
-case class FullLeagueUser(
-                           leagueUser: LeagueUser, user: User, team: Iterable[TeamPickee], transfers: Iterable[Transfer]
-                         )
-
-//TODO is there a .all?
-object FullLeagueUser{
-  implicit val implicitWrites = new Writes[FullLeagueUser] {
-    def writes(w: FullLeagueUser): JsValue = {
-      Json.obj(
-        "id" -> w.leagueUser.id,
-        "userId" -> w.user.id,
-        "leagueId" -> w.leagueUser.leagueId,
-        "username" -> w.user.username,
-        "money" -> unconvertCost(w.leagueUser.money),
-        "entered" -> w.leagueUser.entered,
-        "remainingTransfers" -> w.leagueUser.remainingTransfers,
-        "team" -> w.team,
-        "scheduledTransferTime" -> w.leagueUser.changeTstamp,
-        "scheduledTransfers" -> w.transfers
-      )
-    }
-  }
-}
-
-
 class LeagueUserStat(
                        val statFieldId: Long,
                        val leagueUserId: Long,

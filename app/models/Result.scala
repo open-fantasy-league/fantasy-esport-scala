@@ -15,6 +15,7 @@ class Resultu(  // Result is play/scala keyword. renaming makes things simpler/m
             ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToResult.right(this)
+  lazy val points = AppDB.resultToPoints.left(this)
 }
 
 object Resultu{
@@ -25,7 +26,6 @@ object Resultu{
         "startTime" -> r.startTstamp,
         "addedTime" -> r.addedTstamp,
         "pickee" -> r.pickee.single
-        //"contactable" -> user.contactable
       )
     }
   }

@@ -13,9 +13,9 @@ import models.{AppDB, User}
 import utils.IdParser.parseIntId
 import com.github.t3hnar.bcrypt._
 
-case class UserFormInput(name: String, password: String, email: Option[String], contactable: Boolean)
+case class UserFormInput(username: String, externalId: Option[Long])
 
-case class UpdateUserFormInput(name: Option[String], email: Option[String], contactable: Option[Boolean])
+case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
 class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -24,10 +24,8 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
 
     Form(
       mapping(
-        "name" -> nonEmptyText,
-        "password" -> nonEmptyText,
-        "email" -> optional(nonEmptyText),
-        "contactable" -> boolean
+        "username" -> nonEmptyText,
+        "externalId" -> optional(of(longFormat))
       )(UserFormInput.apply)(UserFormInput.unapply)
     )
   }
@@ -36,9 +34,8 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
 
     Form(
       mapping(
-        "name" -> optional(nonEmptyText),
-        "email" -> optional(nonEmptyText),
-        "contactable" -> optional(boolean)
+        "username" -> optional(nonEmptyText),
+        "externalId" -> optional(of(longFormat))
       )(UpdateUserFormInput.apply)(UpdateUserFormInput.unapply)
     )
   }
@@ -86,21 +83,9 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     def success(input: UserFormInput) = {
       println("yay")
       inTransaction {
-        val newUser = AppDB.userTable.insert(new User(input.name, input.password.bcrypt, input.email, input.contactable))
-//        for pickee in pickees{
-//          val newPickee = AppDB.pickeeTable.insert(new Pickee)
-//          for day in blah{
-//            PickeeStats
-//          }
-//        }
+        val newUser = AppDB.userTable.insert(new User(input.username, input.externalId))
         Future {Created(Json.toJson(newUser)) }
-        //Future{Ok(views.html.index())}
       }
-      //scala.concurrent.Future{ Ok(views.html.index())}
-//      postResourceHandler.create(input).map { post =>
-//      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-//      }
-      // TODO good practice post-redirect-get
     }
 
     form.bindFromRequest().fold(failure, success)
@@ -124,11 +109,6 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
           } yield finished).fold(identity, identity)
         }
       }
-      //scala.concurrent.Future{ Ok(views.html.index())}
-      //      postResourceHandler.create(input).map { post =>
-      //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-      //      }
-      // TODO good practice post-redirect-get
     }
 
     updateForm.bindFromRequest().fold(failure, success)
