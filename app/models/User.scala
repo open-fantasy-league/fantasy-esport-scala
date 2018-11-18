@@ -6,14 +6,14 @@ import org.squeryl.KeyedEntity
 import play.api.libs.json._
 
 class User(
-            val externalId: Option[Long],
             var username: String,
+            val externalId: Option[Long],
           ) extends KeyedEntity[Int] {
   val id: Int = 0
 
   // If a class has an Option[] field, it becomes mandatory
   // to implement a zero argument constructor
-  def this() = this(None, "")
+  def this() = this("", None)
 
   lazy val leagues = AppDB.leagueUserTable.right(this)
 }

@@ -10,8 +10,8 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import models.{AppDB, User}
+import play.api.data.format.Formats._
 import utils.IdParser.parseIntId
-import com.github.t3hnar.bcrypt._
 
 case class UserFormInput(username: String, externalId: Option[Long])
 
