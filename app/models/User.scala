@@ -30,13 +30,6 @@ object User{
   }
 }
 
-class Friend(
-              val userId: Int,
-              val friendId: Int
-            ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
-
 class Transfer(
                 val leagueUserId: Long,
                 val pickeeId: Long,
