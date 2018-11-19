@@ -161,18 +161,15 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   private def validateFactionLimit(newTeamIds: Set[Int], league: League): Either[Result, Any] = {
     //Right("cat")
     // TODO errrm this is a bit messy
-    league.factionLimit match {
-      case Some(factionLimit) => {
-        league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).groupBy(_.faction)
-          .forall(_._2.size <= factionLimit) match {
-          case true => Right(true)
-          case false => Left(BadRequest(
-            f"Exceeds faction limit of $league.factionLimit"
-          ))
-        }
+    league.factions.forall(factionType => {
+      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.factions).groupBy(_.factionTypeId)
+        .forall({case (k, v) => v.size <= v.head.max})
+    }) match {
+        case true => Right(true)
+        case false => Left(BadRequest(
+          f"Exceeds faction limit"
+        ))
       }
-      case None => Right(true)
-    }
 //    val newSize = currentTeam.length - toSell.size() + toBuy.size()
 //    newSize match {
 //      case x if x <= league.teamSize => Right(x)

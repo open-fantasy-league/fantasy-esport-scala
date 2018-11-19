@@ -11,7 +11,10 @@ object AppDB extends Schema {
   val leagueUserStatTable = table[LeagueUserStat]
   val leagueUserStatDailyTable = table[LeagueUserStatDaily]
   val leagueStatFieldTable = table[LeagueStatField]
+  val periodTable = table[Period]
   val pickeeTable = table[Pickee]
+  val factionTypeTable = table[FactionType]
+  val factionTable = table[Faction]
   val teamPickeeTable = table[TeamPickee]
   val historicTeamPickeeTable = table[HistoricTeamPickee]
   val pickeeStatTable = table[PickeeStat]
@@ -27,6 +30,18 @@ object AppDB extends Schema {
   val leagueUserTable =
   manyToManyRelation(leagueTable, userTable).
     via[LeagueUser]((l, u, lu) => (lu.leagueId === l.id, u.id === lu.userId))
+
+  val leagueToFactionType =
+    oneToManyRelation(leagueTable, factionTypeTable).
+      via((l, ft) => (l.id === ft.leagueId))
+
+  val factionTypeToFaction =
+    oneToManyRelation(factionTypeTable, factionTable).
+      via((ft, f) => (ft.id === f.factionTypeId))
+
+  val pickeeFactionTable =
+    manyToManyRelation(pickeeTable, factionTable).
+      via[PickeeFaction]((p, f, pf) => (pf.pickeeId === p.id, f.id === pf.factionId))
 
   // lets do all our oneToMany foreign keys
   val leagueUserToLeagueUserStat =

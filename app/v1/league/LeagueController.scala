@@ -16,13 +16,23 @@ import utils.{CostConverter, IdParser}
 import utils.TryHelper._
 import auth.AuthAction
 import models.AppDB._
-import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField}
+import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, FactionType, Faction,
+  PickeeFaction
+}
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
-case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, totalDays: Int,
-                           dayStart: Long, dayEnd: Long, teamSize: Int, transferLimit: Option[Int], factionLimit: Option[Int],
-                           factionDescription: Option[String], startingMoney: Double,
+case class PeriodInput(start: Timestamp, end: Timestamp, multiplier: Double)
+
+case class FactionInput(name: String, max: Option[Int])
+
+case class FactionTypeInput(name: String, description: Option[String], max: Option[Int], types: List[FactionInput])
+
+
+// TODO period descriptor
+case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int,
+                           periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
+                           factions: List[FactionTypeInput], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
@@ -48,14 +58,23 @@ class LeagueController @Inject()(
         "gameId" -> number,
         "isPrivate" -> boolean,
         "tournamentId" -> number,
-        "totalDays" -> number(min=1, max=100),
-        "dayStart" -> longNumber,
-        "dayEnd" -> longNumber,
+        "periods" -> list(mapping(
+          "start" -> of(sqlTimestampFormat),
+          "end" -> of(sqlTimestampFormat),
+          "multiplier" -> default(of(doubleFormat), 1.0)
+        )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
         //"captain" -> default(boolean, false),
         "transferLimit" -> optional(number), // use -1 for no transfer limit I think
-        "factionLimit" -> optional(number),  // i.e. 2 for max 2 eg players per team
-        "factionDescription" -> optional(nonEmptyText),  // i.e. Team for describing factions as being different teams. Race for sc2 races
+        "factions" -> list(mapping(
+          "name" -> nonEmptyText,
+          "description" -> optional(nonEmptyText),
+          "max" -> optional(number),
+          "types" -> list(mapping(
+            "name" -> nonEmptyText,
+            "max" -> optional(number)
+          )(FactionInput.apply)(FactionInput.unapply))
+        )(FactionTypeInput.apply)(FactionTypeInput.unapply)),
         "startingMoney" -> default(of(doubleFormat), 50.0),
         "transferDelay" -> default(number, 0),
         //"factions" -> List of stuff
@@ -119,8 +138,9 @@ class LeagueController @Inject()(
           leagueId <- IdParser.parseIntId(leagueId, "league")
           statField <- leagueUserRepo.getStatField(leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
           rankings <- tryOrResponse(
-            () => leagueUserRepo.getRankings(league, statField, None), InternalServerError("internal Server Error")
+            () => leagueUserRepo.getRankings(league, statField, day), InternalServerError("internal Server Error")
           )
           out = Ok(Json.toJson(rankings))
         } yield out).fold(identity, identity)
@@ -192,35 +212,29 @@ class LeagueController @Inject()(
         val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
         val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
-        // TODO make sure stat fields static cant be changed once tournament in progress
-        //statFields = statFields ++ input.extraStats.flatMap(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
+        val newPickees = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _))
+        val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
+        val newPickeeStats = statFields.flatMap(sf => newPickees.map(np => pickeeRepo.insertPickeeStat(sf, np.id)))
+        val newLeagueUserStats = statFields.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.id)))
 
-        for (pickee <- input.pickees) {
-          val newPickee = pickeeRepo.insertPickee(newLeague.id, pickee)
+        newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
+        newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
 
-          // -1 is for whole tournament
-          statFields.foreach(
-            statFieldId => {
-              val newPickeeStat = pickeeRepo.insertPickeeStat(statFieldId, newPickee.id)
-              pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, None)
-              (1 to input.totalDays).foreach(d => {
-                pickeeRepo.insertPickeeStatDaily(newPickeeStat.id, Some(d))
-              })
+        (input.periods.zipWithIndex).foreach({case (p, i) => {
+          leagueRepo.insertPeriod(newLeague.id, p, i+1)
+          newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
+          newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
+        }})
+
+        input.factions.foreach(ft => {
+          val newFactionType = factionTypeTable.insert(
+            new FactionType(newLeague.id, ft.name, ft.description.getOrElse(ft.name), ft.max)
+          )
+          ft.types.foreach(f => {
+            val newFaction = factionTable.insert(new Faction(newFactionType.id, f.name, ft.max.getOrElse(f.max.get)))
+            newPickees.foreach(np => pickeeFactionTable.insert(new PickeeFaction(np.id, newFaction.id)))
           })
-        }
-
-        for (userId <- input.users) {
-          val newLeagueUser = leagueUserRepo.insertLeagueUser(newLeague, userId)
-
-          statFields.foreach(
-            statFieldId => {
-              val newLeagueUserStat = leagueUserRepo.insertLeagueUserStat(statFieldId, newLeagueUser.id)
-              leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, None)
-              (1 to input.totalDays).foreach(d => {
-                leagueUserRepo.insertLeagueUserStatDaily(newLeagueUserStat.id, Some(d))
-              })
-          })
-        }
+        })
 
         Future {
           Created(Json.toJson(newLeague))

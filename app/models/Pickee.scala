@@ -2,6 +2,7 @@ package models
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
+import entry.SquerylEntrypointForMyApp._
 
 class Pickee(
               val leagueId: Int,
@@ -13,6 +14,7 @@ class Pickee(
               var active: Boolean = true
             ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val factions = from(AppDB.pickeeFactionTable.left(this))(select(_)).toList
 
   def this() = this(0, "", 0, None, 0, true)
 }
@@ -84,5 +86,12 @@ class PickeeStatDaily(
                             val day: Option[Int],
                             var value: Double = 0.0
                           ) extends KeyedEntity[Long] {
+  val id: Long = 0
+}
+
+class PickeeFaction(
+                  val pickeeId: Long,
+                  val factionId: Long,
+                ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

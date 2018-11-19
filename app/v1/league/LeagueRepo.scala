@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
-import models.{League, LeagueStatField, Pickee}
+import models.{League, LeagueStatField, Pickee, Period}
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -20,6 +20,7 @@ trait LeagueRepo{
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
+  def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period
   def incrementDay(league: League)
 }
 
@@ -35,9 +36,8 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
 
   override def insert(input: LeagueFormInput): League = {
     leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
-      input.totalDays, new Timestamp(input.dayStart), new Timestamp(input.dayEnd), input.pickeeDescription,
-      input.transferLimit, input.factionLimit, input.factionDescription,
-      CostConverter.unconvertCost(input.startingMoney), input.teamSize
+      input.pickeeDescription,
+      input.transferLimit, CostConverter.unconvertCost(input.startingMoney), input.teamSize
     ))
   }
 
@@ -51,6 +51,10 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
 
   override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField = {
     leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
+  }
+
+  override def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period = {
+    periodTable.insert(new Period(leagueId, day, input.start, input.end, input.multiplier))
   }
 
   override def incrementDay(league: League) = {
