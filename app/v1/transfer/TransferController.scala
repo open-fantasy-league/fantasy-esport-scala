@@ -170,13 +170,6 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
           f"Exceeds faction limit"
         ))
       }
-//    val newSize = currentTeam.length - toSell.size() + toBuy.size()
-//    newSize match {
-//      case x if x <= league.teamSize => Right(x)
-//      case x => Left(BadRequest(
-//        f"Exceeds maximum team size of $league.teamSize"
-//      ))
-//    }
   }
 
 //  private def processTransferOrJustCheck() = {
@@ -230,23 +223,4 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     AppDB.transferTable.update(transfers.map(t =>{t.processed = true; t}))
     leagueUser.changeTstamp = None
     AppDB.leagueUserTable.update(leagueUser)
-
-//      .foreach(
-//      // remove or add to team. set transfer to processed
-//      t => {
-//        t.processed = true
-//
-//      }
-//    )
-//    AppDB.teamPickeeTable.update(leagueUser.team.filter(!_.scoring).map(h => {h.scoring := true; h}))
-////    update(leagueUser.team)(h =>
-////      where(h.active === false)
-////      set(h.active := true)
-////    )
-//    AppDB.teamPickeeTable.deleteWhere(tp => tp.scheduledForSale === true and tp.leagueUserId === leagueUser.id)
-    //leagueUser.team.deleteWhere(h => h.reserve === true)
-  }
-//  private def processTransfers(leagueId: Int): Either[Result, Result] = {
-//    //
-//  }
 }
