@@ -148,25 +148,27 @@ class LeagueController @Inject()(
     }
   }
 
-  def updateOldRanksReq(leagueId: String) = Action.async(parse.json){ implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
-          _ <- updateOldRanks(leagueId)
-          out = Ok("Updated old ranking")
-        } yield out).fold(identity, identity)
-      }
-    }
-  }
-
-  def storeHistoricTeamsReq(leagueId: String) = Action.async { implicit request =>
+  def endDayReq(leagueId: String) = authAct.async {implicit request =>
     Future {
       inTransaction {
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           out <- addHistoricTeam(leagueId)
+        } yield out).fold(identity, identity)
+      }
+    }
+  }
+
+  def startDayReq(leagueId: String) = authAct.async {implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          _ = leagueRepo.incrementDay(league)
+          _ <- updateOldRanks(leagueId)
+          out = Ok("Updated old ranking")
         } yield out).fold(identity, identity)
       }
     }
@@ -180,20 +182,6 @@ class LeagueController @Inject()(
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, day)))
-        } yield out).fold(identity, identity)
-      }
-    }
-  }
-
-  def incrementDayReq(leagueId: String) = (authAct.async) { implicit request =>
-    println(request.apikey)
-    Future {
-      inTransaction {
-        (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          _ = leagueRepo.incrementDay(league)
-          out = Ok("Incremented day")
         } yield out).fold(identity, identity)
       }
     }

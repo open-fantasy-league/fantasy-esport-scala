@@ -220,7 +220,10 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     AppDB.teamPickeeTable.deleteWhere(tp =>
       (tp.leagueUserId === leagueUser.id) and (tp.pickeeId in transfers.filter(!_.isBuy))
     )
-    AppDB.transferTable.update(transfers.map(t =>{t.processed = true; t}))
+    AppDB.transferTable.update(transfers.map(t => {
+      t.processed = true; t
+    }))
     leagueUser.changeTstamp = None
     AppDB.leagueUserTable.update(leagueUser)
+  }
 }

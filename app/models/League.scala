@@ -29,7 +29,8 @@ class League(
               var url: String = "",
               var autoUpdate: Boolean = true,
               var started: Boolean = false,
-              var ended: Boolean = false
+              var ended: Boolean = false,
+              var currentPeriod: Option[Period] = None
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
@@ -87,6 +88,7 @@ class Period(
             var start: Timestamp,
             var end: Timestamp,
             var multiplier: Double = 1.0,
+            var ended: Boolean = false,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
