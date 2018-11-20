@@ -37,7 +37,7 @@ object AppDB extends Schema {
 
   val factionTypeToFaction =
     oneToManyRelation(factionTypeTable, factionTable).
-      via((ft, f) => (ft.id === f.factionTypeId))
+      via((ft, o) => (ft.id === o.factionTypeId))
 
   val pickeeFactionTable =
     manyToManyRelation(pickeeTable, factionTable).
@@ -62,6 +62,10 @@ object AppDB extends Schema {
 
   val leagueToPickee =
     oneToManyRelation(leagueTable, pickeeTable).
+      via((l, o) => (l.id === o.leagueId))
+
+  val leagueToPeriod =
+    oneToManyRelation(leagueTable, periodTable).
       via((l, o) => (l.id === o.leagueId))
 
   val leagueToMatch =

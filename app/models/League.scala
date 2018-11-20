@@ -36,7 +36,8 @@ class League(
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
   lazy val statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
-  lazy val factions = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
+  lazy val factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
+  lazy val periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
@@ -54,29 +55,6 @@ class LeagueStatField(
   val id: Long = 0
 }
 
-
-object League{
-  implicit val implicitWrites = new Writes[League] {
-    def writes(league: League): JsValue = {
-      Json.obj(
-        "id" -> league.id,
-        "name" -> league.name,
-        "gameId" -> league.gameId,
-        "tournamentId" -> league.tournamentId,
-        "isPrivate" -> league.isPrivate,
-        "tournamentId" -> league.tournamentId,
-        "pickee" -> league.pickeeDescription,
-        "currentDay" -> league.currentDay,
-        "pointsMultiplier" -> league.pointsMultiplier,
-        "teamSize" -> league.teamSize,
-        "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
-        "startingMoney" -> league.startingMoney,
-        "statFields" -> league.statFields.map(_.name)
-      )
-    }
-  }
-}
-
 class LeaguePrize(
                    val leagueId: Int,
                    var description: String,
@@ -92,6 +70,7 @@ class FactionType(
                   var max: Option[Int] = None
                  ) extends KeyedEntity[Long] {
   val id: Long = 0
+  lazy val factions = from(AppDB.factionTypeToFaction.left(this))(select(_)).toList
 }
 
 class Faction(
@@ -110,4 +89,76 @@ class Period(
             var multiplier: Double = 1.0,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
+}
+
+
+object Faction{
+  implicit val implicitWrites = new Writes[Faction] {
+    def writes(f: Faction): JsValue = {
+      Json.obj(
+        "name" -> f.name,
+        "max" -> f.max
+      )
+    }
+  }
+}
+
+object LeaguePrize{
+  implicit val implicitWrites = new Writes[LeaguePrize] {
+    def writes(lp: LeaguePrize): JsValue = {
+      Json.obj(
+        "description" -> lp.description,
+        "email" -> lp.email
+      )
+    }
+  }
+}
+
+object Period{
+  implicit val implicitWrites = new Writes[Period] {
+    def writes(p: Period): JsValue = {
+      Json.obj(
+        "value" -> p.value,
+        "start" -> p.start,
+        "end" -> p.end,
+        "multiplier" -> p.multiplier
+      )
+    }
+  }
+}
+
+object FactionType{
+  implicit val implicitWrites = new Writes[FactionType] {
+    def writes(ft: FactionType): JsValue = {
+      Json.obj(
+        "name" -> ft.name,
+        "description" -> ft.description,
+        "factions" -> ft.factions
+      )
+    }
+  }
+}
+
+object League{
+  implicit val implicitWrites = new Writes[League] {
+    def writes(league: League): JsValue = {
+      Json.obj(
+        "id" -> league.id,
+        "name" -> league.name,
+        "gameId" -> league.gameId,
+        "tournamentId" -> league.tournamentId,
+        "isPrivate" -> league.isPrivate,
+        "tournamentId" -> league.tournamentId,
+        "pickee" -> league.pickeeDescription,
+        "currentDay" -> league.currentDay,
+        "pointsMultiplier" -> league.pointsMultiplier,
+        "teamSize" -> league.teamSize,
+        "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+        "startingMoney" -> league.startingMoney,
+        "statFields" -> league.statFields.map(_.name),
+        "factionTypes" -> league.factionTypes,
+        "periods" -> league.periods
+      )
+    }
+  }
 }
