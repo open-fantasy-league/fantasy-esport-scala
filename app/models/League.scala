@@ -23,7 +23,6 @@ class League(
               var transferDelay: Int = 0, // Only applies for when day 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
-              var currentDay: Int = 0, // TODO currentDay to currentPeriod
               var pointsMultiplier: Double = 1.0,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var phase: Int = 0,
@@ -45,7 +44,7 @@ class League(
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
   def this() = this(
     "", 1, 1, false, 0, "", None, false, 0, 5, 0,
-    0, false, 0, 1.0, 0.5, 0, "", true, false, false
+    0, false, 1.0, 0.5, 0, "", true, false, false
   )
 
 }
@@ -92,6 +91,10 @@ class Period(
             var ended: Boolean = false,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
+
+  def this() = this(
+    0, 0, new Timestamp(System.currentTimeMillis()), new Timestamp(System.currentTimeMillis())
+  )
 }
 
 
@@ -153,14 +156,14 @@ object League{
         "isPrivate" -> league.isPrivate,
         "tournamentId" -> league.tournamentId,
         "pickee" -> league.pickeeDescription,
-        "currentDay" -> league.currentDay,
         "pointsMultiplier" -> league.pointsMultiplier,
         "teamSize" -> league.teamSize,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
         "statFields" -> league.statFields.map(_.name),
         "factionTypes" -> league.factionTypes,
-        "periods" -> league.periods
+        "periods" -> league.periods,
+        "currentPeriod" -> league.currentPeriod
       )
     }
   }

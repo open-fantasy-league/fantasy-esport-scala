@@ -10,7 +10,7 @@ import play.api.libs.json._
 import scala.util.Try
 
 import models.AppDB._
-import models.{League, User, LeagueUser, LeagueStatField, LeagueUserStat, LeagueUserStatDaily, TeamPickee, HistoricTeamPickee}
+import models._
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
@@ -59,7 +59,7 @@ trait LeagueUserRepo{
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def addHistoricTeams(league: League)
-  def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int)
+  def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def getHistoricTeams(league: League, day: Int): Map[User, Iterable[(HistoricTeamPickee, User)]]
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
@@ -140,12 +140,12 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
 
   override def addHistoricTeams(league: League): Unit ={
     (for{
-      _ <- league.users.associations.map(_.team).map(addHistoricPickee(_, league.currentDay))
+      _ <- league.users.associations.map(_.team).map(addHistoricPickee(_, league.currentPeriod.getOrElse(new Period()).value))
     } yield None)
   }
 
-  override def addHistoricPickee(team: Iterable[TeamPickee], currentDay: Int) = {
-    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentDay)))
+  override def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int) = {
+    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentPeriod)))
   }
 
   override def getHistoricTeams(league: League, day: Int): Map[User, Iterable[(HistoricTeamPickee, User)]] = {

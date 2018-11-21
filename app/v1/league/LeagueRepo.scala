@@ -64,12 +64,10 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
       case Some(p) if !p.ended => println("Must end current day before start next")
       case Some(p) => {
         league.currentPeriod = Some(league.periods.find(np => np.value == p.value + 1).get)
-        league.currentDay += 1
         leagueTable.update(league)
     }
       case None => {
         league.currentPeriod = Some(league.periods(0))
-        league.currentDay += 1
         leagueTable.update(league)
       }
     }

@@ -12,7 +12,7 @@ import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
 import scala.util.Try
-import models.{AppDB, League, LeagueUser, Pickee, TeamPickee, Transfer}
+import models._
 import utils.{IdParser, CostConverter}
 
 case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, delaySeconds: Option[Int])
@@ -95,7 +95,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelay)
             finished <- if (input.isCheck) Right(Ok("Transfers are valid")) else
-              updateDBScheduleTransfer(sell, buy, league.pickees, leagueUser, league.currentDay, newMoney, newRemaining, transferDelay)
+              updateDBScheduleTransfer(sell, buy, league.pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay)
           } yield finished).fold(identity, identity)
         }
       }

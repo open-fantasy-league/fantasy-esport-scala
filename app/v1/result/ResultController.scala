@@ -12,7 +12,7 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import scala.util.Try
-import models.{AppDB, League, Matchu, Resultu, Points}
+import models._
 import utils.IdParser.parseIntId
 import utils.TryHelper.tryOrResponse
 
@@ -99,7 +99,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
   private def newMatch(input: ResultFormInput, league: League): Either[Result, Matchu] = {
     // TODO log/get original stack trace
     tryOrResponse[Matchu](() => AppDB.matchTable.insert(new Matchu(
-      league.id, input.matchId, league.currentDay, input.tournamentId, input.teamOne, input.teamTwo,
+      league.id, input.matchId, league.currentPeriod.getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
       input.teamOneVictory
     )), InternalServerError("Internal server error adding match"))
   }
@@ -149,7 +149,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
         println(pickeeStat)
         // has both the specific day and the overall entry
         val pickeeStats = AppDB.pickeeStatDailyTable.where(
-          psd => psd.pickeeStatId === pickeeStat.id and (psd.day === league.currentDay or psd.day.isNull)
+          psd => psd.pickeeStatId === pickeeStat.id and (psd.day === league.currentPeriod.getOrElse(new Period()).value or psd.day.isNull)
         )
         AppDB.pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
         val leagueUsers = from(AppDB.leagueUserTable)(lu =>
@@ -160,7 +160,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId
         )
         val leagueUserStats = AppDB.leagueUserStatDailyTable.where(
-          lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.day === league.currentDay or lud.day.isNull)
+          lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.day === league.currentPeriod.getOrElse(new Period()).value or lud.day.isNull)
         )
         AppDB.leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
         true // whats a good thing to put here
