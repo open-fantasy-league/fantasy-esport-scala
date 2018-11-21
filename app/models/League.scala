@@ -25,11 +25,8 @@ class League(
               var transferOpen: Boolean = false,
               var pointsMultiplier: Double = 1.0,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
-              var phase: Int = 0,
               var url: String = "",
               var autoUpdate: Boolean = true,
-              var started: Boolean = false,
-              var ended: Boolean = false,
               var currentPeriod: Option[Period] = None
             ) extends KeyedEntity[Int] {
   val id: Int = 0
@@ -39,12 +36,14 @@ class League(
   lazy val statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   lazy val factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
   lazy val periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
+  lazy val started = this.currentPeriod.isEmpty
+  lazy val ended = this.periods.takeRight(0)(0).ended
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
   def this() = this(
     "", 1, 1, false, 0, "", None, false, 0, 5, 0,
-    0, false, 1.0, 0.5, 0, "", true, false, false
+    0
   )
 
 }
