@@ -32,7 +32,7 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 // TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
-                           factions: List[FactionTypeInput], startingMoney: Double,
+                           transferWildcard: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
@@ -66,6 +66,7 @@ class LeagueController @Inject()(
         "teamSize" -> default(number(min=1, max=20), 5),
         //"captain" -> default(boolean, false),
         "transferLimit" -> optional(number), // use -1 for no transfer limit I think
+        "transferWildcard" -> boolean,
         "factions" -> list(mapping(
           "name" -> nonEmptyText,
           "description" -> optional(nonEmptyText),
@@ -154,6 +155,14 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          _ <- league.currentPeriod match {
+            case Some(p) if !p.ended => {
+              p.ended = true
+              periodTable.update(p)
+              Right(true)
+            }
+            case _ => Left(BadRequest("Period already ended (Must start next period first)"))
+          }
           out <- addHistoricTeam(leagueId)
         } yield out).fold(identity, identity)
       }

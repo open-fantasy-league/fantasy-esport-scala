@@ -17,6 +17,7 @@ class League(
               var tournamentId: Int,
               var pickeeDescription: String,
               var transferLimit: Option[Int],
+              var transferWildcard: Boolean,
               var startingMoney: Int,
               val teamSize: Int = 5,
               var transferDelay: Int = 0, // Only applies for when day 1 has started
@@ -43,7 +44,7 @@ class League(
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
   def this() = this(
-    "", 1, 1, false, 0, "", None, 0, 5, 0,
+    "", 1, 1, false, 0, "", None, false, 0, 5, 0,
     0, false, 0, 1.0, 0.5, 0, "", true, false, false
   )
 

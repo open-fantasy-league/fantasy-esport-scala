@@ -70,7 +70,8 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
 
   override def insertLeagueUser(league: League, userId: Int): LeagueUser = {
     leagueUserTable.insert(new LeagueUser(
-      league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit
+      league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit,
+      !league.transferWildcard
     ))
   }
 
