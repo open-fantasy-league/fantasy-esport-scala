@@ -60,14 +60,13 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
   override def incrementDay(league: League) = {
     // check if is above max?
     league.currentPeriod match {
-        // TODO throw not print
       case Some(p) if !p.ended => println("Must end current day before start next")
       case Some(p) => {
-        league.currentPeriod = Some(league.periods.find(np => np.value == p.value + 1).get)
+        league.currentPeriodId = Some(league.periods.find(np => np.value == p.value + 1).get.id)
         leagueTable.update(league)
     }
       case None => {
-        league.currentPeriod = Some(league.periods(0))
+        league.currentPeriodId = Some(league.periods(0).id)
         leagueTable.update(league)
       }
     }

@@ -27,7 +27,7 @@ class League(
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var url: String = "",
               var autoUpdate: Boolean = true,
-              var currentPeriod: Option[Period] = None
+              var currentPeriodId: Option[Long] = None
             ) extends KeyedEntity[Int] {
   val id: Int = 0
 
@@ -36,15 +36,16 @@ class League(
   lazy val statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   lazy val factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
   lazy val periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
-  lazy val started = this.currentPeriod.isEmpty
+  //lazy val currentPeriod = from(AppDB.leagueToPeriod.left(this))((p) => where(p.id === this.currentPeriodId)).single
+  def currentPeriod: Option[Period] = AppDB.periodTable.lookup(this.currentPeriodId.getOrElse(-1L))
+  //lazy val currentPeriod: Option[Period] = this.periods.find(p => p.id == this.currentPeriodId)
+  //def currentPeriod: Option[Period] = from(AppDB.leagueToPeriod.left(this))(select(_)).toList.find(_.id == this.currentPeriodId)
+  lazy val started = this.currentPeriodId.isEmpty
   lazy val ended = this.periods.takeRight(0)(0).ended
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
-  def this() = this(
-    "", 1, 1, false, 0, "", None, false, 0, 5, 0,
-    0
-  )
+  def this() = this("", 1, 1, false, 0, "", None, false, 0)
 
 }
 
