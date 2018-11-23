@@ -1,10 +1,10 @@
-curl -v -H "Content-Type: application/json" -X POST -d '{"name": "cat", "externalId": 3}' localhost:9000/api/v1/users
+curl -v -H "Content-Type: application/json" -X POST -d '{"username": "cat", "externalId": 3}' localhost:9000/api/v1/users
 
-curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI99", "tournamentId": 5401, "gameId": 1, "pickeeDescription": "Hero", "pickees": [{"id": 1, "name": "dog", "value": 20.0, "faction": "animal"}, {"id": 2, "name": "Lich", "value": 10.1, "faction": "yep"}], "factions": {"factionLimit": 2, "factionDescription": "Team"}, "extraStats": ["wins", "picks", "bans"], "users": [1]}' localhost:9000/api/v1/leagues
+curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI99", "tournamentId": 5401, "gameId": 1, "pickeeDescription": "Hero", "transferWildcard": false, "pickees": [{"id": 1, "name": "dog", "value": 20.0, "faction": "animal"}, {"id": 2, "name": "Lich", "value": 10.1, "faction": "yep"}], "factions": [{"name": "role", "types": [{"name": "Support", "max": 2}, {"name": "Core", "max": 3}]}, {"name": "Team", "max": 2,"types": [{"name": "EG"}, {"name": "VP"}]}], "extraStats": ["wins", "picks", "bans"], "users": [1], "periods": [{"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 2}]}' localhost:9000/api/v1/leagues
 
 curl -X PUT localhost:9000/api/v1/users/1/join/1
 
-curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"identifier": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost:9000/api/v1/results/1
+curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06", "pickees": [{"identifier": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost:9000/api/v1/results/1
 
 # store old ranks
 # store historic teams (also get)

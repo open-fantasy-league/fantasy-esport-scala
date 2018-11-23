@@ -33,15 +33,15 @@ class League(
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
-  lazy val statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
-  lazy val factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
-  lazy val periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
+  def statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
+  def factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
+  def periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
   //lazy val currentPeriod = from(AppDB.leagueToPeriod.left(this))((p) => where(p.id === this.currentPeriodId)).single
   def currentPeriod: Option[Period] = AppDB.periodTable.lookup(this.currentPeriodId.getOrElse(-1L))
   //lazy val currentPeriod: Option[Period] = this.periods.find(p => p.id == this.currentPeriodId)
   //def currentPeriod: Option[Period] = from(AppDB.leagueToPeriod.left(this))(select(_)).toList.find(_.id == this.currentPeriodId)
-  lazy val started = this.currentPeriodId.isEmpty
-  lazy val ended = this.periods.takeRight(0)(0).ended
+  def started = this.currentPeriodId.isEmpty
+  def ended = this.periods.takeRight(1)(0).ended
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
@@ -160,10 +160,10 @@ object League{
         "teamSize" -> league.teamSize,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
-        "statFields" -> league.statFields.map(_.name),
-        "factionTypes" -> league.factionTypes,
-        "periods" -> league.periods,
-        "currentPeriod" -> league.currentPeriod
+        //"statFields" -> league.statFields.map(_.name),
+        //"factionTypes" -> league.factionTypes,
+        //"periods" -> league.periods,
+        //"currentPeriod" -> league.currentPeriod
       )
     }
   }

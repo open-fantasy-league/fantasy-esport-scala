@@ -14,8 +14,12 @@ import scala.collection.mutable.ArrayBuffer
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
+case class LeagueFull(league: League, factions: List[FactionTypes], periods: List[Period], currentPeriod: Option[Period], statFields: List[LeagueStatField])
+
+case class LeagueFullQuery(league: League, period: Option[Period], factionType: Option[FactionType], faction: Option[Faction], statField: Option[LeagueStatField])
 trait LeagueRepo{
   def get(id: Int): Option[League]
+  def getWithRelated(id: Int): LeagueFull
   def insert(formInput: LeagueFormInput): League
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
@@ -28,6 +32,14 @@ trait LeagueRepo{
 class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
   override def get(id: Int): Option[League] = {
     leagueTable.lookup(id)
+  }
+
+  override def getWithRelated(id: Int): LeagueFull = {
+    from(leagueTable, periodTable, factionTypeTable, factionTable, statFieldTable)((l, p, ft, f, s) => 
+        where(l.id === id and p.leagueId === id and ft.leagueId === id and f.factionTypeId === ft.id and s.leagueId === id)
+        select((l, p, ft, f, s)).map(LeagueFullQuery(_))
+        // deconstruct tuple
+        // check what db queries would actuallly return
   }
 
   override def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String] = {
