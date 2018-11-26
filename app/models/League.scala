@@ -71,8 +71,10 @@ class FactionType(
                   var max: Option[Int] = None
                  ) extends KeyedEntity[Long] {
   val id: Long = 0
-  lazy val factions = from(AppDB.factionTypeToFaction.left(this))(select(_)).toList
 }
+
+case class FactionTypeOut(name: String, description: String, factions: Iterable[Faction])
+
 
 class Faction(
                    val factionTypeId: Long,
@@ -109,6 +111,19 @@ object Faction{
   }
 }
 
+object FactionTypeOut{
+  implicit val implicitWrites = new Writes[FactionTypeOut] {
+    def writes(ft: FactionTypeOut): JsValue = {
+      Json.obj(
+        "name" -> ft.name,
+        "description" -> ft.description,
+        "factions" -> ft.factions
+      )
+    }
+  }
+}
+
+
 object LeaguePrize{
   implicit val implicitWrites = new Writes[LeaguePrize] {
     def writes(lp: LeaguePrize): JsValue = {
@@ -139,7 +154,6 @@ object FactionType{
       Json.obj(
         "name" -> ft.name,
         "description" -> ft.description,
-        "factions" -> ft.factions
       )
     }
   }

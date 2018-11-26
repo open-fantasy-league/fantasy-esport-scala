@@ -124,6 +124,18 @@ class LeagueController @Inject()(
     }
   }
 
+  def getWithRelatedReq(leagueId: String) = Action.async { implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.getWithRelated(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+          finished = Ok(Json.toJson(league))
+        } yield finished).fold(identity, identity)
+      }
+    }
+  }
+
   def update(leagueId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateLeague(leagueId)
   }
