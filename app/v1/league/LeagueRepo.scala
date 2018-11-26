@@ -7,16 +7,18 @@ import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
-import models.{League, LeagueStatField, Pickee, Period}
+import models._
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class LeagueFull(league: League, factions: List[FactionTypes], periods: List[Period], currentPeriod: Option[Period], statFields: List[LeagueStatField])
+case class LeagueFull(league: League, factions: Iterable[FactionType], periods: Iterable[Period], currentPeriod: Option[Period], statFields: Iterable[LeagueStatField])
 
 case class LeagueFullQuery(league: League, period: Option[Period], factionType: Option[FactionType], faction: Option[Faction], statField: Option[LeagueStatField])
+
+
 trait LeagueRepo{
   def get(id: Int): Option[League]
   def getWithRelated(id: Int): LeagueFull
@@ -26,6 +28,7 @@ trait LeagueRepo{
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
   def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period
   def incrementDay(league: League)
+  def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
 }
 
 @Singleton
@@ -35,9 +38,12 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
   }
 
   override def getWithRelated(id: Int): LeagueFull = {
-    from(leagueTable, periodTable, factionTypeTable, factionTable, statFieldTable)((l, p, ft, f, s) => 
-        where(l.id === id and p.leagueId === id and ft.leagueId === id and f.factionTypeId === ft.id and s.leagueId === id)
-        select((l, p, ft, f, s)).map(LeagueFullQuery(_))
+    val queryResult = join(leagueTable, periodTable.leftOuter, factionTypeTable.leftOuter, factionTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) => 
+        where(l.id === id)
+        select((l, p, ft, f, s))
+        on(l.id === p.map(_.leagueId), l.id === ft.map(_.leagueId), f.map(_.factionTypeId) === ft.map(_.id), s.map(_.leagueId) === l.id)
+        ).map(q => LeagueFullQuery(q._1,q._2, q._3,q._4, q._5))
+    leagueFullQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return
   }
@@ -82,6 +88,16 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
         leagueTable.update(league)
       }
     }
+  }
+
+  override def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull = {
+    val league = q.toList.head.league
+    val periods = q.flatMap(_.period)
+    val currentPeriod = periods.find(_.id == league.currentPeriodId)
+    val statFields = q.flatMap(_.statField)
+    val factions = q.flatMap(_.factionType)
+    // keep factions as well
+    LeagueFull(league, factions, periods, currentPeriod, statFields)
   }
 }
 
