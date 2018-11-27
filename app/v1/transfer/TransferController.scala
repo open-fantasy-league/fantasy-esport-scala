@@ -15,7 +15,7 @@ import scala.util.Try
 import models._
 import utils.{IdParser, CostConverter}
 
-case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, delaySeconds: Option[Int])
+case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean)
 
 class TransferController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -27,7 +27,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     "buy" -> default(list(number), List()),
     "sell" -> default(list(number), List()),
     "isCheck" -> boolean,
-      "delaySeconds" -> optional(number)
+    //  "delaySeconds" -> optional(number)
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
   }

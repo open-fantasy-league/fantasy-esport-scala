@@ -4,6 +4,8 @@ import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
+import play.api.mvc.Result
+import play.api.mvc.Results.BadRequest
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
 
@@ -52,7 +54,7 @@ trait LeagueRepo{
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
   def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period
-  def incrementDay(league: League)
+  def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
 }
 
@@ -100,17 +102,22 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     periodTable.insert(new Period(leagueId, day, input.start, input.end, input.multiplier))
   }
 
-  override def incrementDay(league: League) = {
+  override def incrementDay(league: League): Either[Result, Int] = {
     // check if is above max?
     league.currentPeriod match {
-      case Some(p) if !p.ended => println("Must end current day before start next")
+      case Some(p) if !p.ended => Left(BadRequest("Must end current day before start next"))
       case Some(p) => {
-        league.currentPeriodId = Some(league.periods.find(np => np.value == p.value + 1).get.id)
+        val newPeriod = league.periods.find(np => np.value == p.value + 1).get
+        league.currentPeriodId = Some(newPeriod.id)
         leagueTable.update(league)
+        Right(newPeriod.value)
+
     }
       case None => {
-        league.currentPeriodId = Some(league.periods(0).id)
+        val newPeriod = league.periods(0)
+        league.currentPeriodId = Some(newPeriod.id)
         leagueTable.update(league)
+        Right(newPeriod.value)
       }
     }
   }
@@ -119,7 +126,8 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     if (q.isEmpty) return None
     val league = q.toList.head.league
     val periods = q.flatMap(_.period).toSet
-    val currentPeriod = periods.find(_.id == league.currentPeriodId)
+    println(periods)
+    val currentPeriod = periods.find(_.id == league.currentPeriodId.getOrElse(-1L))
     val statFields = q.flatMap(_.statField).toSet
     val factions = q.map(f => (f.factionType, f.faction)).filter(!_._2.isEmpty).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
     // keep factions as well

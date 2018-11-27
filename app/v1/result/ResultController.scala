@@ -15,6 +15,7 @@ import scala.util.Try
 import models._
 import utils.IdParser.parseIntId
 import utils.TryHelper.tryOrResponse
+import v1.result.ResultRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Int, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -27,7 +28,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -176,6 +177,7 @@ class ResultController @Inject()(cc: ControllerComponents)(implicit ec: Executio
           leagueId <- parseIntId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
           day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
+          results = resultRepo.get(day)
           success = "Successfully added results"
         } yield success).fold(identity, Created(_))
         //Future{Ok(views.html.index())}

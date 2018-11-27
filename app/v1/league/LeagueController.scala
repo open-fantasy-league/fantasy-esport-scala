@@ -187,9 +187,9 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          _ = leagueRepo.incrementDay(league)
+          newPeriod <- leagueRepo.incrementDay(league)
           _ <- updateOldRanks(leagueId)
-          out = Ok("Updated old ranking")
+          out = Ok(f"Successfully started day $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)
       }
     }
