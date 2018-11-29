@@ -9,14 +9,12 @@ class Pickee(
               var name: String,
               var externalId: Int, // in the case of dota we have the pickee id which is unique for Antimage in league 1
               // and Antimage in league 2. however we still want a field which is always AM hero id
-              var faction: Option[String],
               var cost: Int,
               var active: Boolean = true
             ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val factions = from(AppDB.pickeeFactionTable.left(this))(select(_)).toList
 
-  def this() = this(0, "", 0, None, 0, true)
 }
 
 object Pickee{
@@ -26,7 +24,7 @@ object Pickee{
         "internalId" -> p.id,
         "externalId" -> p.externalId,
         "name" -> p.name,
-        "faction" -> p.faction,
+        "factions" -> p.factions,
         "cost" -> p.cost,
         "active" -> p.active
       )

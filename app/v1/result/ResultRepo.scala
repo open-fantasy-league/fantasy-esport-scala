@@ -4,6 +4,7 @@ import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
+import play.api.libs.json._
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
@@ -15,8 +16,28 @@ class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 case class ResultQuery(matchu: Matchu, resultu: Resultu, points: Points, statField: LeagueStatField)
 
 case class SingleResult(result: Resultu, results: Map[String, Double])
+object SingleResult{
+  implicit val implicitWrites = new Writes[SingleResult]{
+    def writes(r: SingleResult): JsValue = {
+      Json.obj(
+        "result" -> r.result,
+        "results" -> r.results,
+      )
+    }
+  }
+}
 
 case class ResultsOut(matchu: Matchu, results: Iterable[SingleResult])
+object ResultsOut{
+  implicit val implicitWrites = new Writes[ResultsOut] {
+    def writes(r: ResultsOut): JsValue = {
+      Json.obj(
+        "match" -> r.matchu,
+        "results" -> r.results,
+      )
+    }
+  }
+}
 trait ResultRepo{
   def show(id: Long): Option[Resultu]
   def get(day: Option[Int]): Iterable[ResultsOut]

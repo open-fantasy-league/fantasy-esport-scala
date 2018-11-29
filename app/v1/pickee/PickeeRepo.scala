@@ -15,7 +15,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, faction: Option[String])
+case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, factions: List[String])
 
 case class RepricePickeeFormInput(id: Long, cost: Double)
 
@@ -69,7 +69,6 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       pickee.name,
       pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
       // and AM in league 2. however we still want a field which is always AM hero id
-      pickee.faction,
       CostConverter.unconvertCost(pickee.value),
       pickee.active
     ))

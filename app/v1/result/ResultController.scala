@@ -177,9 +177,9 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           leagueId <- parseIntId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
           day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
-          results = resultRepo.get(day)
-          success = "Successfully added results"
-        } yield success).fold(identity, Created(_))
+          results = resultRepo.get(day).toList
+          success = Ok(Json.toJson(results))
+        } yield success).fold(identity, identity)
         //Future{Ok(views.html.index())}
       }
     }

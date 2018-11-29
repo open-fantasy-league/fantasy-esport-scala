@@ -90,7 +90,7 @@ class LeagueController @Inject()(
           "name" -> nonEmptyText,
           "value" -> of(doubleFormat),
           "active" -> default(boolean, true),
-          "faction" -> optional(nonEmptyText)  // e.g. Evil Geniuses, Zerg...etc
+          "factions" -> list(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number)
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
@@ -221,9 +221,9 @@ class LeagueController @Inject()(
         val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
         val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
-        val newPickees = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _))
+        val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _).id)
         val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
-        val newPickeeStats = statFields.flatMap(sf => newPickees.map(np => pickeeRepo.insertPickeeStat(sf, np.id)))
+        val newPickeeStats = statFields.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
         val newLeagueUserStats = statFields.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.id)))
 
         newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
@@ -234,6 +234,7 @@ class LeagueController @Inject()(
           newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
           newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
         }})
+        var factionNamesToIds =  collection.mutable.Map[String, Long]()
 
         input.factions.foreach(ft => {
           val newFactionType = factionTypeTable.insert(
@@ -241,9 +242,16 @@ class LeagueController @Inject()(
           )
           ft.types.foreach(f => {
             val newFaction = factionTable.insert(new Faction(newFactionType.id, f.name, ft.max.getOrElse(f.max.get)))
-            newPickees.foreach(np => pickeeFactionTable.insert(new PickeeFaction(np.id, newFaction.id)))
+            factionNamesToIds(newFaction.name) = newFaction.id.toLong
           })
+          //if (input.pickees.flatMap(_.factions) not in factionNames)
+          // rollback
+          // BadRequest("Invalid pickee faction type given")
         })
+        input.pickees.zipWithIndex.foreach({case (p, i) => p.factions.foreach({
+          // Try except key error
+          f => pickeeFactionTable.insert(new PickeeFaction(newPickeeIds(i), factionNamesToIds.get(f).get))
+        })})
 
         Future {
           Created(Json.toJson(newLeague))
