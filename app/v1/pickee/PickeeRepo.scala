@@ -26,7 +26,7 @@ case class PickeeQuery(pickee: Pickee, factionType: FactionType, faction: Factio
 case class PickeeOut(pickee: Pickee, factions: Map[String, String])
 
 case class StatsOutput(statField: String, value: Double)
-case class PickeeStatsOutput(externalId: Int, name: String, stats: Iterable[StatsOutput], factions: Map[String, String])
+case class PickeeStatsOutput(externalId: Int, name: String, stats: Map[String, Double], factions: Map[String, String])
 
 object PickeeOut{
   implicit val implicitWrites = new Writes[PickeeOut] {
@@ -138,7 +138,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     //v.map(x => x.              factionType.name -> x.faction.name).toMap
     val groupByPickee = query.groupBy(_._1)
     val out: Iterable[PickeeStatsOutput] = groupByPickee.map({case (p, v) => {
-      val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => StatsOutput(x._1.name, x._2.value))
+      val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => x._1.name -> x._2.value).toMap
       val factions = v.map(x => x._5.name -> x._6.name).toMap
       PickeeStatsOutput(p.externalId, p.name, stats, factions)
     //v.map({case (k2, v2) => StatsOutput(k2.name, v2.value)}).toList)}).toList
