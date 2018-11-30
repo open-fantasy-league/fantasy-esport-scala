@@ -1,6 +1,6 @@
 curl -v -H "Content-Type: application/json" -X POST -d '{"username": "cat", "externalId": 3}' localhost:9000/api/v1/users
 
-curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI99", "tournamentId": 5401, "gameId": 1, "pickeeDescription": "Hero", "transferWildcard": false, "pickees": [{"id": 1, "name": "dog", "value": 20.0, "faction": "animal"}, {"id": 2, "name": "Lich", "value": 10.1, "faction": "yep"}], "factions": [{"name": "role", "types": [{"name": "Support", "max": 2}, {"name": "Core", "max": 3}]}, {"name": "Team", "max": 2,"types": [{"name": "EG"}, {"name": "VP"}]}], "extraStats": ["wins", "picks", "bans"], "users": [1], "periods": [{"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 2}]}' localhost:9000/api/v1/leagues
+curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI99", "tournamentId": 5401, "gameId": 1, "pickeeDescription": "Hero", "transferWildcard": false, "pickees": [{"id": 1, "name": "dog", "value": 20.0, "factions": ["Support", "VP"]}, {"id": 2, "name": "Lich", "value": 10.1, "factions": ["Core", "EG"]}], "factions": [{"name": "role", "types": [{"name": "Support", "max": 2}, {"name": "Core", "max": 3}]}, {"name": "Team", "max": 2,"types": [{"name": "EG"}, {"name": "VP"}]}], "extraStats": ["wins", "picks", "bans"], "users": [1], "periods": [{"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 1}, {"start": "2002-02-02 04:05:06", "end": "2002-02-02 04:05:06", "multiplier": 2}]}' localhost:9000/api/v1/leagues
 
 curl -X PUT localhost:9000/api/v1/users/1/join/1
 
@@ -12,7 +12,7 @@ curl -H "Content-Type: application/json" -X POST -d '{"buy": [1], "isCheck": fal
 
 curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost:9000/api/v1/results/1
 
-curl -X POST -on/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP",                "teamOneVictory": true, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 2, "isTeamOne": true, "stats": [{"field":       "points", "value": 5.0}, {"field": "picks", "value": 2}, {"field": "wins", "value": 1}]}]}' localhost:9000/api/v1/results/1
+curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP",                "teamOneVictory": true, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 2, "isTeamOne": true, "stats": [{"field":       "points", "value": 5.0}, {"field": "picks", "value": 2}, {"field": "wins", "value": 1}]}]}' localhost:9000/api/v1/results/1
 
 curl -X POST http://localhost:9000/api/v1/leagues/startDay/1
 curl -X POST http://localhost:9000/api/v1/leagues/endDay/1
@@ -22,3 +22,4 @@ curl -X POST http://localhost:9000/api/v1/leagues/endDay/1
 # store historic teams (also get)
 # start day
 # end day
+# join has 1970 tstamp

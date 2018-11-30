@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
-import models.{Pickee, PickeeStat, PickeeStatDaily, LeagueStatField}
+import models._
 import utils.CostConverter
 import play.api.libs.json._
 
@@ -21,8 +21,23 @@ case class RepricePickeeFormInput(id: Long, cost: Double)
 
 case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
 
+case class PickeeQuery(pickee: Pickee, factionType: FactionType, faction: Faction)
+
+case class PickeeOut(pickee: Pickee, factions: Map[String, String])
+
 case class PickeeStatOutput(statField: String, value: Double)
 case class PickeeOutput(externalId: Int, name: String, stats: List[PickeeStatOutput])
+
+object PickeeOut{
+  implicit val implicitWrites = new Writes[PickeeOut] {
+    def writes(p: PickeeOut): JsValue = {
+      Json.obj(
+        "pickee" -> p.pickee,
+        "factions" -> p.factions
+      )
+    }
+  }
+}
 
 object PickeeStatOutput{
   implicit val implicitWrites = new Writes[PickeeStatOutput] {
@@ -57,7 +72,9 @@ trait PickeeRepo{
   def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
   def getPickeeStats(leagueId: Int, day: Option[Int]): List[PickeeOutput]
   def getPickees(leagueId: Int): Iterable[Pickee]
+  def getPickeesWithFactions(leagueId: Int): Iterable[PickeeOut]
   def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
+  def pickeeQueryExtractor(query: Iterable[PickeeQuery]): Iterable[PickeeOut]
 }
 
 @Singleton
@@ -86,6 +103,23 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     ))
   }
 
+  override def getPickees(leagueId: Int): Iterable[Pickee] = {
+   from(pickeeTable, leagueTable)(
+     (p, l) => where(p.leagueId === l.id)
+       select(p)
+   )
+ }
+
+
+  override def getPickeesWithFactions(leagueId: Int): Iterable[PickeeOut] = {
+  val query = from(leagueTable, pickeeTable, factionTypeTable, factionTable, pickeeFactionTable)(
+    (l, p, ft, f, pf) =>
+      where(p.leagueId === l.id and ft.leagueId === l.id and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id)
+      select((p, ft, f))
+  )
+  pickeeQueryExtractor(query.map(x => PickeeQuery(x._1, x._2, x._3)))
+  }
+
   override def getPickeeStats(
                                   leagueId: Int, day: Option[Int]
                                 ): List[PickeeOutput] = {
@@ -104,13 +138,6 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       PickeeOutput(k.externalId, k.name, v.map({case (k2, v2) => PickeeStatOutput(k2.name, v2.value)}).toList)}).toList
   }
 
-  override def getPickees(leagueId: Int): Iterable[Pickee] = {
-    from(pickeeTable, leagueTable)(
-      (p, l) => where(p.leagueId === l.id)
-        select(p)
-    )
-  }
-
   override def getPickeeStat(
                                   leagueId: Int, statFieldId: Long, day: Option[Int]
                                 ): Iterable[(PickeeStat, PickeeStatDaily)] = {
@@ -124,6 +151,12 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         select (ps, s)
         orderBy (s.value desc)
     )
+  }
+  override def pickeeQueryExtractor(query: Iterable[PickeeQuery]): Iterable[PickeeOut] = {
+    query.groupBy(_.pickee).map({case (p, v) => {
+      val factions: Map[String, String] = v.map(x => x.factionType.name -> x.faction.name).toMap
+      PickeeOut(p, factions)
+    }})
   }
 }
 

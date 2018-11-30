@@ -2,13 +2,12 @@ package models
 
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
+import org.joda.time.DateTime
 import play.api.libs.json._
 
 class Resultu(  // Result is play/scala keyword. renaming makes things simpler/more obvious
               val matchId: Long,
               val pickeeId: Long,
-              val startTstamp: Timestamp,
-              val addedTstamp: Timestamp,
               var isTeamOne: Boolean, // for showing results
               // maybe want a field that stores points for results.
               // rather than having to sum points matches every time want to show match results.
@@ -23,8 +22,6 @@ object Resultu{
     def writes(r: Resultu): JsValue = {
       Json.obj(
         "id" -> r.matchId,
-        "startTime" -> r.startTstamp,
-        "addedTime" -> r.addedTstamp,
         "pickee" -> r.pickee.single
       )
     }
@@ -59,7 +56,9 @@ class Matchu( // because match is an sql keyword
               var tournamentId: Int, // for displaying link to tournament page. tournament can differ from league
               var teamOne: String,
               var teamTwo: String,
-              var teamOneVictory: Boolean
+              var teamOneVictory: Boolean,
+              val startTstamp: Timestamp,
+              val addedTstamp: Timestamp,
             )
   extends KeyedEntity[Long] {
   val id: Long = 0
@@ -70,6 +69,14 @@ object Matchu{
     def writes(m: Matchu): JsValue = {
       Json.obj(
         "id" -> m.id,
+        // TODO should these come out as long numbers or strings?
+        "startTime" -> m.startTstamp,
+        "addedTime" -> m.addedTstamp,
+        "tournamentId" -> m.tournamentId,
+        "externalId" -> m.externalId,
+        "teamOne" -> m.teamOne,
+        "teamTwo" -> m.teamTwo,
+        "teamOneVictory" -> m.teamOneVictory,
       )
     }
   }

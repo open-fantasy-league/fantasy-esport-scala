@@ -26,7 +26,8 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         (for {
           leagueId <- parseIntId(leagueId, "League")
           league <- leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
-          out = Ok(Json.toJson(league.pickees.where(_ => _).toSeq))
+          //out = Ok(Json.toJson(league.pickees.where(_ => _).toSeq))
+          out = Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(leagueId)))
         } yield out).fold(identity, identity)
       }
     }

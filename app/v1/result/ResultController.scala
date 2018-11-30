@@ -101,15 +101,14 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     // TODO log/get original stack trace
     tryOrResponse[Matchu](() => AppDB.matchTable.insert(new Matchu(
       league.id, input.matchId, league.currentPeriod.getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
-      input.teamOneVictory
+      input.teamOneVictory, input.startTstamp, new Timestamp(System.currentTimeMillis())
     )), InternalServerError("Internal server error adding match"))
   }
 
   private def newResults(input: ResultFormInput, league: League, matchu: Matchu, pickees: List[InternalPickee]): Either[Result, List[Resultu]] = {
     // TODO log/get original stack trace
     val newRes = pickees.map(p => new Resultu(
-      matchu.id, p.id,
-      input.startTstamp, new Timestamp(System.currentTimeMillis()), p.isTeamOne
+      matchu.id, p.id, p.isTeamOne
     ))
     Try({AppDB.resultTable.insert(newRes); newRes}).toOption.toRight(InternalServerError("Internal server error adding result"))
   }

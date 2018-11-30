@@ -3,6 +3,7 @@ package models
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
 import entry.SquerylEntrypointForMyApp._
+import utils.CostConverter.convertCost
 
 class Pickee(
               val leagueId: Int,
@@ -13,7 +14,7 @@ class Pickee(
               var active: Boolean = true
             ) extends KeyedEntity[Long] {
   val id: Long = 0
-  lazy val factions = from(AppDB.pickeeFactionTable.left(this))(select(_)).toList
+  lazy val factions = AppDB.pickeeFactionTable.left(this)
 
 }
 
@@ -24,8 +25,7 @@ object Pickee{
         "internalId" -> p.id,
         "externalId" -> p.externalId,
         "name" -> p.name,
-        "factions" -> p.factions,
-        "cost" -> p.cost,
+        "cost" -> convertCost(p.cost),
         "active" -> p.active
       )
     }
