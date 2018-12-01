@@ -150,7 +150,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         println(pickeeId)
         val leagueUserStats = from(AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((lu, tp, lus, lusd, p) =>
           //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.day.isNull or lusd.day === p.value))
-          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and p.id === league.currentPeriodId.get)// and (lusd.day.isNull or lusd.day === p.value))
+          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and p.id === league.currentPeriodId.get and (lusd.day.isNull or lusd.day === p.value))
             select(lusd)
         )
         println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
