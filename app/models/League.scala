@@ -32,7 +32,7 @@ class League(
   val id: Int = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
-  def pickees = AppDB.leagueToPickee.left(this)
+  lazy val pickees = AppDB.leagueToPickee.left(this)
   def statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   def factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
   def periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList

@@ -9,15 +9,16 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import models.{AppDB, User}
+import models._
 import play.api.data.format.Formats._
 import utils.IdParser.parseIntId
+import v1.leagueuser.LeagueUserRepo
 
 case class UserFormInput(username: String, externalId: Option[Long])
 
 case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
-class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[UserFormInput] = {
@@ -49,6 +50,7 @@ class UserController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
             leagueId <- parseIntId(leagueId, "League")
             user <- AppDB.userTable.lookup(userId.toInt).toRight(BadRequest("User does not exist"))
             league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            added = leagueUserRepo.joinUsers(List(user), league, league.statFields, league.periods)
             added <- Try(league.users.associate(user)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
             success = "Successfully added user to league"
           } yield success).fold(identity, Created(_))

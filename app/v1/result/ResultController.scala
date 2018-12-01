@@ -77,14 +77,8 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
             updatedStats <- updateStats(insertedStats, league)
             success = "Successfully added results"
           } yield success).fold(identity, Created(_))
-          //Future{Ok(views.html.index())}
         }
       }
-      //scala.concurrent.Future{ Ok(views.html.index())}
-      //      postResourceHandler.create(input).map { post =>
-      //      Created(Json.toJson(post)).withHeaders(LOCATION -> post.link)
-      //      }
-      // TODO good practice post-redirect-get
     }
 
     form.bindFromRequest().fold(failure, success)
@@ -152,16 +146,20 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           psd => psd.pickeeStatId === pickeeStat.id and (psd.day === league.currentPeriod.getOrElse(new Period()).value or psd.day.isNull)
         )
         AppDB.pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
-        val leagueUsers = from(AppDB.leagueUserTable)(lu =>
-          where(lu.leagueId === league.id and (pickeeId in lu.team.map(_.pickeeId)))
-            select(lu.id)
+        println(league.currentPeriodId.get)
+        println(pickeeId)
+        val leagueUserStats = from(AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((lu, tp, lus, lusd, p) =>
+          //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.day.isNull or lusd.day === p.value))
+          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and p.id === league.currentPeriodId.get)// and (lusd.day.isNull or lusd.day === p.value))
+            select(lusd)
         )
-        val leagueUserStat = AppDB.leagueUserStatTable.where(
+        println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
+        /*val leagueUserStat = AppDB.leagueUserStatTable.where(
           lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId
         )
         val leagueUserStats = AppDB.leagueUserStatDailyTable.where(
           lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.day === league.currentPeriod.getOrElse(new Period()).value or lud.day.isNull)
-        )
+        )*/
         AppDB.leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
         true // whats a good thing to put here
         // now update league user points if pickee in team
