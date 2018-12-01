@@ -40,7 +40,7 @@ class League(
   def currentPeriod: Option[Period] = AppDB.periodTable.lookup(this.currentPeriodId.getOrElse(-1L))
   //lazy val currentPeriod: Option[Period] = this.periods.find(p => p.id == this.currentPeriodId)
   //def currentPeriod: Option[Period] = from(AppDB.leagueToPeriod.left(this))(select(_)).toList.find(_.id == this.currentPeriodId)
-  def started = this.currentPeriodId.isEmpty
+  def started = !this.currentPeriodId.isEmpty
   def ended = this.periods.takeRight(1)(0).ended
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 

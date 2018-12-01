@@ -50,10 +50,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
             leagueId <- parseIntId(leagueId, "League")
             user <- AppDB.userTable.lookup(userId.toInt).toRight(BadRequest("User does not exist"))
             league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
-            added = leagueUserRepo.joinUsers(List(user), league, league.statFields, league.periods)
-            added <- Try(league.users.associate(user)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+            added <- Try(leagueUserRepo.joinUsers(List(user), league, league.statFields, league.periods)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
             success = "Successfully added user to league"
-          } yield success).fold(identity, Created(_))
+          } yield success).fold(identity, Ok(_))
         }
   }
 
