@@ -95,7 +95,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelay)
             finished <- if (input.isCheck) Right(Ok("Transfers are valid")) else
-              updateDBScheduleTransfer(sell, buy, league.pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay)
+              updateDBScheduleTransfer(sell, buy, from(league.pickees)(select(_)).toList, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay)
           } yield finished).fold(identity, identity)
         }
       }
@@ -201,6 +201,9 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       ))
       // TODO day -1
       // TODO have active before tounr,manet start, but not after it started
+      println(s"""pickees ${pickees.mkString(" ")}""")
+      println(s""" extids ${pickees.map(_.externalId).mkString(" ")}""")
+      println(s"""tobuy ${toBuy.mkString("")}""")
       if (scheduledUpdateTime.isEmpty) {
         AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.externalId == tb).get.id, leagueUser.id)))
       }

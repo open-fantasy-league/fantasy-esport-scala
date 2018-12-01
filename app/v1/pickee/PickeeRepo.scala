@@ -25,7 +25,6 @@ case class PickeeQuery(pickee: Pickee, factionType: FactionType, faction: Factio
 
 case class PickeeOut(pickee: Pickee, factions: Map[String, String])
 
-case class StatsOutput(statField: String, value: Double)
 case class PickeeStatsOutput(externalId: Int, name: String, stats: Map[String, Double], factions: Map[String, String])
 
 object PickeeOut{
@@ -34,17 +33,6 @@ object PickeeOut{
       Json.obj(
         "pickee" -> p.pickee,
         "factions" -> p.factions
-      )
-    }
-  }
-}
-
-object StatsOutput{
-  implicit val implicitWrites = new Writes[StatsOutput] {
-    def writes(s: StatsOutput): JsValue = {
-      Json.obj(
-        "name" -> s.statField,
-        "value" -> s.value
       )
     }
   }
