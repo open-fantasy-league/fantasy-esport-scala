@@ -229,4 +229,29 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     leagueUser.changeTstamp = None
     AppDB.leagueUserTable.update(leagueUser)
   }
+
+  def wildcardReq(leagueId: String, userId: String) = Action.async(parse.json) { implicit request =>
+    Future {
+      inTransaction {
+        // TODO  have func for leagueUser getting
+        (for {
+          userId <- IdParser.parseIntId(userId, "User")
+          leagueId <- IdParser.parseIntId(leagueId, "League")
+          league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
+          leagueHasWildcard <- if (league.transferWilcard) Right(true) else Left(BadRequest(f"League does not exist: $leagueId"))
+          leagueUser <-Try(league.users.associations.where(lu => lu.id === userId).single).toOption.
+            toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
+          userHasWildcard <- if (!leagueUser.usedWildcard) Right(true) else Left(BadRequest("User already used up wildcard"))
+          wildCardApplied = applyWildcard(leagueUser)
+          updates = league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
+            .map(processLeagueUserTransfer)
+          finished <- Right(Ok("Wildcard successfully applied"))
+        } yield finished).fold(identity, identity)
+      }
+    }
+  }
+
+  private def applyWildcard(leagueUser: LeagueUser) = {
+    
+  }
 }

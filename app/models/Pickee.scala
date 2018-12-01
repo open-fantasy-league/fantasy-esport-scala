@@ -64,7 +64,6 @@ object HistoricTeamPickee{
   implicit val implicitWrites = new Writes[HistoricTeamPickee] {
     def writes(p: HistoricTeamPickee): JsValue = {
       Json.obj(
-        "day" -> p.day,
         "pickee" -> p.pickee
       )
     }
