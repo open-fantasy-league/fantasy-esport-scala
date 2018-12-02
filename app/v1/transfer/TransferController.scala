@@ -84,6 +84,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           // TODO what does single return if no entries?
             leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
+            validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
             pickees = league.pickees

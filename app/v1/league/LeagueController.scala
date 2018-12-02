@@ -32,7 +32,7 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 // TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
-                           transferWildcard: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
+                           transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
@@ -40,8 +40,7 @@ case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tourna
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
-                                 tournamentId: Option[Int], totalDays: Option[Int],
-                           dayStart: Option[Long], dayEnd: Option[Long], transferOpen: Option[Boolean])
+                                 tournamentId: Option[Int], transferOpen: Option[Boolean])
 
 class LeagueController @Inject()(
                                   cc: ControllerComponents, leagueRepo: LeagueRepo,
@@ -68,6 +67,7 @@ class LeagueController @Inject()(
         //"captain" -> default(boolean, false),
         "transferLimit" -> optional(number), // use -1 for no transfer limit I think
         "transferWildcard" -> boolean,
+        "transferBlockedDuringPeriod" -> default(boolean, false),
         "factions" -> list(mapping(
           "name" -> nonEmptyText,
           "description" -> optional(nonEmptyText),
@@ -106,9 +106,6 @@ class LeagueController @Inject()(
         "name" -> optional(nonEmptyText),
         "isPrivate" -> optional(boolean),
         "tournamentId" -> optional(number),
-        "totalDays" -> optional(number(min=1, max=100)),  // todo add handling for increasing/decreasing num days
-        "dayStart" -> optional(longNumber),
-        "dayEnd" -> optional(longNumber),
         "transferOpen" -> optional(boolean),
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
@@ -171,6 +168,10 @@ class LeagueController @Inject()(
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           _ <- league.currentPeriod match {
             case Some(p) if !p.ended => {
+              if (league.transferBlockedDuringPeriod) {
+                league.transferOpen = true
+                leagueTable.update(league)
+              }
               p.ended = true
               periodTable.update(p)
               Right(true)
@@ -190,6 +191,10 @@ class LeagueController @Inject()(
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           newPeriod <- leagueRepo.incrementDay(league)
+          _ = if (league.transferBlockedDuringPeriod) {
+                league.transferOpen = false
+                leagueTable.update(league)
+          }
           _ <- updateOldRanks(leagueId)
           out = Ok(f"Successfully started day $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)

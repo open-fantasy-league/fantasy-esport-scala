@@ -81,13 +81,14 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
   override def insert(input: LeagueFormInput): League = {
     leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId, input.pickeeDescription,
       input.periodDescription, input.transferLimit, input.transferWildcard,
-      CostConverter.unconvertCost(input.startingMoney), input.teamSize
+      CostConverter.unconvertCost(input.startingMoney), input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod
     ))
   }
 
   override def update(league: League, input: UpdateLeagueFormInput): League = {
     league.name = input.name.getOrElse(league.name)
     league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
+    league.transferOpen = input.transferOpen.getOrElse(league.transferOpen)
     // etc for other fields
     leagueTable.update(league)
     league
