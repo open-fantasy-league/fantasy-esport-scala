@@ -16,10 +16,11 @@ class League(
               var isPrivate: Boolean,
               var tournamentId: Int,
               var pickeeDescription: String,
+              var periodDescription: String,
               var transferLimit: Option[Int],
               var transferWildcard: Boolean,
               var startingMoney: Int,
-              val teamSize: Int = 5,
+              val teamSize: Int,
               var transferDelay: Int = 0, // Only applies for when day 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
@@ -45,7 +46,7 @@ class League(
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
-  def this() = this("", 1, 1, false, 0, "", None, false, 0)
+  def this() = this("", 1, 1, false, 0, "", "", None, false, 0, 5)
 
 }
 

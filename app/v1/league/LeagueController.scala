@@ -30,7 +30,7 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 
 
 // TODO period descriptor
-case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int,
+case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
                            transferWildcard: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
@@ -58,6 +58,7 @@ class LeagueController @Inject()(
         "gameId" -> number,
         "isPrivate" -> boolean,
         "tournamentId" -> number,
+        "periodDescription" -> nonEmptyText,
         "periods" -> list(mapping(
           "start" -> of(sqlTimestampFormat),
           "end" -> of(sqlTimestampFormat),

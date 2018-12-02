@@ -79,8 +79,8 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
   }
 
   override def insert(input: LeagueFormInput): League = {
-    leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId,
-      input.pickeeDescription, input.transferLimit, input.transferWildcard,
+    leagueTable.insert(new League(input.name, 1, input.gameId, input.isPrivate, input.tournamentId, input.pickeeDescription,
+      input.periodDescription, input.transferLimit, input.transferWildcard,
       CostConverter.unconvertCost(input.startingMoney), input.teamSize
     ))
   }
