@@ -64,6 +64,7 @@ object LeagueRankings{
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait LeagueUserRepo{
+  def getLeagueUser(leagueId: Int, userId: Int): LeagueUser
   def insertLeagueUser(league: League, userId: Int): LeagueUser
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Option[Int]): LeagueUserStatDaily
@@ -83,6 +84,12 @@ trait LeagueUserRepo{
 
 @Singleton
 class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
+
+  override def getLeagueUser(leagueId: Int, userId: Int): LeagueUser = {
+    from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId)
+      select lu)
+        .single
+  }
 
   override def insertLeagueUser(league: League, userId: Int): LeagueUser = {
     leagueUserTable.insert(new LeagueUser(

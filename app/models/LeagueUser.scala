@@ -21,6 +21,23 @@ class LeagueUser(
   lazy val transfers = AppDB.leagueUserToTransfer.left(this)
 }
 
+object LeagueUser{
+  implicit val implicitWrites = new Writes[LeagueUser] {
+    def writes(lu: LeagueUser): JsValue = {
+      Json.obj(
+        "id" -> lu.id,
+        "userId" -> lu.userId,
+        "leagueId" -> lu.leagueId,
+        "money" -> convertCost(lu.money),
+        "entered" -> lu.entered,
+        "remainingTransfers" -> lu.remainingTransfers,
+        "usedWildcard" -> lu.usedWildcard,
+        "changeTstamp" -> lu.changeTstamp
+      )
+    }
+  }
+}
+
 class LeagueUserStat(
                        val statFieldId: Long,
                        val leagueUserId: Long,

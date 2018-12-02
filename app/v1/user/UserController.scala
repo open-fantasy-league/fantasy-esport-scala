@@ -66,6 +66,20 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
   }
 
+  def showLeagueUserReq(userId: String, leagueId: String) = Action { implicit request =>
+    inTransaction {
+      (for{
+        userId <- parseIntId(userId, "User")
+        leagueId <- parseIntId(leagueId, "League")
+        league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+        leagueUser <- Try(leagueUserRepo.getLeagueUser(leagueId, userId)).toOption.toRight(
+          BadRequest(s"User: {userId} not in league: {leagueId}"))
+        success = Ok(Json.toJson(leagueUser))
+      } yield success).fold(identity, identity)
+    }
+
+  }
   // TODO tolerantJson?
   def update(userId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateUser(userId)
