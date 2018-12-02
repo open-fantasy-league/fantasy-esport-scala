@@ -170,14 +170,9 @@ object League{
         "isPrivate" -> league.isPrivate,
         "tournamentId" -> league.tournamentId,
         "pickee" -> league.pickeeDescription,
-        "pointsMultiplier" -> league.pointsMultiplier,
         "teamSize" -> league.teamSize,
         "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.startingMoney,
-        //"statFields" -> league.statFields.map(_.name),
-        //"factionTypes" -> league.factionTypes,
-        //"periods" -> league.periods,
-        //"currentPeriod" -> league.currentPeriod
       )
     }
   }

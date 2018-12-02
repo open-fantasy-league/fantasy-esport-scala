@@ -30,7 +30,6 @@ object LeagueFull{
         "isPrivate" -> league.league.isPrivate,
         "tournamentId" -> league.league.tournamentId,
         "pickee" -> league.league.pickeeDescription,
-        "pointsMultiplier" -> league.league.pointsMultiplier,
         "teamSize" -> league.league.teamSize,
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
         "startingMoney" -> league.league.startingMoney,

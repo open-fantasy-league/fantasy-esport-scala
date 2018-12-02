@@ -70,6 +70,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           (for {
             leagueId <- parseIntId(leagueId, "League")
             league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
             internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
             insertedMatch <- newMatch(input, league)
             insertedResults <- newResults(input, league, insertedMatch, internalPickee)
@@ -121,7 +122,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         r => r.matchId === matchId and r.pickeeId === ip.id
         ).single
       println(result)
-      val points = if (s.field == "points") s.value * league.pointsMultiplier else s.value
+      val points = if (s.field == "points") s.value * league.currentPeriod.get.multiplier else s.value
       (new Points(result.id, AppDB.leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
         ip.id)
     }))
