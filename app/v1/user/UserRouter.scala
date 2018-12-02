@@ -27,7 +27,7 @@ class UserRouter @Inject()(controller: UserController) extends SimpleRouter {
     case GET(p"/$id") =>
       controller.show(id)
 
-    case GET(p"/$id/league/$leagueId") =>
+    case GET(p"/$id/leagues/$leagueId") =>
       controller.showLeagueUserReq(id, leagueId)
 
     case PUT(p"/$userId/join/$leagueId") =>

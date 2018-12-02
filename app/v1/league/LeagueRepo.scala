@@ -68,7 +68,7 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
         where(l.id === id)
         select((l, p, ft, f, s))
         on(l.id === p.map(_.leagueId), l.id === ft.map(_.leagueId), f.map(_.factionTypeId) === ft.map(_.id), s.map(_.leagueId) === l.id)
-        ).map(q => LeagueFullQuery(q._1,q._2, q._3,q._4, q._5))
+        ).map(LeagueFullQuery.tupled(_))
     leagueFullQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return

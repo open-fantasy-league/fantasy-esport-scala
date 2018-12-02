@@ -38,7 +38,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       inTransaction {
         (for {
           leagueId <- parseIntId(leagueId, "League")
-          league <- leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+          league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           day <- tryOrResponse(() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
           out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, day)))
         } yield out).fold(identity, identity)
@@ -70,12 +70,14 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         inTransaction {
           (for {
             leagueId <- parseIntId(leagueId, "league")
+            league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
             leaguePickees = pickeeRepo.getPickees(leagueId)
             pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             _ = pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
               p.cost = unconvertCost(pickees.get(p.id).get.cost); p
             }))
-            out = BadRequest("Specified league id does not exist")
+            // TODO print out pickees that changed
+            out = Ok("Successfully updated pickee costs")
           } yield out).fold(identity, identity)
         }
       }

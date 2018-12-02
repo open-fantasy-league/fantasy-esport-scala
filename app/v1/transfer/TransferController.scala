@@ -87,7 +87,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
-            pickees = league.pickees
+            pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
             currentTeam = leagueUser.team.toList
           // TODO log internal server errors as well
