@@ -11,7 +11,7 @@ class LeagueUser(
                   var money: Int,
                   var entered: Timestamp,
                   var remainingTransfers: Option[Int],
-                  var usedWilcard: Boolean,
+                  var usedWildcard: Boolean,
                   var changeTstamp: Option[Timestamp] = None
                 ) extends KeyedEntity[Long] {
   val id: Long = 0

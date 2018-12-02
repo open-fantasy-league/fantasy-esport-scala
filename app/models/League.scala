@@ -23,7 +23,7 @@ class League(
               var transferDelay: Int = 0, // Only applies for when day 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
-              var pointsMultiplier: Double = 1.0,
+              var transferBlockedDuringPeriod: Boolean = false,
               var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var url: String = "",
               var autoUpdate: Boolean = true,

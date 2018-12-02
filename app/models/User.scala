@@ -36,7 +36,8 @@ class Transfer(
                 val isBuy: Boolean,
                 val scheduledFor: Timestamp,
                 var processed: Boolean,
-                val cost: Double
+                val cost: Double,
+                val wasWildcard: Boolean = false
 ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToTransfer.right(this).single
@@ -50,6 +51,7 @@ object Transfer{
         "scheduledFor" -> t.scheduledFor,
         "processed" -> t.processed,
         "cost" -> t.cost,
+        "wasWildcard" -> t.wasWildcard,
         "internalPickeeId" -> t.pickeeId,
         "externalPickeeId" -> t.pickee.externalId,
         "pickeeName" -> t.pickee.name
