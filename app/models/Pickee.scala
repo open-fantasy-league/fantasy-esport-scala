@@ -27,7 +27,8 @@ object Pickee{
         "externalId" -> p.externalId,
         "name" -> p.name,
         "cost" -> convertCost(p.cost),
-        "active" -> p.active
+        "active" -> p.active,
+        "imgUrl" -> p.imgUrl
       )
     }
   }
