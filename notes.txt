@@ -28,4 +28,5 @@ curl -X POST http://localhost:9000/api/v1/leagues/1/endDay
 
 
 # let results take pickee name
-# unique user/league combo
+# tryOrResult should print exception
+# commonise id converting for idconversion request

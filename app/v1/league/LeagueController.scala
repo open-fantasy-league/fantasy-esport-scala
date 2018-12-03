@@ -23,6 +23,7 @@ import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
 case class PeriodInput(start: Timestamp, end: Timestamp, multiplier: Double)
+case class UpdatePeriodInput(start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double])
 
 case class FactionInput(name: String, max: Option[Int])
 
@@ -100,7 +101,6 @@ class LeagueController @Inject()(
   }
 
   private val updateForm: Form[UpdateLeagueFormInput] = {
-
     Form(
       mapping(
         "name" -> optional(nonEmptyText),
@@ -108,6 +108,16 @@ class LeagueController @Inject()(
         "tournamentId" -> optional(number),
         "transferOpen" -> optional(boolean),
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
+    )
+  }
+
+  private val updatePeriodForm: Form[UpdatePeriodInput] = {
+    Form(
+      mapping(
+        "start" -> optional(of(sqlTimestampFormat)),
+        "end" -> optional(of(sqlTimestampFormat)),
+        "multiplier" -> optional(of(doubleFormat)),
+      )(UpdatePeriodInput.apply)(UpdatePeriodInput.unapply)
     )
   }
 
@@ -236,12 +246,31 @@ class LeagueController @Inject()(
         (for {
           periodValueInt <- IdParser.parseIntId(periodValue, "period value")
           leagueId <- IdParser.parseIntId(leagueId, "league")
-          period <- tryOrResponse(() => leagueRepo.getPeriod(leagueId, periodValueInt), BadRequest("Invalid leagueId or period value"))
-          out = Ok("ha")//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
+          out = handleUpdatePeriodForm(leagueId, periodValueInt)//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
       }
     }
   }
+
+  private def handleUpdatePeriodForm[A](leagueId: Int, periodValue: Int)(implicit request: Request[A]): Result = {
+    def failure(badForm: Form[UpdatePeriodInput]) = {
+      BadRequest(badForm.errorsAsJson)
+    }
+
+    def success(input: UpdatePeriodInput) = {
+      (for {
+        updatedPeriod <- tryOrResponse(() => leagueRepo.updatePeriod(leagueId, periodValue, input.start, input.end, input.multiplier), BadRequest("Invalid leagueId or period value"))
+        out = Ok(Json.toJson(updatedPeriod))
+      } yield out).fold(identity, identity)
+    }
+    updatePeriodForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def updatePeriodFormFailure[A](badForm: Form[UpdatePeriodInput])(implicit request: Request[A]) = {
+    BadRequest(badForm.errorsAsJson)
+  }
+
+  private def updatePeriodFormSuccess(input: UpdatePeriodInput) = Right(input)
 
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[LeagueFormInput]) = {

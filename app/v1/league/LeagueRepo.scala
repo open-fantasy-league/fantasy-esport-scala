@@ -55,7 +55,7 @@ trait LeagueRepo{
   def insertPeriod(leagueId: Int, input: PeriodInput, period: Int): Period
   def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
-  def getPeriod(leagueId: Int, periodValue: Int): Period
+  def updatePeriod(leagueId: Int, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
 }
 
 @Singleton
@@ -136,11 +136,16 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     Some(LeagueFull(league, factionsOut, periods, currentPeriod, statFields))
   }
 
-  override def getPeriod(leagueId: Int, periodValue: Int): Period = {
-    from(periodTable)(p => 
+  override def updatePeriod(leagueId: Int, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period = {
+    val period = from(periodTable)(p => 
         where(p.leagueId === leagueId and p.value === periodValue)
         select(p)
       ).single
+    period.start = start.getOrElse(period.start)
+    period.end = end.getOrElse(period.end)
+    period.multiplier = multiplier.getOrElse(period.multiplier)
+    periodTable.update(period)
+    period
   }
 }
 
