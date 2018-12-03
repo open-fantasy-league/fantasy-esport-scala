@@ -55,6 +55,7 @@ trait LeagueRepo{
   def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period
   def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
+  def getPeriod(leagueId: Int, periodValue: Int): Period
 }
 
 @Singleton
@@ -133,6 +134,13 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     // keep factions as well
     val factionsOut = factions.map({case (k, v) => FactionTypeOut(k.name, k.description, v)})
     Some(LeagueFull(league, factionsOut, periods, currentPeriod, statFields))
+  }
+
+  override def getPeriod(leagueId: Int, periodValue: Int): Period = {
+    from(periodTable)(p => 
+        where(p.leagueId === leagueId and p.value === periodValue)
+        select(p)
+      ).single
   }
 }
 

@@ -229,6 +229,19 @@ class LeagueController @Inject()(
     }
   }
 
+  def updatePeriodReq(leagueId: String, periodValue: String) = Action.async { implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          periodValue <- IdParser.parseIntId(day, "period value")
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          period <- Try(leagueRepo.getPeriod(leagueId, periodValue)).toOption.toRight(BadRequest("Invalid leagueId or period value"))
+          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, day)))
+        } yield out).fold(identity, identity)
+      }
+    }
+  }
+
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[LeagueFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))

@@ -40,6 +40,9 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
     case POST(p"/$id/startDay") =>
       controller.startDayReq(id)
 
+    case POST(p"/$id/periods/$periodValue") =>
+      controller.updatePeriodReq(id, periodValue)
+
     case GET(p"/$id/getHistoricTeams/$day") =>
       controller.getHistoricTeamsReq(id, day)
   }
