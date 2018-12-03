@@ -106,6 +106,7 @@ trait LeagueUserRepo{
   def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def getHistoricTeams(league: League, day: Int): Iterable[UserHistoricTeamOut]
   def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period])
+  def userInLeague(userId: Int, leagueId: Int): Boolean
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
 }
@@ -239,6 +240,10 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     periods.foreach(p =>
       newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, Some(p.value)))
     )
+  }
+
+  override def userInLeague(userId: Int, leagueId: Int): Boolean = {
+    !from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).isEmpty
   }
 }
 

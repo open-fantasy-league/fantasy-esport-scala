@@ -15,7 +15,6 @@ import scala.util.Try
 import models._
 import utils.IdParser.parseIntId
 import utils.TryHelper.tryOrResponse
-import v1.result.ResultRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Int, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
