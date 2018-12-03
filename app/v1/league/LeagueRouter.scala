@@ -31,17 +31,17 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
     case GET(p"/$id/users") =>
       controller.getAllUsersReq(id)
 
-    case GET(p"/rankings/$statField/$id") =>
+    case GET(p"/$id/rankings/$statField") =>
       controller.getRankingsReq(id, statField)
 
-    case POST(p"/endDay/$id") =>
+    case POST(p"/$id/endDay") =>
       controller.endDayReq(id)
 
-    case POST(p"/startDay/$id") =>
+    case POST(p"/$id/startDay") =>
       controller.startDayReq(id)
 
-    case GET(p"/getHistoricTeams/$leagueId/$day") =>
-      controller.getHistoricTeamsReq(leagueId, day)
+    case GET(p"/$id/getHistoricTeams/$day") =>
+      controller.getHistoricTeamsReq(id, day)
   }
 
 }

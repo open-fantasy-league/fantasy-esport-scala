@@ -18,10 +18,10 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
 
   override def routes: Routes = {
     // TODO background task continually processing
-    case POST(p"/process/$leagueId") =>
+    case POST(p"/$leagueId/process") =>
       controller.processTransfersReq(leagueId)
 
-    case POST(p"/$leagueId/$userId") =>
+    case POST(p"/league/$leagueId/user/$userId") =>
       controller.scheduleTransferReq(userId, leagueId)
   }
 
