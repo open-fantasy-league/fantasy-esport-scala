@@ -169,11 +169,17 @@ object League{
         "gameId" -> league.gameId,
         "tournamentId" -> league.tournamentId,
         "isPrivate" -> league.isPrivate,
-        "tournamentId" -> league.tournamentId,
-        "pickee" -> league.pickeeDescription,
+        "pickeeDescription" -> league.pickeeDescription,
+        "periodDescription" -> league.periodDescription,
         "teamSize" -> league.teamSize,
-        "transferLimit" -> league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+        "transferLimit" -> league.transferLimit,
+        "transferWildcard" -> league.transferWildcard,
         "startingMoney" -> league.startingMoney,
+        "transferOpen" -> league.transferOpen,
+        "transferDelay" -> league.transferDelay,
+        "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
+        "unfilledTeamPenaltyMultiplier" -> league.unfilledTeamPenaltyMultiplier,
+        "url" -> league.url
       )
     }
   }

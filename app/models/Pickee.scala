@@ -56,7 +56,7 @@ object TeamPickee{
 class HistoricTeamPickee(
                           var pickeeId: Long,
                           var leagueUserId: Long,
-                          val day: Int
+                          val period: Int
                         ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToHistoricTeamPickee.right(this).single
@@ -82,7 +82,7 @@ class PickeeStat(
 
 class PickeeStatDaily(
                             val pickeeStatId: Long,
-                            val day: Option[Int],
+                            val period: Option[Int],
                             var value: Double = 0.0
                           ) extends KeyedEntity[Long] {
   val id: Long = 0

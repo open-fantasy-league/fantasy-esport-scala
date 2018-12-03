@@ -49,7 +49,7 @@ class LeagueUserStat(
 
 class LeagueUserStatDaily(
                        val leagueUserStatId: Long,
-                       val day: Option[Int],
+                       val period: Option[Int],
                        var value: Double = 0.0
                      ) extends KeyedEntity[Long] {
   val id: Long = 0
