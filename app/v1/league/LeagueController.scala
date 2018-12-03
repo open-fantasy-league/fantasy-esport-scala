@@ -164,10 +164,11 @@ class LeagueController @Inject()(
           leagueId <- IdParser.parseIntId(leagueId, "league")
           statField <- leagueUserRepo.getStatField(leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
-          rankings <- tryOrResponse(
-            () => leagueUserRepo.getRankings(league, statField, day), InternalServerError("internal Server Error")
-          )
+          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          /*rankings <- tryOrResponse(
+            () => leagueUserRepo.getRankings(league, statField, period), InternalServerError("internal Server Error")
+          )*/
+          rankings = leagueUserRepo.getRankings(league, statField, period)
           out = Ok(Json.toJson(rankings))
         } yield out).fold(identity, identity)
       }
@@ -210,20 +211,20 @@ class LeagueController @Inject()(
                 leagueTable.update(league)
           }
           _ <- updateOldRanks(leagueId)
-          out = Ok(f"Successfully started day $newPeriod") // TODO replace with period descriptor
+          out = Ok(f"Successfully started period $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)
       }
     }
   }
 
-  def getHistoricTeamsReq(leagueId: String, day: String) = Action.async { implicit request =>
+  def getHistoricTeamsReq(leagueId: String, period: String) = Action.async { implicit request =>
     Future {
       inTransaction {
         (for {
-          day <- IdParser.parseIntId(day, "day")
+          period <- IdParser.parseIntId(period, "period")
           leagueId <- IdParser.parseIntId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, day)))
+          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -233,10 +234,10 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          periodValue <- IdParser.parseIntId(day, "period value")
+          periodValueInt <- IdParser.parseIntId(periodValue, "period value")
           leagueId <- IdParser.parseIntId(leagueId, "league")
-          period <- Try(leagueRepo.getPeriod(leagueId, periodValue)).toOption.toRight(BadRequest("Invalid leagueId or period value"))
-          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, day)))
+          period <- tryOrResponse(() => leagueRepo.getPeriod(leagueId, periodValueInt), BadRequest("Invalid leagueId or period value"))
+          out = Ok("ha")//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
       }
     }

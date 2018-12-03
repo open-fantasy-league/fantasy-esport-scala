@@ -41,7 +41,7 @@ object ResultsOut{
 }
 trait ResultRepo{
   def show(id: Long): Option[Resultu]
-  def get(day: Option[Int]): Iterable[ResultsOut]
+  def get(period: Option[Int]): Iterable[ResultsOut]
   def resultQueryExtractor(query: Iterable[ResultQuery]): Iterable[ResultsOut]
 }
 
@@ -51,8 +51,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     resultTable.lookup(id)
   }
 
-  override def get(day: Option[Int]): Iterable[ResultsOut] = {
-    // TODO day filter
+  override def get(period: Option[Int]): Iterable[ResultsOut] = {
+    // TODO period filter
     val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
       (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id)
       select((m, r, p, s, pck))

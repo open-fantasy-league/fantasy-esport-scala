@@ -141,16 +141,16 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === pickeeId
         ).single
         println(pickeeStat)
-        // has both the specific day and the overall entry
+        // has both the specific period and the overall entry
         val pickeeStats = AppDB.pickeeStatDailyTable.where(
-          psd => psd.pickeeStatId === pickeeStat.id and (psd.day === league.currentPeriod.getOrElse(new Period()).value or psd.day.isNull)
+          psd => psd.pickeeStatId === pickeeStat.id and (psd.period === league.currentPeriod.getOrElse(new Period()).value or psd.period.isNull)
         )
         AppDB.pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
         println(league.currentPeriodId.get)
         println(pickeeId)
         val leagueUserStats = from(AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((lu, tp, lus, lusd, p) =>
-          //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.day.isNull or lusd.day === p.value))
-          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and p.id === league.currentPeriodId.get and (lusd.day.isNull or lusd.day === p.value))
+          //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.period.isNull or lusd.period === p.value))
+          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value))
             select(lusd)
         )
         println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
@@ -158,7 +158,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId
         )
         val leagueUserStats = AppDB.leagueUserStatDailyTable.where(
-          lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.day === league.currentPeriod.getOrElse(new Period()).value or lud.day.isNull)
+          lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.period === league.currentPeriod.getOrElse(new Period()).value or lud.period.isNull)
         )*/
         AppDB.leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
         true // whats a good thing to put here
@@ -173,8 +173,8 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         (for {
           leagueId <- parseIntId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
-          day <- tryOrResponse[Option[Int]](() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
-          results = resultRepo.get(day).toList
+          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          results = resultRepo.get(period).toList
           success = Ok(Json.toJson(results))
         } yield success).fold(identity, identity)
         //Future{Ok(views.html.index())}

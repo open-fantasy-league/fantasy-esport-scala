@@ -21,7 +21,7 @@ class League(
               var transferWildcard: Boolean,
               var startingMoney: Int,
               val teamSize: Int,
-              var transferDelay: Int = 0, // Only applies for when day 1 has started
+              var transferDelay: Int = 0, // Only applies for when period 1 has started
               var refundPeriod: Int = 0,
               var transferOpen: Boolean = false,
               var transferBlockedDuringPeriod: Boolean = false,

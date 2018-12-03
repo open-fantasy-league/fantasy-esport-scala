@@ -95,16 +95,16 @@ trait LeagueUserRepo{
   def getAllUsersForLeague(leagueId: Int): Iterable[UserWithLeagueUser]
   def insertLeagueUser(league: League, userId: Int): LeagueUser
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
-  def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Option[Int]): LeagueUserStatDaily
+  def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Int, statFieldName: String): Option[LeagueStatField]
-  def getRankings(league: League, statField: LeagueStatField, day: Option[Int]): LeagueRankings
-  def getLeagueUserStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
-  def getLeagueUserStatWithUser(leagueId: Int, statFieldId: Long, day: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
+  def getRankings(league: League, statField: LeagueStatField, period: Option[Int]): LeagueRankings
+  def getLeagueUserStat(leagueId: Int, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStatWithUser(leagueId: Int, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def addHistoricTeams(league: League)
   def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
-  def getHistoricTeams(league: League, day: Int): Iterable[UserHistoricTeamOut]
+  def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
   def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period])
   def userInLeague(userId: Int, leagueId: Int): Boolean
 
@@ -146,9 +146,9 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     ))
   }
 
-  override def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Option[Int]): LeagueUserStatDaily = {
+  override def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily = {
     leagueUserStatDailyTable.insert(new LeagueUserStatDaily(
-      leagueUserStatId, day
+      leagueUserStatId, period
     ))
   }
 
@@ -158,12 +158,12 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     ).single).toOption
   }
 
-  override def getRankings(league: League, statField: LeagueStatField, day: Option[Int]): LeagueRankings = {
-    val rankings = this.getLeagueUserStatWithUser(league.id, statField.id, day)
+  override def getRankings(league: League, statField: LeagueStatField, period: Option[Int]): LeagueRankings = {
+    val rankings = this.getLeagueUserStatWithUser(league.id, statField.id, period)
     println(s"""rankings ${rankings.mkString(" ")}""")
     LeagueRankings(
       league.id, league.name, statField.name,
-      rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, day match {
+      rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, period match {
         // Previous rank explicitly means overall ranking at end of last period
         // so doesnt make sense to show/associate it with singular period ranking
         case None => Some(q._2.previousRank)
@@ -172,14 +172,14 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     )
   }
   override def getLeagueUserStat(
-                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                  leagueId: Int, statFieldId: Long, period: Option[Int]
                                 ): Query[(LeagueUserStat, LeagueUserStatDaily)] = {
     from(
       leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
     )((lu, lus, s) =>
       where(
         lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
       )
         select (lus, s)
         orderBy (s.value desc)
@@ -187,15 +187,15 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getLeagueUserStatWithUser(
-                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                  leagueId: Int, statFieldId: Long, period: Option[Int]
                                 ): Query[(User, LeagueUserStat, LeagueUserStatDaily)] = {
-      println(s"day: ${day}")
+      println(s"period: ${period}")
       from(
         userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
       )((u, lu, lus, s) =>
         where(
           lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-            lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.day === day
+            lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
         )
           select ((u, lus, s))
           orderBy (s.value desc)
@@ -220,9 +220,9 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentPeriod)))
   }
 
-  override def getHistoricTeams(league: League, day: Int): Iterable[UserHistoricTeamOut] = {
+  override def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut] = {
     from(historicTeamPickeeTable, leagueUserTable, leagueTable, userTable, pickeeTable)(
-      (h, lu, l, u, p) => where(lu.leagueId === league.id and h.day === day and u.id === lu.userId and h.pickeeId === p.id)
+      (h, lu, l, u, p) => where(lu.leagueId === league.id and h.period === period and u.id === lu.userId and h.pickeeId === p.id)
         select ((p, u))
         ).groupBy(_._2).map({case (user, v) => {
           UserHistoricTeamOut(user.id, user.externalId, user.username, v.map(_._1))

@@ -58,11 +58,11 @@ case class PickeeStatQuery(query: Iterable[(models.Pickee, models.PickeeStat, mo
 trait PickeeRepo{
   def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
-  def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily
-  def getPickeeStats(leagueId: Int, day: Option[Int]): Iterable[PickeeStatsOutput]
+  def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int]): PickeeStatDaily
+  def getPickeeStats(leagueId: Int, period: Option[Int]): Iterable[PickeeStatsOutput]
   def getPickees(leagueId: Int): Iterable[Pickee]
   def getPickeesWithFactions(leagueId: Int): Iterable[PickeeOut]
-  def getPickeeStat(leagueId: Int, statFieldId: Long, day: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
+  def getPickeeStat(leagueId: Int, statFieldId: Long, period: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
   def pickeeQueryExtractor(query: Iterable[PickeeQuery]): Iterable[PickeeOut]
 }
 
@@ -87,9 +87,9 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     ))
   }
 
-  override def insertPickeeStatDaily(pickeeStatId: Long, day: Option[Int]): PickeeStatDaily = {
+  override def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int]): PickeeStatDaily = {
     pickeeStatDailyTable.insert(new PickeeStatDaily(
-      pickeeStatId, day
+      pickeeStatId, period
     ))
   }
 
@@ -111,14 +111,14 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getPickeeStats(
-                                  leagueId: Int, day: Option[Int]
+                                  leagueId: Int, period: Option[Int]
                                 ): Iterable[PickeeStatsOutput] = {
     val query: Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField, FactionType, Faction)] = from(
       pickeeTable, pickeeStatTable, pickeeStatDailyTable, leagueStatFieldTable, factionTypeTable, factionTable, pickeeFactionTable
     )((p, ps, s, lsf, ft, f, pf) =>
       where(
         ps.pickeeId === p.id and s.pickeeStatId === ps.id and
-          p.leagueId === leagueId and ps.statFieldId === lsf.id and s.day === day and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id
+          p.leagueId === leagueId and ps.statFieldId === lsf.id and s.period === period and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id
       )
         //select (p, ps, s, lsf, ft, f)
         select (p, ps, s, lsf, ft, f)
@@ -136,14 +136,14 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 }
 
   override def getPickeeStat(
-                                  leagueId: Int, statFieldId: Long, day: Option[Int]
+                                  leagueId: Int, statFieldId: Long, period: Option[Int]
                                 ): Iterable[(PickeeStat, PickeeStatDaily)] = {
     from(
       pickeeTable, pickeeStatTable, pickeeStatDailyTable
     )((p, ps, s) =>
       where(
         ps.pickeeId === p.id and s.pickeeStatId === ps.id and
-          p.leagueId === leagueId and ps.statFieldId === statFieldId and s.day === day
+          p.leagueId === leagueId and ps.statFieldId === statFieldId and s.period === period
       )
         select (ps, s)
         orderBy (s.value desc)

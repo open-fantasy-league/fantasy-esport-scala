@@ -31,7 +31,7 @@ object LeagueFull{
         "tournamentId" -> league.league.tournamentId,
         "pickee" -> league.league.pickeeDescription,
         "teamSize" -> league.league.teamSize,
-        "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after day 1 start
+        "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields.map(_.name),
         "factionTypes" -> league.factions,
@@ -52,7 +52,7 @@ trait LeagueRepo{
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
-  def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period
+  def insertPeriod(leagueId: Int, input: PeriodInput, period: Int): Period
   def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
   def getPeriod(leagueId: Int, periodValue: Int): Period
@@ -99,14 +99,14 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
   }
 
-  override def insertPeriod(leagueId: Int, input: PeriodInput, day: Int): Period = {
-    periodTable.insert(new Period(leagueId, day, input.start, input.end, input.multiplier))
+  override def insertPeriod(leagueId: Int, input: PeriodInput, period: Int): Period = {
+    periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier))
   }
 
   override def incrementDay(league: League): Either[Result, Int] = {
     // check if is above max?
     league.currentPeriod match {
-      case Some(p) if !p.ended => Left(BadRequest("Must end current day before start next"))
+      case Some(p) if !p.ended => Left(BadRequest("Must end current period before start next"))
       case Some(p) => {
         val newPeriod = league.periods.find(np => np.value == p.value + 1).get
         league.currentPeriodId = Some(newPeriod.id)

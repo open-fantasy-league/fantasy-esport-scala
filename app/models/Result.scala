@@ -52,7 +52,7 @@ class Matchu( // because match is an sql keyword
               val leagueId: Int,
               val externalId: Long, // this is the dota2 match id field
               // we dont want to have 2 different games where they can overlap primary key. so dont use match id as primary key
-              val day: Int,
+              val period: Int,
               var tournamentId: Int, // for displaying link to tournament page. tournament can differ from league
               var teamOne: String,
               var teamTwo: String,

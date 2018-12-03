@@ -181,7 +181,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
   private def updateDBScheduleTransfer(
                                 toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser,
-                                day: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
+                                period: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
                               ): Either[Result, Result] = {
     val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(td)))
     if (toSell.nonEmpty) {
@@ -202,7 +202,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
         p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime.getOrElse(new Timestamp(System.currentTimeMillis())),
           scheduledUpdateTime.isEmpty, p.cost)
       ))
-      // TODO day -1
+      // TODO period -1
       // TODO have active before tounr,manet start, but not after it started
       println(s"""pickees ${pickees.mkString(" ")}""")
       println(s""" extids ${pickees.map(_.externalId).mkString(" ")}""")

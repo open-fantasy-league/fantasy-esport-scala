@@ -39,8 +39,8 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         (for {
           leagueId <- parseIntId(leagueId, "League")
           league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
-          day <- tryOrResponse(() => request.getQueryString("day").map(_.toInt), BadRequest("Invalid day format"))
-          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, day)))
+          period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, period)))
         } yield out).fold(identity, identity)
       }
     }
