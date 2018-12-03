@@ -162,7 +162,12 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     println(s"""rankings ${rankings.mkString(" ")}""")
     LeagueRankings(
       league.id, league.name, statField.name,
-      rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, Some(q._2.previousRank))})
+      rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, day match {
+        // Previous rank explicitly means overall ranking at end of last period
+        // so doesnt make sense to show/associate it with singular period ranking
+        case None => Some(q._2.previousRank)
+        case Some(_) => None
+      })})
     )
   }
   override def getLeagueUserStat(
