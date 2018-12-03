@@ -21,6 +21,32 @@ case class LeagueRankings(leagueId: Int, leagueName: String, statField: String, 
 
 case class UserHistoricTeamOut(id: Int, externalId: Option[Long], username: String, team: Iterable[Pickee])
 
+case class UserWithLeagueUser(user: User, info: LeagueUser)
+
+case class LeagueWithLeagueUser(league: League, info: LeagueUser)
+
+object UserWithLeagueUser {
+  implicit val implicitWrites = new Writes[UserWithLeagueUser] {
+    def writes(x: UserWithLeagueUser): JsValue = {
+      Json.obj(
+        "user" -> x.user,
+        "leagueInfo" -> x.info
+      )
+    }
+  }
+}
+
+object LeagueWithLeagueUser {
+  implicit val implicitWrites = new Writes[LeagueWithLeagueUser] {
+    def writes(x: LeagueWithLeagueUser): JsValue = {
+      Json.obj(
+        "league" -> x.league,
+        "userInfo" -> x.info
+      )
+    }
+  }
+}
+
 object UserHistoricTeamOut{
   implicit val implicitWrites = new Writes[UserHistoricTeamOut] {
     def writes(ht: UserHistoricTeamOut): JsValue = {
@@ -65,6 +91,8 @@ class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 
 trait LeagueUserRepo{
   def getLeagueUser(leagueId: Int, userId: Int): LeagueUser
+  def getAllLeaguesForUser(userId: Int): Iterable[LeagueWithLeagueUser]
+  def getAllUsersForLeague(leagueId: Int): Iterable[UserWithLeagueUser]
   def insertLeagueUser(league: League, userId: Int): LeagueUser
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, day: Option[Int]): LeagueUserStatDaily
@@ -89,6 +117,19 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId)
       select lu)
         .single
+  }
+
+  override def getAllLeaguesForUser(userId: Int): Iterable[LeagueWithLeagueUser] = {
+    from(leagueTable, userTable, leagueUserTable)((l, u, lu) => 
+          where(u.id === userId and lu.userId === u.id and lu.leagueId === l.id)
+          select(l, lu)
+          ).map(q => LeagueWithLeagueUser(q._1, q._2))
+  }
+  override def getAllUsersForLeague(leagueId: Int): Iterable[UserWithLeagueUser] = {
+    from(leagueTable, userTable, leagueUserTable)((l, u, lu) => 
+          where(l.id === leagueId and lu.userId === u.id and lu.leagueId === l.id)
+          select(u, lu)
+          ).map(q => UserWithLeagueUser(q._1, q._2))
   }
 
   override def insertLeagueUser(league: League, userId: Int): LeagueUser = {

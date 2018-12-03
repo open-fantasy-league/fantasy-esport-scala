@@ -78,7 +78,17 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
         success = Ok(Json.toJson(leagueUser))
       } yield success).fold(identity, identity)
     }
+  }
 
+  def showAllLeagueUserReq(userId: String) = Action { implicit request =>
+    inTransaction {
+      (for{
+        userId <- parseIntId(userId, "User")
+        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+        leagueUsers = leagueUserRepo.getAllLeaguesForUser(userId)
+        success = Ok(Json.toJson(leagueUsers))
+      } yield success).fold(identity, identity)
+    }
   }
   // TODO tolerantJson?
   def update(userId: String) = Action.async(parse.json) { implicit request =>

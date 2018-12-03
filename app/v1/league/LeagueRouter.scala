@@ -28,6 +28,9 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
     case GET(p"/$id") =>
       controller.getWithRelatedReq(id)
 
+    case GET(p"/$id/users") =>
+      controller.getAllUsersReq(id)
+
     case GET(p"/rankings/$statField/$id") =>
       controller.getRankingsReq(id, statField)
 
