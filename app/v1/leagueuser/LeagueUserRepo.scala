@@ -261,11 +261,12 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getCurrentTeams(leagueId: Int): Iterable[LeagueUserTeamOut] = {
-    from(leagueUserTable, teamPickeeTable, pickeeTable)((lu, tp, p) =>
-          where(lu.leagueId === leagueId and tp.leagueUserId === lu.id and tp.pickeeId === p.id)
+    join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) =>
+          where(lu.leagueId === leagueId)
           select((lu, p))
+          on(lu.id === tp.map(_.leagueUserId), tp.map(_.pickeeId) === p.map(_.id))
           ).groupBy(_._1).map({case (leagueUser, v) => {
-            LeagueUserTeamOut(leagueUser, v.map(_._2))
+            LeagueUserTeamOut(leagueUser, v.flatMap(_._2))
           }})
   }
 
