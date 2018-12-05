@@ -270,12 +270,13 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getCurrentTeam(leagueId: Int, userId: Int): LeagueUserTeamOut = {
-    val query = from(leagueUserTable, teamPickeeTable, pickeeTable)((lu, tp, p) => 
-          where(lu.leagueId === leagueId and lu.userId === userId and tp.leagueUserId === lu.id and tp.pickeeId === p.id)
-          select((lu, p))
-          )
+    val query = join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) => 
+        where(lu.leagueId === leagueId and lu.userId === userId)
+        select((lu, p))
+        on(lu.id === tp.map(_.leagueUserId), tp.map(_.pickeeId) === p.map(_.id))
+        )
     val leagueUser = query.head._1
-    val team = query.map(_._2)
+    val team = query.flatMap(_._2)
     LeagueUserTeamOut(leagueUser, team)
   }
 }
