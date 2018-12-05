@@ -240,6 +240,18 @@ class LeagueController @Inject()(
     }
   }
 
+  def getCurrentTeamsReq(leagueId: String) = Action.async { implicit request =>
+    Future {
+      inTransaction {
+        (for {
+          leagueId <- IdParser.parseIntId(leagueId, "league")
+          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeams(leagueId)))
+        } yield out).fold(identity, identity)
+      }
+    }
+  }
+
   def updatePeriodReq(leagueId: String, periodValue: String) = Action.async { implicit request =>
     Future {
       inTransaction {

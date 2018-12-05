@@ -87,6 +87,18 @@ object LeagueRankings{
   }
 }
 
+case class LeagueUserTeamOut(leagueUser: LeagueUser, team: Iterable[Pickee])
+object LeagueUserTeamOut{
+  implicit val implicitWrites = new Writes[LeagueUserTeamOut] {
+    def writes(x: LeagueUserTeamOut): JsValue = {
+      Json.obj(
+        "leagueUser" -> x.leagueUser,
+        "team" -> x.team,
+      )
+    }
+  }
+}
+
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait LeagueUserRepo{
@@ -107,6 +119,8 @@ trait LeagueUserRepo{
   def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
   def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period])
   def userInLeague(userId: Int, leagueId: Int): Boolean
+  def getCurrentTeams(leagueId: Int): Iterable[LeagueUserTeamOut]
+  def getCurrentTeam(leagueId: Int, userId: Int): LeagueUserTeamOut
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
 }
@@ -244,6 +258,25 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
 
   override def userInLeague(userId: Int, leagueId: Int): Boolean = {
     !from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).isEmpty
+  }
+
+  override def getCurrentTeams(leagueId: Int): Iterable[LeagueUserTeamOut] = {
+    from(leagueUserTable, teamPickeeTable, pickeeTable)((lu, tp, p) =>
+          where(lu.leagueId === leagueId and tp.leagueUserId === lu.id and tp.pickeeId === p.id)
+          select((lu, p))
+          ).groupBy(_._1).map({case (leagueUser, v) => {
+            LeagueUserTeamOut(leagueUser, v.map(_._2))
+          }})
+  }
+
+  override def getCurrentTeam(leagueId: Int, userId: Int): LeagueUserTeamOut = {
+    val query = from(leagueUserTable, teamPickeeTable, pickeeTable)((lu, tp, p) => 
+          where(lu.leagueId === leagueId and lu.userId === userId and tp.leagueUserId === lu.id and tp.pickeeId === p.id)
+          select((lu, p))
+          )
+    val leagueUser = query.head._1
+    val team = query.map(_._2)
+    LeagueUserTeamOut(leagueUser, team)
   }
 }
 

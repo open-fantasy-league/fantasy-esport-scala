@@ -38,7 +38,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     scheduleTransfer(userId, leagueId)
   }
 
-  def processTransfersReq(leagueId: String) = Action.async(parse.json) { implicit request =>
+  def processTransfersReq(leagueId: String) = Action.async { implicit request =>
     Future {
       inTransaction {
         //org.squeryl.Session.currentSession.setLogger(String => Unit)

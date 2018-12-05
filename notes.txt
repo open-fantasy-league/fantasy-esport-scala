@@ -18,6 +18,7 @@ curl -H "Content-Type: application/json" -X POST -d '{"buy": [2], "isCheck": fal
 curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost:9000/api/v1/results/1
 
 curl -X POST http://localhost:9000/api/v1/leagues/1/startDay
+curl -X POST -d '{}' http://localhost:9000/api/v1/transfers/1/process
 
 curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP",                "teamOneVictory": true, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 2, "isTeamOne": true, "stats": [{"field":       "points", "value": 5.0}, {"field": "picks", "value": 2}, {"field": "wins", "value": 1}]}]}' localhost:9000/api/v1/results/1
 
@@ -30,4 +31,5 @@ curl -X POST http://localhost:9000/api/v1/leagues/1/endDay
 
 # let results take pickee name
 # tryOrResult should print exception
+# it didnt block me from transfering during day
 # commonise id converting for idconversion request
