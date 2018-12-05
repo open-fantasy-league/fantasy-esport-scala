@@ -31,7 +31,7 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 
 
 // TODO period descriptor
-case class LeagueFormInput(name: String, gameId: Int, isPrivate: Boolean, tournamentId: Int, periodDescription: String,
+case class LeagueFormInput(name: String, gameId: Long, isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
                            transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
@@ -55,9 +55,9 @@ class LeagueController @Inject()(
     Form(
       mapping(
         "name" -> nonEmptyText,
-        "gameId" -> number,
+        "gameId" -> of(longFormat),
         "isPrivate" -> boolean,
-        "tournamentId" -> number,
+        "tournamentId" -> of(longFormat),
         "periodDescription" -> nonEmptyText,
         "periods" -> list(mapping(
           "start" -> of(sqlTimestampFormat),
@@ -88,7 +88,7 @@ class LeagueController @Inject()(
         "extraStats" -> optional(list(nonEmptyText)), // i.e. picks, wins. extra info to display on leaderboards other than points
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
         "pickees" -> list(mapping(
-          "id" -> number,
+          "id" -> of(longFormat),
           "name" -> nonEmptyText,
           "value" -> of(doubleFormat),
           "active" -> default(boolean, true),
@@ -125,7 +125,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           finished = Ok(Json.toJson(league))
         } yield finished).fold(identity, identity)
@@ -137,7 +137,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.getWithRelated(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           finished = Ok(Json.toJson(league))
         } yield finished).fold(identity, identity)
@@ -157,7 +157,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           leagueUsers = leagueUserRepo.getAllUsersForLeague(leagueId)
           finished = Ok(Json.toJson(leagueUsers))
@@ -171,7 +171,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           statField <- leagueUserRepo.getStatField(leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
@@ -189,7 +189,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           _ <- league.currentPeriod match {
             case Some(p) if !p.ended => {
@@ -213,7 +213,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           newPeriod <- leagueRepo.incrementDay(league)
           _ = if (league.transferBlockedDuringPeriod) {
@@ -232,7 +232,7 @@ class LeagueController @Inject()(
       inTransaction {
         (for {
           period <- IdParser.parseIntId(period, "period")
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
@@ -244,7 +244,7 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           out = Ok(Json.toJson(leagueUserRepo.getCurrentTeams(leagueId)))
         } yield out).fold(identity, identity)
@@ -257,14 +257,14 @@ class LeagueController @Inject()(
       inTransaction {
         (for {
           periodValueInt <- IdParser.parseIntId(periodValue, "period value")
-          leagueId <- IdParser.parseIntId(leagueId, "league")
+          leagueId <- IdParser.parseLongId(leagueId, "league")
           out = handleUpdatePeriodForm(leagueId, periodValueInt)//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
       }
     }
   }
 
-  private def handleUpdatePeriodForm[A](leagueId: Int, periodValue: Int)(implicit request: Request[A]): Result = {
+  private def handleUpdatePeriodForm[A](leagueId: Long, periodValue: Int)(implicit request: Request[A]): Result = {
     def failure(badForm: Form[UpdatePeriodInput]) = {
       BadRequest(badForm.errorsAsJson)
     }
@@ -348,7 +348,7 @@ class LeagueController @Inject()(
       Future {
         inTransaction {
           (for {
-            leagueId <- IdParser.parseIntId(leagueId, "league")
+            leagueId <- IdParser.parseLongId(leagueId, "league")
             league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
             out = Ok(Json.toJson(leagueRepo.update(league, input)))
           } yield out).fold(identity, identity)
@@ -359,7 +359,7 @@ class LeagueController @Inject()(
     updateForm.bindFromRequest().fold(failure, success)
   }
 
-  private def updateOldRanks(leagueId: Int): Either[Result, Any] = {
+  private def updateOldRanks(leagueId: Long): Either[Result, Any] = {
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
     for {
@@ -384,7 +384,7 @@ class LeagueController @Inject()(
     } yield out
   }
 
-  private def addHistoricTeam(leagueId: Int): Either[Result, Result] = {
+  private def addHistoricTeam(leagueId: Long): Either[Result, Result] = {
     for {
       league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
       _ = leagueUserRepo.addHistoricTeams(league)

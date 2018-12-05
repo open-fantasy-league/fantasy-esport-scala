@@ -6,8 +6,8 @@ import play.api.libs.json._
 import utils.CostConverter._
 
 class LeagueUser(
-                  val leagueId: Int,
-                  val userId: Int,
+                  val leagueId: Long,
+                  val userId: Long,
                   var money: Int,
                   var entered: Timestamp,
                   var remainingTransfers: Option[Int],

@@ -11,7 +11,7 @@ import play.api.data.Forms._
 import play.api.libs.json._
 import models._
 import play.api.data.format.Formats._
-import utils.IdParser.parseIntId
+import utils.IdParser.parseLongId
 import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
 
@@ -47,10 +47,10 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
         inTransaction {
           // TODO check not already joined
           (for {
-            userId <- parseIntId(userId, "User")
-            leagueId <- parseIntId(leagueId, "League")
-            user <- AppDB.userTable.lookup(userId.toInt).toRight(BadRequest("User does not exist"))
-            league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            userId <- parseLongId(userId, "User")
+            leagueId <- parseLongId(leagueId, "League")
+            user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
             //todo tis hacky
             validateUnique <- if (leagueUserRepo.userInLeague(userId, leagueId)) Left(BadRequest("User already in this league")) else Right(true)
             added <- Try(leagueUserRepo.joinUsers(List(user), league, league.statFields, league.periods)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
@@ -62,7 +62,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def show(userId: String) = Action { implicit request =>
     inTransaction {
       (for{
-        userId <- parseIntId(userId, "User")
+        userId <- parseLongId(userId, "User")
         user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
         success = Created(Json.toJson(user))
       } yield success).fold(identity, identity)
@@ -72,9 +72,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def showLeagueUserReq(userId: String, leagueId: String) = Action { implicit request =>
     inTransaction {
       (for{
-        userId <- parseIntId(userId, "User")
-        leagueId <- parseIntId(leagueId, "League")
-        league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+        userId <- parseLongId(userId, "User")
+        leagueId <- parseLongId(leagueId, "League")
+        league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
         user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
         leagueUser <- Try(leagueUserRepo.getLeagueUser(leagueId, userId)).toOption.toRight(
           BadRequest(s"User: {userId} not in league: {leagueId}"))
@@ -86,7 +86,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def showAllLeagueUserReq(userId: String) = Action { implicit request =>
     inTransaction {
       (for{
-        userId <- parseIntId(userId, "User")
+        userId <- parseLongId(userId, "User")
         user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
         leagueUsers = leagueUserRepo.getAllLeaguesForUser(userId)
         success = Ok(Json.toJson(leagueUsers))
@@ -130,7 +130,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
       Future {
         inTransaction {
           (for {
-            userId <- parseIntId(userId, "User")
+            userId <- parseLongId(userId, "User")
             user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
             updateUser <- Try(AppDB.userTable.update(user)).toOption.toRight(InternalServerError("Could not update user"))
             finished = Ok("User updated")
@@ -146,9 +146,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     Future {
       inTransaction {
         (for {
-          leagueId <- parseIntId(leagueId, "league")
+          leagueId <- parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          userId <- parseIntId(userId, "User")
+          userId <- parseLongId(userId, "User")
           user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
           out = Ok(Json.toJson(leagueUserRepo.getCurrentTeam(leagueId, userId)))
         } yield out).fold(identity, identity)

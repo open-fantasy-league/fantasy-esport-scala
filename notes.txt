@@ -31,6 +31,4 @@ curl -X POST http://localhost:9000/api/v1/leagues/1/endDay
 
 # let results take pickee name
 # tryOrResult should print exception
-# process transfer doesnt work
-# it didnt block me from transfering during day
 # commonise id converting for idconversion request

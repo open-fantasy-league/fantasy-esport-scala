@@ -6,9 +6,9 @@ import entry.SquerylEntrypointForMyApp._
 import utils.CostConverter.convertCost
 
 class Pickee(
-              val leagueId: Int,
+              val leagueId: Long,
               var name: String,
-              var externalId: Int, // in the case of dota we have the pickee id which is unique for Antimage in league 1
+              var externalId: Long, // in the case of dota we have the pickee id which is unique for Antimage in league 1
               // and Antimage in league 2. however we still want a field which is always AM hero id
               var cost: Int,
               var active: Boolean = true,

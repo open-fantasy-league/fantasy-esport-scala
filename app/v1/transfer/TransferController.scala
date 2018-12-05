@@ -8,6 +8,7 @@ import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
+import play.api.data.format.Formats._
 import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
@@ -15,7 +16,7 @@ import scala.util.Try
 import models._
 import utils.{IdParser, CostConverter}
 
-case class TransferFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, wildcard: Boolean)
+case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
 class TransferController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -24,8 +25,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
     Form(
     mapping(
-    "buy" -> default(list(number), List()),
-    "sell" -> default(list(number), List()),
+    "buy" -> default(list(of(longFormat)), List()),
+    "sell" -> default(list(of(longFormat)), List()),
     "isCheck" -> boolean,
     "wildcard" -> default(boolean, false)
     //  "delaySeconds" -> optional(number)
@@ -43,7 +44,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
       inTransaction {
         //org.squeryl.Session.currentSession.setLogger(String => Unit)
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "League")
+          leagueId <- IdParser.parseLongId(leagueId, "League")
           league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           currentTime = new Timestamp(System.currentTimeMillis())
           // TODO better way? hard with squeryls weird dsl
@@ -79,8 +80,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
         inTransaction {
           // TODO handle invalid Id
           (for {
-            userId <- IdParser.parseIntId(userId, "User")
-            leagueId <- IdParser.parseIntId(leagueId, "League")
+            userId <- IdParser.parseLongId(userId, "User")
+            leagueId <- IdParser.parseLongId(leagueId, "League")
             league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           // TODO what does single return if no entries?
             leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
@@ -109,7 +110,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     transferForm.bindFromRequest().fold(failure, success)
   }
 
-  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Int]): Either[Result, Option[Int]] = {
+  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
     val newRemaining = leagueUser.remainingTransfers - toSell.size
     leagueUser.remainingTransfers match{
       case Some(x) if x - toSell.size < 0 => Left(BadRequest(
@@ -120,7 +121,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def validatePickeeIds(currentTeamIds: Set[Int], pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int]): Either[Result, Boolean] = {
+  private def validatePickeeIds(currentTeamIds: Set[Long], pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long]): Either[Result, Boolean] = {
     // TODO return what ids are invalid
     (toSell ++ toBuy).subsetOf(pickees.map(_.externalId).toSet) match {
       case true => {
@@ -138,7 +139,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Int], toBuy: Set[Int], wildcardApplied: Boolean, startingMoney: Int): Either[Result, Int] = {
+  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long], wildcardApplied: Boolean, startingMoney: Int): Either[Result, Int] = {
     val spent = pickees.filter(p => toBuy.contains(p.externalId)).map(_.cost).sum
     val updated = wildcardApplied match {
       case false => leagueUser.money + pickees.filter(p => toSell.contains(p.externalId)).map(_.cost).sum - spent
@@ -152,7 +153,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def updatedTeamSize(newTeamIds: Set[Int], league: League): Either[Result, Int] = {
+  private def updatedTeamSize(newTeamIds: Set[Long], league: League): Either[Result, Int] = {
     newTeamIds.size match {
       case x if x <= league.teamSize => Right(x)
       case x => Left(BadRequest(
@@ -161,7 +162,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     }
   }
 
-  private def validateFactionLimit(newTeamIds: Set[Int], league: League): Either[Result, Any] = {
+  private def validateFactionLimit(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
     //Right("cat")
     // TODO errrm this is a bit messy
     league.factionTypes.forall(factionType => {
@@ -180,7 +181,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 //  }
 
   private def updateDBScheduleTransfer(
-                                toSell: Set[Int], toBuy: Set[Int], pickees: Iterable[Pickee], leagueUser: LeagueUser,
+                                toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,
                                 period: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
                               ): Either[Result, Result] = {
     val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(td)))
@@ -235,7 +236,7 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
     AppDB.leagueUserTable.update(leagueUser)
   }
 
-  private def shouldApplyWildcard(attemptingWildcard: Boolean, league: League, leagueUser: LeagueUser, toSell: Set[Int]): Either[Result, Boolean] = {
+  private def shouldApplyWildcard(attemptingWildcard: Boolean, league: League, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Boolean] = {
     if (!toSell.isEmpty && attemptingWildcard) return Left(BadRequest("Cannot sell heroes AND use wildcard at same time"))
     if (!attemptingWildcard) return Right(false)
     league.transferWildcard match {

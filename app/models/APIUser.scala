@@ -7,6 +7,6 @@ class APIUser(
                var apikey: String,
                var email: String,
                var role: Int // TODO this should be enum
-             ) extends KeyedEntity[Int] {
-  val id: Int = 0
+             ) extends KeyedEntity[Long] {
+  val id: Long = 0
 }

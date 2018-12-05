@@ -6,6 +6,9 @@ import play.api.mvc.Results.BadRequest
 import entry.SquerylEntrypointForMyApp._
 
 object IdParser {
+  def parseLongId(id: String, idName: String): Either[Result, Long] = {
+    Try(id.toLong).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
+  }
   def parseIntId(id: String, idName: String): Either[Result, Int] = {
     Try(id.toInt).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
   }

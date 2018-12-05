@@ -13,15 +13,15 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import scala.util.Try
 import models._
-import utils.IdParser.parseIntId
+import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
 
 case class ResultFormInput(
-                            matchId: Long, tournamentId: Int, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
+                            matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
                             startTstamp: Timestamp, pickees: List[PickeeFormInput]
                           )
 
-case class PickeeFormInput(externalId: Int, isTeamOne: Boolean, stats: List[StatsFormInput])
+case class PickeeFormInput(externalId: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
 
 case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
 
@@ -35,13 +35,13 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     Form(
       mapping(
         "matchId" -> of(longFormat),
-        "tournamentId" -> number,
+        "tournamentId" -> of(longFormat),
         "teamOne" -> nonEmptyText,
         "teamTwo" -> nonEmptyText,
         "teamOneVictory" -> boolean,
         "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss.S"),
         "pickees" -> list(mapping(
-          "externalId" -> number,
+          "externalId" -> of(longFormat),
           "isTeamOne" -> boolean,
           "stats" -> list(mapping(
             "field" -> nonEmptyText,
@@ -67,8 +67,8 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       Future{
         inTransaction {
           (for {
-            leagueId <- parseIntId(leagueId, "League")
-            league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+            leagueId <- parseLongId(leagueId, "League")
+            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
             validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
             internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
             insertedMatch <- newMatch(input, league)
@@ -171,8 +171,8 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     Future{
       inTransaction {
         (for {
-          leagueId <- parseIntId(leagueId, "League")
-          league <- AppDB.leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+          leagueId <- parseLongId(leagueId, "League")
+          league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           results = resultRepo.get(period).toList
           success = Ok(Json.toJson(results))

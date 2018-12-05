@@ -46,25 +46,25 @@ case class LeagueFullQuery(league: League, period: Option[Period], factionType: 
 
 
 trait LeagueRepo{
-  def get(id: Int): Option[League]
-  def getWithRelated(id: Int): Option[LeagueFull]
+  def get(id: Long): Option[League]
+  def getWithRelated(id: Long): Option[LeagueFull]
   def insert(formInput: LeagueFormInput): League
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
-  def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField
-  def insertPeriod(leagueId: Int, input: PeriodInput, period: Int): Period
+  def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
+  def insertPeriod(leagueId: Long, input: PeriodInput, period: Int): Period
   def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
-  def updatePeriod(leagueId: Int, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
+  def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
 }
 
 @Singleton
 class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
-  override def get(id: Int): Option[League] = {
+  override def get(id: Long): Option[League] = {
     leagueTable.lookup(id)
   }
 
-  override def getWithRelated(id: Int): Option[LeagueFull] = {
+  override def getWithRelated(id: Long): Option[LeagueFull] = {
     val queryResult = join(leagueTable, periodTable.leftOuter, factionTypeTable.leftOuter, factionTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) => 
         where(l.id === id)
         select((l, p, ft, f, s))
@@ -95,11 +95,11 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     league
   }
 
-  override def insertLeagueStatField(leagueId: Int, name: String): LeagueStatField = {
+  override def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField = {
     leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
   }
 
-  override def insertPeriod(leagueId: Int, input: PeriodInput, period: Int): Period = {
+  override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int): Period = {
     periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier))
   }
 
@@ -136,7 +136,7 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     Some(LeagueFull(league, factionsOut, periods, currentPeriod, statFields))
   }
 
-  override def updatePeriod(leagueId: Int, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period = {
+  override def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period = {
     val period = from(periodTable)(p => 
         where(p.leagueId === leagueId and p.value === periodValue)
         select(p)

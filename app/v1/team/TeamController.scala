@@ -25,8 +25,8 @@ class TeamController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     Future {
       inTransaction {
         (for {
-          userId <- IdParser.parseIntId(userId, "User")
-          leagueId <- IdParser.parseIntId(leagueId, "League")
+          userId <- IdParser.parseLongId(userId, "User")
+          leagueId <- IdParser.parseLongId(leagueId, "League")
           league <- leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.
             toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
@@ -40,7 +40,7 @@ class TeamController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseIntId(leagueId, "League")
+          leagueId <- IdParser.parseLongId(leagueId, "League")
           league <- leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           teams = league.users.associations.map(lu => lu.team.toList)
           out = Ok(Json.toJson(teams))

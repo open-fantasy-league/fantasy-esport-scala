@@ -15,11 +15,11 @@ import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
 
-case class Ranking(userId: Int, username: String, value: Double, rank: Int, previousRank: Option[Int])
+case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int])
 
-case class LeagueRankings(leagueId: Int, leagueName: String, statField: String, rankings: Iterable[Ranking])
+case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
 
-case class UserHistoricTeamOut(id: Int, externalId: Option[Long], username: String, team: Iterable[Pickee])
+case class UserHistoricTeamOut(id: Long, externalId: Option[Long], username: String, team: Iterable[Pickee])
 
 case class UserWithLeagueUser(user: User, info: LeagueUser)
 
@@ -102,52 +102,52 @@ object LeagueUserTeamOut{
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait LeagueUserRepo{
-  def getLeagueUser(leagueId: Int, userId: Int): LeagueUser
-  def getAllLeaguesForUser(userId: Int): Iterable[LeagueWithLeagueUser]
-  def getAllUsersForLeague(leagueId: Int): Iterable[UserWithLeagueUser]
-  def insertLeagueUser(league: League, userId: Int): LeagueUser
+  def getLeagueUser(leagueId: Long, userId: Long): LeagueUser
+  def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser]
+  def getAllUsersForLeague(leagueId: Long): Iterable[UserWithLeagueUser]
+  def insertLeagueUser(league: League, userId: Long): LeagueUser
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
-  def getStatField(leagueId: Int, statFieldName: String): Option[LeagueStatField]
+  def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
   def getRankings(league: League, statField: LeagueStatField, period: Option[Int]): LeagueRankings
-  def getLeagueUserStat(leagueId: Int, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
-  def getLeagueUserStatWithUser(leagueId: Int, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStat(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStatWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def addHistoricTeams(league: League)
   def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
   def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period])
-  def userInLeague(userId: Int, leagueId: Int): Boolean
-  def getCurrentTeams(leagueId: Int): Iterable[LeagueUserTeamOut]
-  def getCurrentTeam(leagueId: Int, userId: Int): LeagueUserTeamOut
+  def userInLeague(userId: Long, leagueId: Long): Boolean
+  def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
+  def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
 
-  //private def statFieldIdFromName(statFieldName: String, leagueId: Int)
+  //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
 
 @Singleton
 class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
 
-  override def getLeagueUser(leagueId: Int, userId: Int): LeagueUser = {
+  override def getLeagueUser(leagueId: Long, userId: Long): LeagueUser = {
     from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId)
       select lu)
         .single
   }
 
-  override def getAllLeaguesForUser(userId: Int): Iterable[LeagueWithLeagueUser] = {
+  override def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser] = {
     from(leagueTable, userTable, leagueUserTable)((l, u, lu) => 
           where(u.id === userId and lu.userId === u.id and lu.leagueId === l.id)
           select(l, lu)
           ).map(q => LeagueWithLeagueUser(q._1, q._2))
   }
-  override def getAllUsersForLeague(leagueId: Int): Iterable[UserWithLeagueUser] = {
+  override def getAllUsersForLeague(leagueId: Long): Iterable[UserWithLeagueUser] = {
     from(leagueTable, userTable, leagueUserTable)((l, u, lu) => 
           where(l.id === leagueId and lu.userId === u.id and lu.leagueId === l.id)
           select(u, lu)
           ).map(q => UserWithLeagueUser(q._1, q._2))
   }
 
-  override def insertLeagueUser(league: League, userId: Int): LeagueUser = {
+  override def insertLeagueUser(league: League, userId: Long): LeagueUser = {
     leagueUserTable.insert(new LeagueUser(
       league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit,
       !league.transferWildcard
@@ -166,7 +166,7 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     ))
   }
 
-  override def getStatField(leagueId: Int, statFieldName: String): Option[LeagueStatField] = {
+  override def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField] = {
     Try(leagueStatFieldTable.where(
       lsf => lsf.leagueId === leagueId and lower(lsf.name) === statFieldName.toLowerCase()
     ).single).toOption
@@ -186,7 +186,7 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     )
   }
   override def getLeagueUserStat(
-                                  leagueId: Int, statFieldId: Long, period: Option[Int]
+                                  leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Query[(LeagueUserStat, LeagueUserStatDaily)] = {
     from(
       leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
@@ -201,7 +201,7 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getLeagueUserStatWithUser(
-                                  leagueId: Int, statFieldId: Long, period: Option[Int]
+                                  leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Query[(User, LeagueUserStat, LeagueUserStatDaily)] = {
       println(s"period: ${period}")
       from(
@@ -256,11 +256,11 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     )
   }
 
-  override def userInLeague(userId: Int, leagueId: Int): Boolean = {
+  override def userInLeague(userId: Long, leagueId: Long): Boolean = {
     !from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).isEmpty
   }
 
-  override def getCurrentTeams(leagueId: Int): Iterable[LeagueUserTeamOut] = {
+  override def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut] = {
     join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) =>
           where(lu.leagueId === leagueId)
           select((lu, p))
@@ -270,7 +270,7 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
           }})
   }
 
-  override def getCurrentTeam(leagueId: Int, userId: Int): LeagueUserTeamOut = {
+  override def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut = {
     val query = join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) => 
         where(lu.leagueId === leagueId and lu.userId === userId)
         select((lu, p))

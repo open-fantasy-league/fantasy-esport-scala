@@ -11,10 +11,10 @@ import entry.SquerylEntrypointForMyApp._
 
 class League(
               var name: String,
-              val apiId: Int, // the api user/platform that created the league
-              val gameId: Int,
+              val apiId: Long, // the api user/platform that created the league
+              val gameId: Long,
               var isPrivate: Boolean,
-              var tournamentId: Int,
+              var tournamentId: Long,
               var pickeeDescription: String,
               var periodDescription: String,
               var transferLimit: Option[Int],
@@ -29,8 +29,8 @@ class League(
               var url: String = "",
               var autoUpdate: Boolean = true,
               var currentPeriodId: Option[Long] = None
-            ) extends KeyedEntity[Int] {
-  val id: Int = 0
+            ) extends KeyedEntity[Long] {
+  val id: Long = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
@@ -51,22 +51,22 @@ class League(
 }
 
 class LeagueStatField(
-                       val leagueId: Int,
+                       val leagueId: Long,
                        val name: String  // Index this
                      ) extends KeyedEntity[Long] {
   val id: Long = 0
 }
 
 class LeaguePrize(
-                   val leagueId: Int,
+                   val leagueId: Long,
                    var description: String,
                    var email: String
-                 ) extends KeyedEntity[Int] {
-  val id: Int = 0
+                 ) extends KeyedEntity[Long] {
+  val id: Long = 0
 }
 
 class FactionType(
-                  val leagueId: Int,
+                  val leagueId: Long,
                   val name: String,
                   var description: String,
                   var max: Option[Int] = None
@@ -86,7 +86,7 @@ class Faction(
 }
 
 class Period(
-            val leagueId: Int,
+            val leagueId: Long,
             val value: Int,
             var start: Timestamp,
             var end: Timestamp,

@@ -8,8 +8,8 @@ import play.api.libs.json._
 class User(
             var username: String,
             val externalId: Option[Long],
-          ) extends KeyedEntity[Int] {
-  val id: Int = 0
+          ) extends KeyedEntity[Long] {
+  val id: Long = 0
 
   // If a class has an Option[] field, it becomes mandatory
   // to implement a zero argument constructor

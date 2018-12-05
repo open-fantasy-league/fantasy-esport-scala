@@ -14,7 +14,7 @@ import play.api.data.format.Formats._
 import scala.util.Try
 import models.AppDB._
 import utils.CostConverter.unconvertCost
-import utils.IdParser.parseIntId
+import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
 
 class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
@@ -24,8 +24,8 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     Future{
       inTransaction {
         (for {
-          leagueId <- parseIntId(leagueId, "League")
-          league <- leagueTable.lookup(leagueId.toInt).toRight(BadRequest("League does not exist"))
+          leagueId <- parseLongId(leagueId, "League")
+          league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           //out = Ok(Json.toJson(league.pickees.where(_ => _).toSeq))
           out = Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(leagueId)))
         } yield out).fold(identity, identity)
@@ -37,7 +37,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     Future{
       inTransaction {
         (for {
-          leagueId <- parseIntId(leagueId, "League")
+          leagueId <- parseLongId(leagueId, "League")
           league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, period)))
@@ -69,7 +69,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       Future {
         inTransaction {
           (for {
-            leagueId <- parseIntId(leagueId, "league")
+            leagueId <- parseLongId(leagueId, "league")
             league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
             leaguePickees = pickeeRepo.getPickees(leagueId)
             pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap

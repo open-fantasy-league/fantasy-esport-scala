@@ -15,7 +15,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class PickeeFormInput(id: Int, name: String, value: Double, active: Boolean, factions: List[String], imgUrl: Option[String])
+case class PickeeFormInput(id: Long, name: String, value: Double, active: Boolean, factions: List[String], imgUrl: Option[String])
 
 case class RepricePickeeFormInput(id: Long, cost: Double)
 
@@ -25,7 +25,7 @@ case class PickeeQuery(pickee: Pickee, factionType: FactionType, faction: Factio
 
 case class PickeeOut(pickee: Pickee, factions: Map[String, String])
 
-case class PickeeStatsOutput(externalId: Int, name: String, stats: Map[String, Double], factions: Map[String, String])
+case class PickeeStatsOutput(externalId: Long, name: String, stats: Map[String, Double], factions: Map[String, String])
 
 object PickeeOut{
   implicit val implicitWrites = new Writes[PickeeOut] {
@@ -56,20 +56,20 @@ case class PickeeStatQuery(query: Iterable[(models.Pickee, models.PickeeStat, mo
 
 
 trait PickeeRepo{
-  def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee
+  def insertPickee(leagueId: Long, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
   def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int]): PickeeStatDaily
-  def getPickeeStats(leagueId: Int, period: Option[Int]): Iterable[PickeeStatsOutput]
-  def getPickees(leagueId: Int): Iterable[Pickee]
-  def getPickeesWithFactions(leagueId: Int): Iterable[PickeeOut]
-  def getPickeeStat(leagueId: Int, statFieldId: Long, period: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
+  def getPickeeStats(leagueId: Long, period: Option[Int]): Iterable[PickeeStatsOutput]
+  def getPickees(leagueId: Long): Iterable[Pickee]
+  def getPickeesWithFactions(leagueId: Long): Iterable[PickeeOut]
+  def getPickeeStat(leagueId: Long, statFieldId: Long, period: Option[Int]): Iterable[(PickeeStat, PickeeStatDaily)]
   def pickeeQueryExtractor(query: Iterable[PickeeQuery]): Iterable[PickeeOut]
 }
 
 @Singleton
 class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends PickeeRepo{
 
-  override def insertPickee(leagueId: Int, pickee: PickeeFormInput): Pickee = {
+  override def insertPickee(leagueId: Long, pickee: PickeeFormInput): Pickee = {
     pickeeTable.insert(new Pickee(
       leagueId,
       pickee.name,
@@ -93,7 +93,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     ))
   }
 
-  override def getPickees(leagueId: Int): Iterable[Pickee] = {
+  override def getPickees(leagueId: Long): Iterable[Pickee] = {
    from(pickeeTable, leagueTable)(
      (p, l) => where(p.leagueId === l.id)
        select(p)
@@ -101,7 +101,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
  }
 
 
-  override def getPickeesWithFactions(leagueId: Int): Iterable[PickeeOut] = {
+  override def getPickeesWithFactions(leagueId: Long): Iterable[PickeeOut] = {
   val query = from(leagueTable, pickeeTable, factionTypeTable, factionTable, pickeeFactionTable)(
     (l, p, ft, f, pf) =>
       where(p.leagueId === l.id and ft.leagueId === l.id and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id)
@@ -111,7 +111,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getPickeeStats(
-                                  leagueId: Int, period: Option[Int]
+                                  leagueId: Long, period: Option[Int]
                                 ): Iterable[PickeeStatsOutput] = {
     val query: Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField, FactionType, Faction)] = from(
       pickeeTable, pickeeStatTable, pickeeStatDailyTable, leagueStatFieldTable, factionTypeTable, factionTable, pickeeFactionTable
@@ -136,7 +136,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 }
 
   override def getPickeeStat(
-                                  leagueId: Int, statFieldId: Long, period: Option[Int]
+                                  leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Iterable[(PickeeStat, PickeeStatDaily)] = {
     from(
       pickeeTable, pickeeStatTable, pickeeStatDailyTable
