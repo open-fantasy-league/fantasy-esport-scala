@@ -221,11 +221,12 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
 
   private def processLeagueUserTransfer(leagueUser: LeagueUser) = {
     // TODO need to lock here?
+    // TODO map and filter together
     println("in proc trans")
     val transfers = AppDB.transferTable.where(t => t.processed === false and t.leagueUserId === leagueUser.id)
     AppDB.teamPickeeTable.insert(transfers.filter(_.isBuy).map(t => new TeamPickee(t.pickeeId, t.leagueUserId)))
     AppDB.teamPickeeTable.deleteWhere(tp =>
-      (tp.leagueUserId === leagueUser.id) and (tp.pickeeId in transfers.filter(!_.isBuy))
+      (tp.leagueUserId === leagueUser.id) and (tp.pickeeId in transfers.filter(!_.isBuy).map(_.pickeeId))
     )
     AppDB.transferTable.update(transfers.map(t => {
       t.processed = true; t
