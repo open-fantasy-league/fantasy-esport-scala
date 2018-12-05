@@ -222,7 +222,7 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
 
   override def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut] = {
     from(historicTeamPickeeTable, leagueUserTable, leagueTable, userTable, pickeeTable)(
-      (h, lu, l, u, p) => where(lu.leagueId === league.id and h.period === period and u.id === lu.userId and h.pickeeId === p.id)
+      (h, lu, l, u, p) => where(h.leagueUserId === lu.id and lu.leagueId === league.id and h.period === period and u.id === lu.userId and h.pickeeId === p.id)
         select ((p, u))
         ).groupBy(_._2).map({case (user, v) => {
           UserHistoricTeamOut(user.id, user.externalId, user.username, v.map(_._1))
