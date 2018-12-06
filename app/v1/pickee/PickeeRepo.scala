@@ -113,22 +113,26 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getPickeeStats(
                                   leagueId: Long, period: Option[Int]
                                 ): Iterable[PickeeStatsOutput] = {
-    val query: Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField, FactionType, Faction)] = from(
-      pickeeTable, pickeeStatTable, pickeeStatDailyTable, leagueStatFieldTable, factionTypeTable, factionTable, pickeeFactionTable
-    )((p, ps, s, lsf, ft, f, pf) =>
+    val query = //: Iterable[(Pickee, PickeeStat, PickeeStatDaily, LeagueStatField, Option[FactionType], Option[Faction])] = 
+      join(
+      pickeeTable, pickeeStatTable, pickeeStatDailyTable, leagueStatFieldTable, pickeeFactionTable.leftOuter, factionTable.leftOuter, factionTypeTable.leftOuter
+    )((p, ps, s, lsf, pf, f, ft) =>
       where(
-        ps.pickeeId === p.id and s.pickeeStatId === ps.id and
-          p.leagueId === leagueId and ps.statFieldId === lsf.id and s.period === period and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id
+          p.leagueId === leagueId and s.period === period
       )
         //select (p, ps, s, lsf, ft, f)
         select (p, ps, s, lsf, ft, f)
         orderBy (lsf.name, s.value desc)
+        on (ps.pickeeId === p.id, s.pickeeStatId === ps.id, ps.statFieldId === lsf.id, 
+          pf.map(_.pickeeId) === p.id, pf.map(_.factionId) === f.map(_.id), f.map(_.factionTypeId) === ft.map(_.id)
+          )
     )
     //v.map(x => x.              factionType.name -> x.faction.name).toMap
     val groupByPickee = query.groupBy(_._1)
+    println(groupByPickee.mkString(","))
     val out: Iterable[PickeeStatsOutput] = groupByPickee.map({case (p, v) => {
       val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => x._1.name -> x._2.value).toMap
-      val factions = v.map(x => x._5.name -> x._6.name).toMap
+      val factions = v.filter(x => !x._5.isEmpty).map(x => x._5.get.name -> x._6.get.name).toMap
       PickeeStatsOutput(p.externalId, p.name, stats, factions)
     //v.map({case (k2, v2) => StatsOutput(k2.name, v2.value)}).toList)}).toList
   }})
