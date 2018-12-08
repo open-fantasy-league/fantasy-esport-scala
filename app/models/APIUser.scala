@@ -1,12 +1,13 @@
 package models
 
 import org.squeryl.KeyedEntity
+import java.util.UUID.randomUUID
 
 class APIUser(
                var name: String,
-               var apikey: String,
                var email: String,
-               var role: Int // TODO this should be enum
-             ) extends KeyedEntity[Long] {
-  val id: Long = 0
+               var role: Int = 0 // TODO this should be enum
+             ) extends KeyedEntity[String] {
+  val id: String = "A"//randomUUID().toString
+  def key = id
 }

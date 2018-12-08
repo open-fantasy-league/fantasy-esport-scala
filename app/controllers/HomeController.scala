@@ -15,9 +15,10 @@ class HomeController @Inject()(cc: ControllerComponents) extends AbstractControl
     inTransaction(
       AppDB.create
     )
-    inTransaction(
+    inTransaction{
       AppDB.gameTable.insert(new Game("DotA 2", "DOTA"))
-    )
+      AppDB.apiUserTable.insert(new APIUser("Testname", "test email"))
+    }
 
     Ok(views.html.index())
   }

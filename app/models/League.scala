@@ -11,7 +11,7 @@ import entry.SquerylEntrypointForMyApp._
 
 class League(
               var name: String,
-              val apiId: Long, // the api user/platform that created the league
+              val apiKey: String, // the api user/platform that created the league
               val gameId: Long,
               var isPrivate: Boolean,
               var tournamentId: Long,
@@ -46,7 +46,7 @@ class League(
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
-  def this() = this("", 1, 1, false, 0, "", "", None, false, 0, 5)
+  def this() = this("", "AAA", 1, false, 0, "", "", None, false, 0, 5)
 
 }
 

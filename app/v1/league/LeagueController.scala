@@ -37,7 +37,7 @@ case class LeagueFormInput(name: String, gameId: Long, isPrivate: Boolean, tourn
                            transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
-                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int]
+                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
@@ -95,7 +95,8 @@ class LeagueController @Inject()(
           "factions" -> list(nonEmptyText),
           "imgUrl" -> optional(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
-        "users" -> list(number)
+        "users" -> list(number),
+        "apiKey" -> nonEmptyText
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }

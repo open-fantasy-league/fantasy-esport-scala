@@ -56,6 +56,10 @@ object AppDB extends Schema {
     oneToManyRelation(leagueTable, leaguePrizeTable).
       via((l, o) => (l.id === o.leagueId))
 
+  val apiUserToLeague =
+    oneToManyRelation(apiUserTable, leagueTable).
+      via((a, l) => (a.id === l.apiKey))
+
   val leagueToLeagueStatField =
     oneToManyRelation(leagueTable, leagueStatFieldTable).
       via((l, o) => (l.id === o.leagueId))
