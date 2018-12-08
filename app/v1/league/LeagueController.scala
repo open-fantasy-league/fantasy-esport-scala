@@ -14,7 +14,8 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
 import utils.TryHelper._
-import auth.AuthAction
+import auth._
+import auth.Auther
 import models.AppDB._
 import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, FactionType, Faction,
   PickeeFaction
@@ -46,7 +47,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
 class LeagueController @Inject()(
                                   cc: ControllerComponents, leagueRepo: LeagueRepo,
                                   leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
-                                  authAct: AuthAction
+                                  authAct: AuthAction, auther: Auther
                                 )(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -210,7 +211,9 @@ class LeagueController @Inject()(
     }
   }
 
-  def startDayReq(leagueId: String) = authAct.async {implicit request =>
+  def startDayReq(leagueId: String) = (authAct andThen auther.LeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+    println(request.apiKey)
+    println(request.league)
     Future {
       inTransaction {
         (for {
