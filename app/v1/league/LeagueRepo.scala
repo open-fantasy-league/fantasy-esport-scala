@@ -52,7 +52,7 @@ trait LeagueRepo{
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
-  def insertPeriod(leagueId: Long, input: PeriodInput, period: Int): Period
+  def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
   def incrementDay(league: League): Either[Result, Int]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
@@ -99,8 +99,8 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
   }
 
-  override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int): Period = {
-    periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier))
+  override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period = {
+    periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier, nextPeriodId))
   }
 
   override def incrementDay(league: League): Either[Result, Int] = {

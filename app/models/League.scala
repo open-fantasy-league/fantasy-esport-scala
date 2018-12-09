@@ -91,6 +91,7 @@ class Period(
             var start: Timestamp,
             var end: Timestamp,
             var multiplier: Double = 1.0,
+            val nextPeriodId: Option[Long] = None,
             var ended: Boolean = false,
             ) extends KeyedEntity[Long] {
   val id: Long = 0

@@ -46,6 +46,8 @@ lazy val root = (project in file("."))
 // Documentation for this project:
 //    sbt "project docs" "~ paradox"
 //    open docs/target/paradox/site/index.html
+
+lazy val scripts = (project in file("scripts"))
 lazy val docs = (project in file("docs")).enablePlugins(ParadoxPlugin).
   settings(
     paradoxProperties += ("download_url" -> "https://example.lightbend.com/v1/download/play-rest-api")

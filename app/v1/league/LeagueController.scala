@@ -308,9 +308,10 @@ class LeagueController @Inject()(
 
         newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
         newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
-
-        (input.periods.zipWithIndex).foreach({case (p, i) => {
-          leagueRepo.insertPeriod(newLeague.id, p, i+1)
+        var nextPeriodId: Option[Long] = None
+        (input.periods.zipWithIndex).reverse.foreach({case (p, i) => {
+          val newPeriod = leagueRepo.insertPeriod(newLeague.id, p, i+1, nextPeriodId)
+          nextPeriodId = Some(newPeriod.id)
           newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
           newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
         }})

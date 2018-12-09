@@ -50,8 +50,6 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
           // TODO better way? hard with squeryls weird dsl
           updates = league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
             .map(processLeagueUserTransfer)
-//          updates = league.users.associations
-//            .map(processLeagueUserTransfer)
           finished <- Right(Ok("Transfer updates processed"))
         } yield finished).fold(identity, identity)
       }
