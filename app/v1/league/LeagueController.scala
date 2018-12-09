@@ -195,17 +195,12 @@ class LeagueController @Inject()(
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           _ <- league.currentPeriod match {
             case Some(p) if !p.ended => {
-              if (league.transferBlockedDuringPeriod) {
-                league.transferOpen = true
-                leagueTable.update(league)
-              }
-              p.ended = true
-              periodTable.update(p)
+              leagueRepo.postEndPeriodHook(league, p)
               Right(true)
             }
             case _ => Left(BadRequest("Period already ended (Must start next period first)"))
           }
-          out <- addHistoricTeam(leagueId)
+          out = Ok("Successfully ended day")
         } yield out).fold(identity, identity)
       }
     }
@@ -219,12 +214,8 @@ class LeagueController @Inject()(
         (for {
           leagueId <- IdParser.parseLongId(leagueId, "league")
           league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          newPeriod <- leagueRepo.incrementDay(league)
-          _ = if (league.transferBlockedDuringPeriod) {
-                league.transferOpen = false
-                leagueTable.update(league)
-          }
-          _ <- updateOldRanks(leagueId)
+          newPeriod <- leagueRepo.getNextPeriod(league)
+          _ = leagueRepo.postStartPeriodHook(league, newPeriod)
           out = Ok(f"Successfully started period $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)
       }

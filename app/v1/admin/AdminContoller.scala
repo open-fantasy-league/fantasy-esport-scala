@@ -7,8 +7,9 @@ import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
+import v1.league.LeagueRepo
 
-class AdminController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
   def allProcessTransfersReq() = Action.async { implicit request =>
@@ -31,23 +32,8 @@ class AdminController @Inject()(cc: ControllerComponents)(implicit ec: Execution
     Future {
       val currentTime = new Timestamp(System.currentTimeMillis())
       inTransaction {
-        val endedUpdates = from(AppDB.leagueTable, AppDB.periodTable)((l,p) =>
-              where(l.currentPeriodId === p.id and p.ended === false and p.end <= currentTime and p.nextPeriodId.isNotNull)
-              select(p)
-              ).map(p => {p.ended = true; p})
-        // todo other end day hooks
-        AppDB.periodTable.update(endedUpdates)
-        val startedUpdates = from(AppDB.leagueTable, AppDB.periodTable)((l,p) =>
-              // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
-              // and is future period that should have started...so lets start it
-              where(not(l.currentPeriodId === p.id) and p.ended === false and p.start <= currentTime)
-              select((l, p))
-              ).map(t => {
-                t._1.currentPeriodId = Some(t._2.id)
-                t._1
-            })
-        // todo other start day hooks
-        AppDB.leagueTable.update(startedUpdates)
+        leagueRepo.startPeriods(currentTime)
+        leagueRepo.endPeriods(currentTime)
         Ok("Periods rolled over")
       }
     }

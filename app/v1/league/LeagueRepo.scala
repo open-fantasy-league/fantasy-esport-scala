@@ -5,13 +5,15 @@ import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.mvc.Result
-import play.api.mvc.Results.BadRequest
+import play.api.mvc.Results.{BadRequest, InternalServerError}
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
 
 import models.AppDB._
 import models._
 import utils.CostConverter
+import v1.leagueuser.LeagueUserRepo
+import v1.pickee.PickeeRepo
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -53,13 +55,20 @@ trait LeagueRepo{
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
-  def incrementDay(league: League): Either[Result, Int]
+  def getNextPeriod(league: League): Either[Result, Period]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
+  def addHistoricTeams(league: League)
+  def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int)
+  def updateOldRanks(league: League)
+  def postStartPeriodHook(league: League, period: Period)
+  def postEndPeriodHook(league: League, period: Period)
+  def startPeriods(currentTime: Timestamp)
+  def endPeriods(currentTime: Timestamp)
 }
 
 @Singleton
-class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
+class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo)(implicit ec: LeagueExecutionContext) extends LeagueRepo{
   override def get(id: Long): Option[League] = {
     leagueTable.lookup(id)
   }
@@ -103,22 +112,18 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier, nextPeriodId))
   }
 
-  override def incrementDay(league: League): Either[Result, Int] = {
+  override def getNextPeriod(league: League): Either[Result, Period] = {
     // check if is above max?
     league.currentPeriod match {
       case Some(p) if !p.ended => Left(BadRequest("Must end current period before start next"))
       case Some(p) => {
-        val newPeriod = league.periods.find(np => np.value == p.value + 1).get
-        league.currentPeriodId = Some(newPeriod.id)
-        leagueTable.update(league)
-        Right(newPeriod.value)
-
-    }
+        p.nextPeriodId match {
+          case Some(np) => periodTable.lookup(np).toRight(InternalServerError(s"Could not find next period ${np}, for period ${p.id}"))
+          case None => Left(BadRequest("No more periods left to start. League is over"))
+        }
+      }
       case None => {
-        val newPeriod = league.periods(0)
-        league.currentPeriodId = Some(newPeriod.id)
-        leagueTable.update(league)
-        Right(newPeriod.value)
+        Right(league.periods(0))
       }
     }
   }
@@ -146,6 +151,66 @@ class LeagueRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends Le
     period.multiplier = multiplier.getOrElse(period.multiplier)
     periodTable.update(period)
     period
+  }
+
+  override def updateOldRanks(league: League) = {
+    // TODO this needs to group by the stat field.
+    // currently will do weird ranks
+    league.statFields.map(sf => {
+      val leagueUserStatsOverall: Iterable[LeagueUserStat] =
+        leagueUserRepo.getLeagueUserStat(league.id, sf.id, None).map(_._1)
+      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
+        { case (lus, i) => lus.previousRank = i + 1; lus }
+      )
+      // can do all update in one call if append then update outside loop
+      leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
+      val pickeeStatsOverall = pickeeRepo.getPickeeStat(league.id, sf.id, None).map(_._1)
+      val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
+        { case (p, i) => p.previousRank = i + 1; p }
+      )
+      // can do all update in one call if append then update outside loop
+      pickeeStatTable.update(newPickeeStat)
+    })
+  }
+
+  override def addHistoricTeams(league: League) = {
+      league.users.associations.map(_.team).map(addHistoricTeamPickee(_, league.currentPeriod.getOrElse(new Period()).value))
+  }
+
+  override def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int) = {
+    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentPeriod)))
+  }
+
+  override def postEndPeriodHook(league: League, period: Period) = {
+    period.ended = true
+    periodTable.update(period)
+    league.transferOpen = true
+    leagueTable.update(league)
+    addHistoricTeams(league)
+  }
+
+  override def postStartPeriodHook(league: League, period: Period) = {
+    league.currentPeriodId = Some(period.id)
+    if (league.transferBlockedDuringPeriod) {
+      league.transferOpen = false
+    }
+    leagueTable.update(league)
+    updateOldRanks(league)
+  }
+
+  override def endPeriods(currentTime: Timestamp) = {
+    from(leagueTable, periodTable)((l,p) =>
+          where(l.currentPeriodId === p.id and p.ended === false and p.end <= currentTime and p.nextPeriodId.isNotNull)
+          select((l, p))
+          ).map(Function.tupled(postEndPeriodHook))
+  }
+  override def startPeriods(currentTime: Timestamp) = {
+    from(leagueTable, periodTable)((l,p) =>
+      // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
+      // and is future period that should have started...so lets start it
+      where(not(l.currentPeriodId === p.id) and p.ended === false and p.start <= currentTime)
+      select((l, p))
+      ).map(Function.tupled(postStartPeriodHook))
   }
 }
 
