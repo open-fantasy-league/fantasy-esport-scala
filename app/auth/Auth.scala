@@ -8,6 +8,7 @@ import models.{League, AppDB}
 import javax.inject.Inject
 import utils.IdParser
 import entry.SquerylEntrypointForMyApp._
+import com.typesafe.config.{Config, ConfigFactory}
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 
@@ -21,7 +22,9 @@ class AuthAction @Inject()(val parser: BodyParsers.Default)(implicit val executi
 class LeagueRequest[A](val league: League, request: AuthRequest[A]) extends WrappedRequest[A](request) {
   def apiKey = request.apiKey
 }
+
 class Auther {
+  val adminKey = ConfigFactory.load().getString("adminKey")
   def LeagueAction(leagueId: String)(implicit ec: ExecutionContext) = new ActionRefiner[AuthRequest, LeagueRequest] {
     def executionContext = ec
     def refine[A](input: AuthRequest[A]) = Future.successful {
@@ -45,6 +48,15 @@ class Auther {
         None
     }
   }
+
+  def AdminCheckAction(implicit ec: ExecutionContext) = new ActionFilter[AuthRequest] {
+    def executionContext = ec
+    def filter[A](input: AuthRequest[A]) = Future.successful {
+      if (adminKey != input.apiKey.getOrElse(""))
+        Some(Forbidden(f"Only admin can perform this operation"))
+      else
+        None
+    }
+  }
 }
 
-//object AuthAction
