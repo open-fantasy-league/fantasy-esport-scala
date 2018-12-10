@@ -15,7 +15,6 @@ import play.api.data.format.Formats._
 import utils.{CostConverter, IdParser}
 import utils.TryHelper._
 import auth._
-import auth.Auther
 import models.AppDB._
 import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, FactionType, Faction,
   PickeeFaction
@@ -123,16 +122,8 @@ class LeagueController @Inject()(
     )
   }
 
-  def get(leagueId: String) = Action.async { implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-          finished = Ok(Json.toJson(league))
-        } yield finished).fold(identity, identity)
-      }
-    }
+  def get(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future(Ok(Json.toJson(request.league)))
   }
 
   def getWithRelatedReq(leagueId: String) = Action.async { implicit request =>
@@ -167,7 +158,6 @@ class LeagueController @Inject()(
       }
     }
   }
-
 
   def getRankingsReq(leagueId: String, statFieldName: String) = Action.async { implicit request =>
     Future {
@@ -206,7 +196,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def startDayReq(leagueId: String) = (authAct andThen auther.LeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+  def startDayReq(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     println(request.apiKey)
     println(request.league)
     Future {
