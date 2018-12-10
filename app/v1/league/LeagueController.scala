@@ -61,8 +61,8 @@ class LeagueController @Inject()(
         "tournamentId" -> of(longFormat),
         "periodDescription" -> nonEmptyText,
         "periods" -> list(mapping(
-          "start" -> of(sqlTimestampFormat),
-          "end" -> of(sqlTimestampFormat),
+          "start" -> of(sqlTimestampFormat("yyyy-MM-dd HH:mm")),
+          "end" -> of(sqlTimestampFormat("yyyy-MM-dd HH:mm")),
           "multiplier" -> default(of(doubleFormat), 1.0)
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
@@ -116,8 +116,8 @@ class LeagueController @Inject()(
   private val updatePeriodForm: Form[UpdatePeriodInput] = {
     Form(
       mapping(
-        "start" -> optional(of(sqlTimestampFormat)),
-        "end" -> optional(of(sqlTimestampFormat)),
+        "start" -> optional(of(sqlTimestampFormat("yyyy-MM-dd HH:mm"))),
+        "end" -> optional(of(sqlTimestampFormat("yyyy-MM-dd HH:mm"))),
         "multiplier" -> optional(of(doubleFormat)),
       )(UpdatePeriodInput.apply)(UpdatePeriodInput.unapply)
     )

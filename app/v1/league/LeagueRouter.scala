@@ -19,7 +19,7 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
 
   override def routes: Routes = {
 
-    case POST(p"/") =>
+    case POST(p"") =>
       controller.add
 
     case PATCH(p"/$id") =>
