@@ -7,12 +7,13 @@ import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
+import auth._
 import v1.league.LeagueRepo
 
-class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo, AuthAction: AuthAction, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
-  def allProcessTransfersReq() = Action.async { implicit request =>
+  def allProcessTransfersReq() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
     Future {
       val currentTime = new Timestamp(System.currentTimeMillis())
       inTransaction {
@@ -25,7 +26,7 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
     }
   }
 
-  def allRolloverPeriodReq() = Action.async { implicit request =>
+  def allRolloverPeriodReq() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
     // TODO request.remoteAddress
     // // TODO test add leagues, sleep before end transaction, and see how id's turn out
     // Thread.sleep(2000)

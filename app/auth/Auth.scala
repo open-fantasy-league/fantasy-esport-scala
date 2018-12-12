@@ -40,14 +40,15 @@ class LeagueAction(val parser: BodyParser[AnyContent], leagueId: String)(implici
 
 
 class Auther @Inject(){
-  val adminKey = ConfigFactory.load().getString("adminKey")
+  val config = ConfigFactory.load()
+  val adminKey = config.getString("adminKey")
+  val adminHost = config.getString("adminHost")
   def AuthLeagueAction(leagueId: String)(implicit ec: ExecutionContext) = new ActionRefiner[AuthRequest, AuthLeagueRequest] {
     def executionContext = ec
     def refine[A](input: AuthRequest[A]) = Future.successful {
       inTransaction(
         (for {
           leagueId <- IdParser.parseLongId(leagueId, "league")
-          //league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           league <- AppDB.leagueTable.lookup(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           out <- Right(new AuthLeagueRequest(league, input))
         } yield out)
@@ -68,7 +69,7 @@ class Auther @Inject(){
   def AdminCheckAction(implicit ec: ExecutionContext) = new ActionFilter[AuthRequest] {
     def executionContext = ec
     def filter[A](input: AuthRequest[A]) = Future.successful {
-      if (adminKey != input.apiKey.getOrElse(""))
+      if (adminKey != input.apiKey.getOrElse("") && input.remoteAddress == adminHost)
         Some(Forbidden(f"Only admin can perform this operation"))
       else
         None
