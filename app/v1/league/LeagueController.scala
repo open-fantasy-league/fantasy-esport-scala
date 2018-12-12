@@ -181,10 +181,8 @@ class LeagueController @Inject()(
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          newPeriod <- leagueRepo.getNextPeriod(league)
-          _ = leagueRepo.postStartPeriodHook(league, newPeriod)
+          newPeriod <- leagueRepo.getNextPeriod(request.league)
+          _ = leagueRepo.postStartPeriodHook(request.league, newPeriod)
           out = Ok(f"Successfully started period $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)
       }
