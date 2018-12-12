@@ -189,7 +189,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def getHistoricTeamsReq(leagueId: String, period: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getHistoricTeamsReq(leagueId: String, period: String) = (new LeagueAction(parse.default, leagueId) andThen LeaguePeriodAction()).async { implicit request =>
     Future {
       inTransaction {
         (for {
