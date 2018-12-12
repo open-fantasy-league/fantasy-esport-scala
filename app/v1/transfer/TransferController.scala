@@ -15,10 +15,11 @@ import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
 import utils.{IdParser, CostConverter}
+import auth._
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
-class TransferController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TransferController @Inject()(cc: ControllerComponents, AuthAction: AuthAction, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -35,28 +36,24 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
   }
 
   // todo add a transfer check call
-  def scheduleTransferReq(userId: String, leagueId: String) = Action.async(parse.json) { implicit request =>
-    scheduleTransfer(userId, leagueId)
+  def scheduleTransferReq(userId: String, leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
+    scheduleTransfer(userId, request.league)
   }
 
-  def processTransfersReq(leagueId: String) = Action.async { implicit request =>
+  def processTransfersReq(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
         //org.squeryl.Session.currentSession.setLogger(String => Unit)
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "League")
-          league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
-          currentTime = new Timestamp(System.currentTimeMillis())
-          // TODO better way? hard with squeryls weird dsl
-          updates = league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-            .map(processLeagueUserTransfer)
-          finished <- Right(Ok("Transfer updates processed"))
-        } yield finished).fold(identity, identity)
+        val currentTime = new Timestamp(System.currentTimeMillis())
+        // TODO better way? hard with squeryls weird dsl
+        val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
+          .map(processLeagueUserTransfer)
+        Ok("Transfer updates processed")
       }
     }
   }
 
-  private def scheduleTransfer[A](userId: String, leagueId: String)(implicit request: Request[A]): Future[Result] = {
+  private def scheduleTransfer[A](userId: String, league: League)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -79,10 +76,8 @@ class TransferController @Inject()(cc: ControllerComponents)(implicit ec: Execut
           // TODO handle invalid Id
           (for {
             userId <- IdParser.parseLongId(userId, "User")
-            leagueId <- IdParser.parseLongId(leagueId, "League")
-            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest(f"League does not exist: $leagueId"))
           // TODO what does single return if no entries?
-            leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
+            leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($request.league.id)"))
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)

@@ -117,7 +117,7 @@ trait LeagueUserRepo{
   def addHistoricTeams(league: League)
   def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
-  def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period])
+  def joinUsers(users: Iterable[User], league: League)
   def userInLeague(userId: Long, leagueId: Long): Boolean
   def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
   def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
@@ -243,15 +243,15 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
         }})
   }
 
-  override def joinUsers(users: Iterable[User], league: League, statFields: Iterable[LeagueStatField], periods: Iterable[Period]) = {
+  override def joinUsers(users: Iterable[User], league: League) = {
     // TODO move to league user repo
     // // can ust pass stat field ids?
     val newLeagueUsers = users.map(u => insertLeagueUser(league, u.id))
-    val newLeagueUserStats = statFields.flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.id, nlu.id)))
+    val newLeagueUserStats = league.statFields.flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.id, nlu.id)))
 
     newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, None))
 
-    periods.foreach(p =>
+    league.periods.foreach(p =>
       newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, Some(p.value)))
     )
   }

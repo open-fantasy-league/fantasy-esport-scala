@@ -14,6 +14,7 @@ import play.api.data.format.Formats._
 import utils.IdParser.parseLongId
 import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
+import auth.LeagueAction
 
 case class UserFormInput(username: String, externalId: Option[Long])
 
@@ -42,58 +43,62 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     )
   }
 
-  def joinLeague(userId: String, leagueId: String) = Action { implicit request =>
-
-        inTransaction {
-          // TODO check not already joined
-          (for {
-            userId <- parseLongId(userId, "User")
-            leagueId <- parseLongId(leagueId, "League")
-            user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
-            //todo tis hacky
-            validateUnique <- if (leagueUserRepo.userInLeague(userId, leagueId)) Left(BadRequest("User already in this league")) else Right(true)
-            added <- Try(leagueUserRepo.joinUsers(List(user), league, league.statFields, league.periods)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
-            success = "Successfully added user to league"
-          } yield success).fold(identity, Ok(_))
-        }
-  }
-
-  def show(userId: String) = Action { implicit request =>
-    inTransaction {
-      (for{
-        userId <- parseLongId(userId, "User")
-        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-        success = Created(Json.toJson(user))
-      } yield success).fold(identity, identity)
+  def joinLeague(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future{
+      inTransaction {
+        // TODO check not already joined
+        (for {
+          userId <- parseLongId(userId, "User")
+          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+          //todo tis hacky
+          validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.id)) Left(BadRequest("User already in this league")) else Right(true)
+          added <- Try(leagueUserRepo.joinUsers(List(user), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+          success = "Successfully added user to league"
+        } yield success).fold(identity, Ok(_))
+      }
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = Action { implicit request =>
-    inTransaction {
-      (for{
-        userId <- parseLongId(userId, "User")
-        leagueId <- parseLongId(leagueId, "League")
-        league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
-        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-        leagueUser <- Try(leagueUserRepo.getLeagueUser(leagueId, userId)).toOption.toRight(
-          BadRequest(s"User: {userId} not in league: {leagueId}"))
-        success = Ok(Json.toJson(leagueUser))
-      } yield success).fold(identity, identity)
+  def show(userId: String) = Action.async { implicit request =>
+    Future{
+      inTransaction {
+        (for{
+          userId <- parseLongId(userId, "User")
+          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+          success = Created(Json.toJson(user))
+        } yield success).fold(identity, identity)
+      }
     }
   }
 
-  def showAllLeagueUserReq(userId: String) = Action { implicit request =>
-    inTransaction {
-      (for{
-        userId <- parseLongId(userId, "User")
-        user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-        leagueUsers = leagueUserRepo.getAllLeaguesForUser(userId)
-        success = Ok(Json.toJson(leagueUsers))
-      } yield success).fold(identity, identity)
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future{
+      inTransaction {
+        (for{
+          userId <- parseLongId(userId, "User")
+          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+          leagueUser <- Try(leagueUserRepo.getLeagueUser(request.league.id, userId)).toOption.toRight(
+            BadRequest(s"User: {userId} not in league: {request.league.id}"))
+          success = Ok(Json.toJson(leagueUser))
+        } yield success).fold(identity, identity)
+      }
+    }
+  }
+
+  def showAllLeagueUserReq(userId: String) = Action.async { implicit request =>
+    Future{
+      inTransaction {
+        (for{
+          userId <- parseLongId(userId, "User")
+          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+          leagueUsers = leagueUserRepo.getAllLeaguesForUser(userId)
+          success = Ok(Json.toJson(leagueUsers))
+        } yield success).fold(identity, identity)
+      }
     }
   }
   // TODO tolerantJson?
+  // TODO userAuth -- associate a user with apiKey that created it?
   def update(userId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateUser(userId)
   }
@@ -142,15 +147,13 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     updateForm.bindFromRequest().fold(failure, success)
   }
 
-  def getCurrentTeamReq(leagueId: String, userId: String) = Action.async { implicit request =>
+  def getCurrentTeamReq(leagueId: String, userId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future {
       inTransaction {
         (for {
-          leagueId <- parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
           userId <- parseLongId(userId, "User")
           user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeam(leagueId, userId)))
+          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, userId)))
         } yield out).fold(identity, identity)
       }
     }

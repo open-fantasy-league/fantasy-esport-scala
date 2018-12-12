@@ -15,6 +15,7 @@ import scala.util.Try
 import models._
 import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
+import auth._
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -27,7 +28,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther, AuthAction: AuthAction)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -52,12 +53,12 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     )
   }
 
-  def add(leagueId: String) = Action.async(parse.json){ implicit request =>
-    processJsonResult(leagueId)
+  def add(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.                          PermissionCheckAction).async{ implicit request =>
+    processJsonResult(request.league)
     //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
-  private def processJsonResult[A](leagueId: String)(implicit request: Request[A]): Future[Result] = {
+  private def processJsonResult[A](league: League)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[ResultFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -67,8 +68,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       Future{
         inTransaction {
           (for {
-            leagueId <- parseLongId(leagueId, "League")
-            league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
             validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
             internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
             insertedMatch <- newMatch(input, league)
@@ -167,12 +166,10 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   }
 
-  def getReq(leagueId: String) = Action.async { implicit request =>
+  def getReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future{
       inTransaction {
         (for {
-          leagueId <- parseLongId(leagueId, "League")
-          league <- AppDB.leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           results = resultRepo.get(period).toList
           success = Ok(Json.toJson(results))

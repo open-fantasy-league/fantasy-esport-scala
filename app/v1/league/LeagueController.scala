@@ -126,72 +126,51 @@ class LeagueController @Inject()(
     Future(Ok(Json.toJson(request.league)))
   }
 
-  def getWithRelatedReq(leagueId: String) = Action.async { implicit request =>
+  def getWithRelatedReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future(inTransaction(Ok(Json.toJson(leagueRepo.getWithRelated(request.league.id)))))
+  }
+
+  def update(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
+    processJsonUpdateLeague(request.league)
+  }
+
+  def add = Action.async(parse.json){implicit request => processJsonLeague()}
+
+  def getAllUsersReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future {
       inTransaction {
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.getWithRelated(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-          finished = Ok(Json.toJson(league))
-        } yield finished).fold(identity, identity)
+        val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.id)
+        Ok(Json.toJson(leagueUsers))
       }
     }
   }
 
-  def update(leagueId: String) = Action.async(parse.json) { implicit request =>
-    processJsonUpdateLeague(leagueId)
-  }
-
-  def add = Action.async(parse.json){ implicit request =>
-    processJsonLeague()
-  }
-
-  def getAllUsersReq(leagueId: String) = Action.async { implicit request =>
+  def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future {
       inTransaction {
         (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          leagueUsers = leagueUserRepo.getAllUsersForLeague(leagueId)
-          finished = Ok(Json.toJson(leagueUsers))
-        } yield finished).fold(identity, identity)
-      }
-    }
-  }
-
-  def getRankingsReq(leagueId: String, statFieldName: String) = Action.async { implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          statField <- leagueUserRepo.getStatField(leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
+          statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           /*rankings <- tryOrResponse(
             () => leagueUserRepo.getRankings(league, statField, period), InternalServerError("internal Server Error")
           )*/
-          rankings = leagueUserRepo.getRankings(league, statField, period)
+          rankings = leagueUserRepo.getRankings(request.league, statField, period)
           out = Ok(Json.toJson(rankings))
         } yield out).fold(identity, identity)
       }
     }
   }
 
-  def endDayReq(leagueId: String) = authAct.async {implicit request =>
+  def endDayReq(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
       inTransaction {
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          _ <- league.currentPeriod match {
-            case Some(p) if !p.ended => {
-              leagueRepo.postEndPeriodHook(league, p)
-              Right(true)
-            }
-            case _ => Left(BadRequest("Period already ended (Must start next period first)"))
+        request.league.currentPeriod match {
+          case Some(p) if !p.ended => {
+            leagueRepo.postEndPeriodHook(request.league, p)
+            Ok("Successfully ended day")
           }
-          out = Ok("Successfully ended day")
-        } yield out).fold(identity, identity)
+          case _ => BadRequest("Period already ended (Must start next period first)")
+        }
       }
     }
   }
@@ -212,38 +191,27 @@ class LeagueController @Inject()(
     }
   }
 
-  def getHistoricTeamsReq(leagueId: String, period: String) = Action.async { implicit request =>
+  def getHistoricTeamsReq(leagueId: String, period: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future {
       inTransaction {
         (for {
           period <- IdParser.parseIntId(period, "period")
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
+          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, period)))
         } yield out).fold(identity, identity)
       }
     }
   }
 
-  def getCurrentTeamsReq(leagueId: String) = Action.async { implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeams(leagueId)))
-        } yield out).fold(identity, identity)
-      }
-    }
+  def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeams(request.league.id)))))
   }
 
-  def updatePeriodReq(leagueId: String, periodValue: String) = Action.async { implicit request =>
+  def updatePeriodReq(leagueId: String, periodValue: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
         (for {
           periodValueInt <- IdParser.parseIntId(periodValue, "period value")
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          out = handleUpdatePeriodForm(leagueId, periodValueInt)//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
+          out = handleUpdatePeriodForm(request.league.id, periodValueInt)//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -262,12 +230,6 @@ class LeagueController @Inject()(
     }
     updatePeriodForm.bindFromRequest().fold(failure, success)
   }
-
-  private def updatePeriodFormFailure[A](badForm: Form[UpdatePeriodInput])(implicit request: Request[A]) = {
-    BadRequest(badForm.errorsAsJson)
-  }
-
-  private def updatePeriodFormSuccess(input: UpdatePeriodInput) = Right(input)
 
   private def processJsonLeague[A]()(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[LeagueFormInput]) = {
@@ -324,57 +286,13 @@ class LeagueController @Inject()(
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def processJsonUpdateLeague[A](leagueId: String)(implicit request: Request[A]): Future[Result] = {
+  private def processJsonUpdateLeague[A](league: League)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[UpdateLeagueFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: UpdateLeagueFormInput) = {
-      println("yay")
-      Future {
-        inTransaction {
-          (for {
-            leagueId <- IdParser.parseLongId(leagueId, "league")
-            league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league id"))
-            out = Ok(Json.toJson(leagueRepo.update(league, input)))
-          } yield out).fold(identity, identity)
-        }
-      }
-    }
+    def success(input: UpdateLeagueFormInput) = Future(inTransaction(Ok(Json.toJson(leagueRepo.update(league, input)))))
 
     updateForm.bindFromRequest().fold(failure, success)
-  }
-
-  private def updateOldRanks(leagueId: Long): Either[Result, Any] = {
-    // TODO this needs to group by the stat field.
-    // currently will do weird ranks
-    for {
-      league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
-      statFieldIds = league.statFields.map(_.id)
-      _ = statFieldIds.map(sId => {
-        val leagueUserStatsOverall: Iterable[LeagueUserStat] =
-          leagueUserRepo.getLeagueUserStat(leagueId, sId, None).map(_._1)
-        val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
-          { case (lus, i) => lus.previousRank = i + 1; lus }
-        )
-        // can do all update in one call if append then update outside loop
-        leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
-        val pickeeStatsOverall = pickeeRepo.getPickeeStat(leagueId, sId, None).map(_._1)
-        val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
-          { case (p, i) => p.previousRank = i + 1; p }
-        )
-        // can do all update in one call if append then update outside loop
-        pickeeStatTable.update(newPickeeStat)
-      })
-      out = Right(Ok("Updated previous ranks"))
-    } yield out
-  }
-
-  private def addHistoricTeam(leagueId: Long): Either[Result, Result] = {
-    for {
-      league <- leagueRepo.get(leagueId).toRight(BadRequest("Unknown league"))
-      _ = leagueUserRepo.addHistoricTeams(league)
-      out <- Right(Ok("Updated old ranks and historic team"))
-    } yield out
   }
 }

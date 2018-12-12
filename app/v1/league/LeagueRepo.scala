@@ -49,14 +49,14 @@ case class LeagueFullQuery(league: League, period: Option[Period], factionType: 
 
 trait LeagueRepo{
   def get(id: Long): Option[League]
-  def getWithRelated(id: Long): Option[LeagueFull]
+  def getWithRelated(id: Long): LeagueFull
   def insert(formInput: LeagueFormInput): League
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
   def getNextPeriod(league: League): Either[Result, Period]
-  def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull]
+  def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
   def addHistoricTeams(league: League)
   def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int)
@@ -73,7 +73,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     leagueTable.lookup(id)
   }
 
-  override def getWithRelated(id: Long): Option[LeagueFull] = {
+  override def getWithRelated(id: Long): LeagueFull = {
     val queryResult = join(leagueTable, periodTable.leftOuter, factionTypeTable.leftOuter, factionTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) => 
         where(l.id === id)
         select((l, p, ft, f, s))
@@ -128,8 +128,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     }
   }
 
-  override def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): Option[LeagueFull] = {
-    if (q.isEmpty) return None
+  override def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull = {
     val league = q.toList.head.league
     val periods = q.flatMap(_.period).toSet
     println(periods)
@@ -138,7 +137,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     val factions = q.map(f => (f.factionType, f.faction)).filter(!_._2.isEmpty).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
     // keep factions as well
     val factionsOut = factions.map({case (k, v) => FactionTypeOut(k.name, k.description, v)})
-    Some(LeagueFull(league, factionsOut, periods, currentPeriod, statFields))
+    LeagueFull(league, factionsOut, periods, currentPeriod, statFields)
   }
 
   override def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period = {

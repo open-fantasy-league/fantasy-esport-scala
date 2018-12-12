@@ -16,31 +16,20 @@ import models.AppDB._
 import utils.CostConverter.unconvertCost
 import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
+import auth.{LeagueAction, AuthAction, Auther}
 
-class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
-  with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
+class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther, AuthAction: AuthAction)(implicit ec: ExecutionContext) extends AbstractController(cc) with play.api.i18n.I18nSupport{
 
-  def getReq(leagueId: String) = Action.async { implicit request =>
-    Future{
-      inTransaction {
-        (for {
-          leagueId <- parseLongId(leagueId, "League")
-          league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
-          //out = Ok(Json.toJson(league.pickees.where(_ => _).toSeq))
-          out = Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(leagueId)))
-        } yield out).fold(identity, identity)
-      }
-    }
+  def getReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future(inTransaction(Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(request.league.id)))))
   }
 
-  def getStatsReq(leagueId: String) = Action.async { implicit request =>
+  def getStatsReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
     Future{
       inTransaction {
         (for {
-          leagueId <- parseLongId(leagueId, "League")
-          league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
           period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(leagueId, period)))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(request.league.id, period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -59,7 +48,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     )
   }
 
-  def recalibratePickees(leagueId: String) = Action.async { implicit request =>
+  def recalibratePickees(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
 
     def failure(badForm: Form[RepricePickeeFormInputList]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
@@ -68,17 +57,14 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     def success(inputs: RepricePickeeFormInputList) = {
       Future {
         inTransaction {
-          (for {
-            leagueId <- parseLongId(leagueId, "league")
-            league <- leagueTable.lookup(leagueId).toRight(BadRequest("League does not exist"))
-            leaguePickees = pickeeRepo.getPickees(leagueId)
-            pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
-            _ = pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
-              p.cost = unconvertCost(pickees.get(p.id).get.cost); p
+            val leaguePickees = pickeeRepo.getPickees(request.league.id)
+            val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
+            pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
+              p.cost = unconvertCost(pickees.get(p.id).get.cost)
+              p
             }))
             // TODO print out pickees that changed
-            out = Ok("Successfully updated pickee costs")
-          } yield out).fold(identity, identity)
+            Ok("Successfully updated pickee costs")
         }
       }
     }

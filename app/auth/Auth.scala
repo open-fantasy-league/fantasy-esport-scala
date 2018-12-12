@@ -39,7 +39,7 @@ class LeagueAction(val parser: BodyParser[AnyContent], leagueId: String)(implici
 }
 
 
-class Auther {
+class Auther @Inject(){
   val adminKey = ConfigFactory.load().getString("adminKey")
   def AuthLeagueAction(leagueId: String)(implicit ec: ExecutionContext) = new ActionRefiner[AuthRequest, AuthLeagueRequest] {
     def executionContext = ec

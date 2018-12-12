@@ -53,6 +53,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 
   override def get(period: Option[Int]): Iterable[ResultsOut] = {
     // TODO period filter
+    // TODO filter by league
     val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
       (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id)
       select((m, r, p, s, pck))
