@@ -152,15 +152,24 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     period
   }
 
-  override def updateOldRanks(league: League) = {
+  override def updateHistoricRanks(league: League) = {
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
     league.statFields.map(sf => {
-      val leagueUserStatsOverall: Iterable[LeagueUserStat] =
-        leagueUserRepo.getLeagueUserStat(league.id, sf.id, None).map(_._1)
-      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map(
-        { case (lus, i) => lus.previousRank = i + 1; lus }
-      )
+      val leagueUserStatsOverall =
+        leagueUserRepo.getLeagueUserStat(league.id, sf.id, None)
+      var lastScore = Double.MaxValue // TODO java max num
+      var lastScoreRank = 0
+      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({
+        case ((lus, s), i) => {
+          val value = s.value
+          val rank = if (value == lastScore) lastScoreRank else i + 1
+          lastScore = value
+          lastScoreRank = rank
+          lus.previousRank = rank
+          lus
+        }
+      })
       // can do all update in one call if append then update outside loop
       leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
       val pickeeStatsOverall = pickeeRepo.getPickeeStat(league.id, sf.id, None).map(_._1)
@@ -194,7 +203,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
       league.transferOpen = false
     }
     leagueTable.update(league)
-    updateOldRanks(league)
+    updateHistoricRanks(league)
   }
 
   override def endPeriods(currentTime: Timestamp) = {
