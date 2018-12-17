@@ -123,7 +123,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
         }
       }
       case None => {
-        Right(league.periods(0))
+        Right(league.firstPeriod)
       }
     }
   }

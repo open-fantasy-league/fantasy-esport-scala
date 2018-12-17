@@ -37,12 +37,14 @@ class League(
   def statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   def factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
   def periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
+  def firstPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.value === 1) select(p)).single
+  def lastPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.nextPeriodId isNull) select(p)).single
   //lazy val currentPeriod = from(AppDB.leagueToPeriod.left(this))((p) => where(p.id === this.currentPeriodId)).single
   def currentPeriod: Option[Period] = AppDB.periodTable.lookup(this.currentPeriodId.getOrElse(-1L))
   //lazy val currentPeriod: Option[Period] = this.periods.find(p => p.id == this.currentPeriodId)
   //def currentPeriod: Option[Period] = from(AppDB.leagueToPeriod.left(this))(select(_)).toList.find(_.id == this.currentPeriodId)
   def started = !this.currentPeriodId.isEmpty
-  def ended = this.periods.takeRight(1)(0).ended
+  def ended = this.lastPeriod.ended
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor

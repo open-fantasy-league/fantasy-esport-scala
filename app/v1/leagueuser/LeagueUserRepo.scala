@@ -173,16 +173,24 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
   }
 
   override def getRankings(league: League, statField: LeagueStatField, period: Option[Int]): LeagueRankings = {
-    val rankings = this.getLeagueUserStatWithUser(league.id, statField.id, period)
-    println(s"""rankings ${rankings.mkString(" ")}""")
-    LeagueRankings(
-      league.id, league.name, statField.name,
-      rankings.zipWithIndex.map({case (q, i) => Ranking(q._1.id, q._1.username, q._3.value, i + 1, period match {
+    val stats = this.getLeagueUserStatWithUser(league.id, statField.id, period)
+    var lastScore = Double.MaxValue // TODO java max num
+    var lastScoreRank = 0
+    val rankings = stats.zipWithIndex.map({case (q, i) => {
+      val value = q._3.value
+      val rank = if (value == lastScore) lastScoreRank else i + 1
+      lastScore = value
+      lastScoreRank = rank
+      val previousRank = period match {
         // Previous rank explicitly means overall ranking at end of last period
         // so doesnt make sense to show/associate it with singular period ranking
         case None => Some(q._2.previousRank)
         case Some(_) => None
-      })})
+      }
+      Ranking(q._1.id, q._1.username, value, rank, previousRank)
+    }})
+    LeagueRankings(
+      league.id, league.name, statField.name, rankings
     )
   }
   override def getLeagueUserStat(
