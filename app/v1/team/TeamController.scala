@@ -16,10 +16,11 @@ import models.AppDB._
 import models.{League, LeagueUser, Pickee, TeamPickee}
 import utils.{IdParser, CostConverter}
 import auth.LeagueAction
+import v1.leagueuser.LeagueUserRepo
 
 case class TeamFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, delaySeconds: Option[Int])
 
-class TeamController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
@@ -27,9 +28,8 @@ class TeamController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
       inTransaction {
         (for {
           userId <- IdParser.parseLongId(userId, "User")
-          leagueUser <- Try(request.league.users.associations.where(lu => lu.id === userId).single).toOption.
-            toRight(BadRequest(f"User($userId) not in this league($leagueId)"))
-          out = Ok(Json.toJson(leagueUser.team.toList))
+          user <- userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, userId)))
         } yield out).fold(identity, identity)
       }
     }

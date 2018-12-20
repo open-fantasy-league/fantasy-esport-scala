@@ -103,6 +103,7 @@ class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 
 trait LeagueUserRepo{
   def getLeagueUser(leagueId: Long, userId: Long): LeagueUser
+  def getLeagueUserExternalId(leagueId: Long, externalUserId: Long): UserWithLeagueUser
   def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser]
   def getAllUsersForLeague(leagueId: Long): Iterable[UserWithLeagueUser]
   def insertLeagueUser(league: League, userId: Long): LeagueUser
@@ -132,6 +133,13 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
     from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId)
       select lu)
         .single
+  }
+
+  override def getLeagueUserExternalId(leagueId: Long, externalUserId: Long): UserWithLeagueUser = {
+    val query =from(userTable, leagueUserTable)((u, lu) => where(lu.leagueId === leagueId and u.externalId === externalUserId)
+      select(u, lu))
+        .single
+    UserWithLeagueUser(query._1, query._2)
   }
 
   override def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser] = {
