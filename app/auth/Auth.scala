@@ -4,7 +4,7 @@ import play.api.mvc._
 import play.api.mvc.Result
 import play.api.mvc.Results._
 import scala.concurrent.{ExecutionContext, Future}
-import models.{League, AppDB, Period}
+import models._
 import javax.inject.Inject
 import utils.{IdParser, TryHelper}
 import entry.SquerylEntrypointForMyApp._
@@ -27,6 +27,10 @@ class LeagueRequest[A](val league: League, request: Request[A]) extends WrappedR
 //class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
 class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
 class LeaguePeriodRequest[A](val period: Option[Int], request: LeagueRequest[A]) extends WrappedRequest[A](request){
+  def league = request.league
+}
+
+class LeagueUserRequest[A](val user: User, val leagueUser: LeagueUser, request: LeagueRequest[A]) extends WrappedRequest[A](request){
   def league = request.league
 }
 
@@ -62,6 +66,27 @@ object LeaguePeriodAction{
         (for {
           period <- TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           out <- Right(new LeaguePeriodRequest(period, input))
+        } yield out)
+      )
+    }
+  }
+}
+class LeagueUserAction @Inject()(val userId: String){
+  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
+    def executionContext = ec
+    def refine[A](input: LeagueRequest[A]) = Future.successful {
+      inTransaction(
+        (for {
+          userIdLong <- IdParser.parseLongId(userId, "User")
+          isInternal = !input.getQueryString("internalUserId").isEmpty
+          (internalUserId, externalUserId) = isInternal match{
+            case true => (Some(userIdLong), None)
+            case false => (None, Some(userIdLong))
+          }
+          query <- TryHelper.tryOrResponse(() => join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.get.leagueId === input.league.id) and (u.externalId === externalUserId.?) and (u.id === internalUserId.?))
+            select(u, lu.get)
+            on(lu.get.userId === u.id)).single, BadRequest(f"User $userId not in league"))
+          out <- Right(new LeagueUserRequest(query._1, query._2, input))
         } yield out)
       )
     }

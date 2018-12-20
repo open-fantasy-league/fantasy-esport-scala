@@ -14,13 +14,13 @@ import play.api.data.format.Formats._
 import utils.IdParser.parseLongId
 import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
-import auth.LeagueAction
+import auth._
 
 case class UserFormInput(username: String, externalId: Option[Long])
 
 case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
-class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo, leagueUserAction: LeagueUserAction)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[UserFormInput] = {
@@ -71,18 +71,8 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
-    Future{
-      inTransaction {
-        (for{
-          userId <- parseLongId(userId, "User")
-          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-          leagueUser <- Try(leagueUserRepo.getLeagueUser(request.league.id, userId)).toOption.toRight(
-            BadRequest(s"User: {userId} not in league: {request.league.id}"))
-          success = Ok(Json.toJson(leagueUser))
-        } yield success).fold(identity, identity)
-      }
-    }
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
+    Future(Ok(Json.toJson(request.leagueUser)))
   }
 
   def showAllLeagueUserReq(userId: String) = Action.async { implicit request =>

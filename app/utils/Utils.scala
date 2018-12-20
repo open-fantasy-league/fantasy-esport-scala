@@ -24,7 +24,12 @@ object CostConverter {
 object TryHelper {
 
   def tryOrResponse[T](block: () => T, errorResponse: Result): Either[Result, T] = {
-    Try(block()).toOption.toRight(errorResponse)
+    try{
+      Right(block())
+    }
+    catch {
+      case e: Exception => {print(e); Left(errorResponse)}
+    }
   }
 }
 
