@@ -18,10 +18,10 @@ class TeamRouter @Inject()(controller: TeamController) extends SimpleRouter {
 
   override def routes: Routes = {
 
-    case GET(p"/$leagueId/$userId") =>
+    case GET(p"/league/$leagueId/user/$userId") =>
       controller.getSingleTeamReq(leagueId, userId)
 
-    case GET(p"/$leagueId") =>
+    case GET(p"/league/$leagueId") =>
       controller.getAllTeamsReq(leagueId)
   }
 

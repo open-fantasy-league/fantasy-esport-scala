@@ -60,7 +60,7 @@ trait LeagueRepo{
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
   def addHistoricTeams(league: League)
   def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int)
-  def updateOldRanks(league: League)
+  def updateHistoricRanks(league: League)
   def postStartPeriodHook(league: League, period: Period)
   def postEndPeriodHook(league: League, period: Period)
   def startPeriods(currentTime: Timestamp)

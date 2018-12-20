@@ -53,6 +53,24 @@ class TransferController @Inject()(cc: ControllerComponents, AuthAction: AuthAct
     }
   }
 
+  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+    Future{
+      inTransaction{
+        val onlyPending = !request.getQueryString("onlyPending").isEmpty
+        // TODO squeryl optional/dynamic stuff
+        (for {
+          userId <- IdParser.parseLongId(userId, "User")
+          leagueUser <- Try(request.league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($request.league.id)"))
+          query = from(AppDB.transferTable)(t =>
+            where(t.leagueUserId === leagueUser.id and t.processed === !onlyPending)
+            select(t)
+            )
+          out = Ok(Json.toJson(query.toList))
+        } yield out).fold(identity, identity)
+      }
+    }
+  }
+
   private def scheduleTransfer[A](userId: String, league: League)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
