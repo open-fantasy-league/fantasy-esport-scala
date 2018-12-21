@@ -14,6 +14,8 @@ import models._
 import utils.CostConverter
 
 import scala.collection.mutable.ArrayBuffer
+import v1.team.TeamRepo
+import v1.transfer.TransferRepo
 
 case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int])
 
@@ -99,11 +101,29 @@ object LeagueUserTeamOut{
   }
 }
 
+
+case class DetailedLeagueUser(user: User, leagueUser: LeagueUser, team: Option[List[Pickee]], scheduledTransfers: Option[List[Transfer]], stats: Option[Map[String, Double]])
+
+object DetailedLeagueUser{
+  implicit val implicitWrites = new Writes[DetailedLeagueUser] {
+    def writes(x: DetailedLeagueUser): JsValue = {
+      Json.obj(
+        "user" -> x.user,
+        "leagueUser" -> x.leagueUser,
+        "team" -> x.team,
+        "scheduledTransfers" -> x.scheduledTransfers,
+        "stats" -> x.stats
+      )
+    }
+  }
+}
+
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait LeagueUserRepo{
-  def getLeagueUser(leagueId: Long, userId: Long): LeagueUser
-  def getLeagueUserExternalId(leagueId: Long, externalUserId: Long): UserWithLeagueUser
+  def getUserWithLeagueUser(leagueId: Long, userId: Long, externalId: Boolean): UserWithLeagueUser
+  def combineUserLeagueUser(user: User, leagueUser: LeagueUser): UserWithLeagueUser
+  def detailedLeagueUser(user: User, leagueUser: LeagueUser, showTeam: Boolean, showScheduledTransfers: Boolean, stats: Boolean): DetailedLeagueUser
   def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser]
   def getAllUsersForLeague(leagueId: Long): Iterable[UserWithLeagueUser]
   def insertLeagueUser(league: League, userId: Long): LeagueUser
@@ -113,6 +133,7 @@ trait LeagueUserRepo{
   def getRankings(league: League, statField: LeagueStatField, period: Option[Int]): LeagueRankings
   def getLeagueUserStat(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
+  def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def addHistoricTeams(league: League)
@@ -127,19 +148,43 @@ trait LeagueUserRepo{
 }
 
 @Singleton
-class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
+class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
 
-  override def getLeagueUser(leagueId: Long, userId: Long): LeagueUser = {
-    from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId)
-      select lu)
-        .single
-  }
-
-  override def getLeagueUserExternalId(leagueId: Long, externalUserId: Long): UserWithLeagueUser = {
-    val query =from(userTable, leagueUserTable)((u, lu) => where(lu.leagueId === leagueId and u.externalId === externalUserId)
+  override def getUserWithLeagueUser(leagueId: Long, userId: Long, externalId: Boolean): UserWithLeagueUser = {
+    // helpful for way squeryl deals with optional filters
+    val (internalUserId, externalUserId) = externalId match {
+      case true => (None, Some(userId))
+      case false => (Some(userId), None)
+    }
+    val query =from(userTable, leagueUserTable)((u, lu) => where(lu.leagueId === leagueId and (u.externalId === externalUserId) and (u.id === internalUserId))
       select(u, lu))
         .single
     UserWithLeagueUser(query._1, query._2)
+  }
+
+  override def combineUserLeagueUser(user: User, leagueUser: LeagueUser): UserWithLeagueUser = UserWithLeagueUser(user, leagueUser)
+
+  override def detailedLeagueUser(user: User, leagueUser: LeagueUser, showTeam: Boolean, showScheduledTransfers: Boolean, showStats: Boolean): DetailedLeagueUser = {
+    val team = showTeam match{
+      case false => None
+      case true => {
+        Some(teamRepo.getLeagueUserTeam(leagueUser))
+      }
+    }
+    // todo boolean to option?
+    val scheduledTransfers = showScheduledTransfers match{
+      case false => None
+      case true => {
+        Some(transferRepo.getLeagueUserTransfer(leagueUser, Some(true)))
+      }
+    }
+    val stats = showStats match{
+      case false => None
+      case true => {
+        Some(getSingleLeagueUserAllStat(leagueUser, None).map(q => q._1.name -> q._2.value).toMap)
+      }
+    }
+    DetailedLeagueUser(user, leagueUser, team, scheduledTransfers, stats)
   }
 
   override def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser] = {
@@ -213,6 +258,18 @@ class LeagueUserRepoImpl @Inject()()(implicit ec: LeagueExecutionContext) extend
       )
         select (lus, s)
         orderBy (s.value desc)
+    )
+  }
+
+  override def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)] = {
+    // TODO cross joins go weird?
+    from(
+      leagueUserStatTable, leagueStatFieldTable, leagueUserStatDailyTable
+    )((lus, lsf, s) =>
+      where(
+        lus.leagueUserId === leagueUser.id and lsf.leagueId === leagueUser.leagueId and s.leagueUserStatId === lus.id and s.period === period
+      )
+        select (lsf, s)
     )
   }
 

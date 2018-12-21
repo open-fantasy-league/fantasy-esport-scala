@@ -19,7 +19,7 @@ import auth._
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
-class TransferController @Inject()(cc: ControllerComponents, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -38,7 +38,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther)(imp
 
   // todo add a transfer check call
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen new LeagueUserAction(userId).auth()).async { implicit request =>
-    scheduleTransfer(userId, request.league)
+    scheduleTransfer(request.league, request.leagueUser)
   }
 
   def processTransfersReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
@@ -54,25 +54,16 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther)(imp
     }
   }
 
-  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
     Future{
       inTransaction{
-        val onlyPending = !request.getQueryString("onlyPending").isEmpty
-        // TODO squeryl optional/dynamic stuff
-        (for {
-          userId <- IdParser.parseLongId(userId, "User")
-          leagueUser <- Try(request.league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($request.league.id)"))
-          query = from(AppDB.transferTable)(t =>
-            where(t.leagueUserId === leagueUser.id and t.processed === !onlyPending)
-            select(t)
-            )
-          out = Ok(Json.toJson(query.toList))
-        } yield out).fold(identity, identity)
+        val onlyPending = request.getQueryString("onlyPending").map(s => false)
+        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, onlyPending)))
       }
     }
   }
 
-  private def scheduleTransfer[A](userId: String, league: League)(implicit request: Request[A]): Future[Result] = {
+  private def scheduleTransfer[A](league: League, leagueUser: LeagueUser)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -92,11 +83,8 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther)(imp
 
       Future {
         inTransaction {
-          // TODO handle invalid Id
           (for {
-            userId <- IdParser.parseLongId(userId, "User")
           // TODO what does single return if no entries?
-            leagueUser <- Try(league.users.associations.where(lu => lu.id === userId).single).toOption.toRight(BadRequest(f"User($userId) not in this league($request.league.id)"))
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)

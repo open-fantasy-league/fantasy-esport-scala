@@ -8,6 +8,8 @@ import v1.league.{LeagueRepo, LeagueRepoImpl}
 import v1.pickee.{PickeeRepo, PickeeRepoImpl}
 import v1.result.{ResultRepo, ResultRepoImpl}
 import v1.leagueuser.{LeagueUserRepo, LeagueUserRepoImpl}
+import v1.team.{TeamRepo, TeamRepoImpl}
+import v1.transfer.{TransferRepo, TransferRepoImpl}
 
 /**
   * Sets up custom components for Play.
@@ -23,6 +25,8 @@ class Module(environment: Environment, configuration: Configuration)
     bind[LeagueRepo].to[LeagueRepoImpl].in[Singleton]
     bind[PickeeRepo].to[PickeeRepoImpl].in[Singleton]
     bind[ResultRepo].to[ResultRepoImpl].in[Singleton]
+    bind[TeamRepo].to[TeamRepoImpl].in[Singleton]
+    bind[TransferRepo].to[TransferRepoImpl].in[Singleton]
     bind[LeagueUserRepo].to[LeagueUserRepoImpl].in[Singleton]
     println("configure called")
     bind(classOf[SquerylInitialization]).asEagerSingleton()

@@ -32,7 +32,6 @@ curl -X POST http://localhost:9000/api/v1/leagues/1/endDay
 # let results take pickee name
 # tryOrResult should print exception
 # stuff.......forUpdate on selects
-# commonise id converting for idconversion request
 # check can make infinity transfers before start league
 # transfers not open, yet still added to team
-# also transfer query not working
+ # when multiple leagues will cross joins be weird

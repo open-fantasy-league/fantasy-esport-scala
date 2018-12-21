@@ -66,14 +66,19 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
         (for{
           userId <- parseLongId(userId, "User")
           user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-          success = Created(Json.toJson(user))
+          success = Ok(Json.toJson(user))
         } yield success).fold(identity, identity)
       }
     }
   }
 
   def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
-    Future(Ok(Json.toJson(request.leagueUser)))
+    Future{
+      val showTeam = !request.getQueryString("team").isEmpty
+      val showScheduledTransfers = !request.getQueryString("scheduledTransfers").isEmpty
+      val stats = !request.getQueryString("stats").isEmpty
+      Ok(Json.toJson(leagueUserRepo.detailedLeagueUser(request.user, request.leagueUser, showTeam, showScheduledTransfers, stats)))
+    }
   }
 
   def showAllLeagueUserReq(userId: String) = Action.async { implicit request =>
