@@ -28,7 +28,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther, AuthAction: AuthAction)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -52,8 +52,9 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       )(ResultFormInput.apply)(ResultFormInput.unapply)
     )
   }
+  implicit val parser = parse.default
 
-  def add(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.                          PermissionCheckAction).async{ implicit request =>
+  def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.                          PermissionCheckAction).async{ implicit request =>
     processJsonResult(request.league)
     //    scala.concurrent.Future{ Ok(views.html.index())}
   }
@@ -166,7 +167,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   }
 
-  def getReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
     Future{
       inTransaction {
         (for {

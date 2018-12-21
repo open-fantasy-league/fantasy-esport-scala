@@ -46,7 +46,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
 class LeagueController @Inject()(
                                   cc: ControllerComponents, leagueRepo: LeagueRepo,
                                   leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
-                                  authAct: AuthAction, auther: Auther
+                                  auther: Auther
                                 )(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -122,21 +122,23 @@ class LeagueController @Inject()(
     )
   }
 
-  def get(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  implicit val parser = parse.default
+
+  def get(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(Ok(Json.toJson(request.league)))
   }
 
-  def getWithRelatedReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getWithRelatedReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(inTransaction(Ok(Json.toJson(leagueRepo.getWithRelated(request.league.id)))))
   }
 
-  def update(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
+  def update(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
     processJsonUpdateLeague(request.league)
   }
 
   def add = Action.async(parse.json){implicit request => processJsonLeague()}
 
-  def getAllUsersReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getAllUsersReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       inTransaction {
         val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.id)
@@ -145,7 +147,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       inTransaction {
         (for {
@@ -161,7 +163,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def endDayReq(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+  def endDayReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
       inTransaction {
         request.league.currentPeriod match {
@@ -175,7 +177,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def startDayReq(leagueId: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+  def startDayReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     println(request.apiKey)
     println(request.league)
     Future {
@@ -189,7 +191,9 @@ class LeagueController @Inject()(
     }
   }
 
-  def getHistoricTeamsReq(leagueId: String, period: String) = (new LeagueAction(parse.default, leagueId) andThen LeaguePeriodAction()).async { implicit request =>
+  def getHistoricTeamsReq(leagueId: String, period: String) = 
+  {
+    (new LeagueAction(leagueId) andThen new PeriodAction().league()).async { implicit request =>
     Future {
       inTransaction {
         (for {
@@ -198,13 +202,13 @@ class LeagueController @Inject()(
         } yield out).fold(identity, identity)
       }
     }
-  }
+  }}
 
-  def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeams(request.league.id)))))
   }
 
-  def updatePeriodReq(leagueId: String, periodValue: String) = (authAct andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
+  def updatePeriodReq(leagueId: String, periodValue: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
         (for {

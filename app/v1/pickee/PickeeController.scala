@@ -18,13 +18,14 @@ import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
 import auth.{LeagueAction, AuthAction, Auther}
 
-class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther, AuthAction: AuthAction)(implicit ec: ExecutionContext) extends AbstractController(cc) with play.api.i18n.I18nSupport{
+class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc) with play.api.i18n.I18nSupport{
 
-  def getReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  implicit val parser = parse.default
+  def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
     Future(inTransaction(Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(request.league.id)))))
   }
 
-  def getStatsReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getStatsReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
     Future{
       inTransaction {
         (for {
@@ -48,7 +49,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     )
   }
 
-  def recalibratePickees(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+  def recalibratePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
 
     def failure(badForm: Form[RepricePickeeFormInputList]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))

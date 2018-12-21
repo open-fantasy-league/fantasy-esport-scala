@@ -22,8 +22,9 @@ case class TeamFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, dela
 
 class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
+  implicit val parser = parse.default
 
-  def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction( leagueId)).async { implicit request =>
     Future {
       inTransaction {
         (for {
@@ -35,7 +36,7 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
   }
 
-  def getAllTeamsReq(leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getAllTeamsReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
     Future {
       inTransaction {
         Ok(Json.toJson(request.league.users.associations.map(lu => lu.team.toList)))

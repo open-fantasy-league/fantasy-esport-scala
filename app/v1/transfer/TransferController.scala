@@ -19,7 +19,7 @@ import auth._
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
-class TransferController @Inject()(cc: ControllerComponents, AuthAction: AuthAction, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TransferController @Inject()(cc: ControllerComponents, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -34,13 +34,14 @@ class TransferController @Inject()(cc: ControllerComponents, AuthAction: AuthAct
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
   }
+  implicit val parser = parse.default
 
   // todo add a transfer check call
-  def scheduleTransferReq(userId: String, leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
+  def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen new LeagueUserAction(userId).auth()).async { implicit request =>
     scheduleTransfer(userId, request.league)
   }
 
-  def processTransfersReq(leagueId: String) = (AuthAction andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
+  def processTransfersReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
         //org.squeryl.Session.currentSession.setLogger(String => Unit)
@@ -53,7 +54,7 @@ class TransferController @Inject()(cc: ControllerComponents, AuthAction: AuthAct
     }
   }
 
-  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction{
         val onlyPending = !request.getQueryString("onlyPending").isEmpty

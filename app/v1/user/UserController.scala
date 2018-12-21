@@ -20,7 +20,7 @@ case class UserFormInput(username: String, externalId: Option[Long])
 
 case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
-class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo, leagueUserAction: LeagueUserAction)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[UserFormInput] = {
@@ -42,8 +42,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
       )(UpdateUserFormInput.apply)(UpdateUserFormInput.unapply)
     )
   }
+  implicit val parser = parse.default
 
-  def joinLeague(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
+  def joinLeague(userId: String, leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction {
         // TODO check not already joined
@@ -71,7 +72,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(parse.default, leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
     Future(Ok(Json.toJson(request.leagueUser)))
   }
 
@@ -137,15 +138,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     updateForm.bindFromRequest().fold(failure, success)
   }
 
-  def getCurrentTeamReq(leagueId: String, userId: String) = (new LeagueAction(parse.default, leagueId)).async { implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          userId <- parseLongId(userId, "User")
-          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-          out = Ok(Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, userId)))
-        } yield out).fold(identity, identity)
-      }
-    }
+  def getCurrentTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
+    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, request.user.id)))))
   }
 }

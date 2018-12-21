@@ -33,6 +33,3 @@ object TryHelper {
   }
 }
 
-//object TryInsert {
-//
-//}

@@ -12,21 +12,21 @@ import com.typesafe.config.{Config, ConfigFactory}
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 
-class AuthAction @Inject()(val parser: BodyParsers.Default)(implicit val executionContext: ExecutionContext)
+class AuthAction()(implicit val executionContext: ExecutionContext, val parser:BodyParser[AnyContent])
   extends ActionBuilder[AuthRequest, AnyContent] with ActionTransformer[Request, AuthRequest] {
   def transform[A](request: Request[A]) = Future.successful {
     new AuthRequest(request.getQueryString("apiKey"), request)
   }
 }
 
-class AuthLeagueRequest[A](val league: League, request: AuthRequest[A]) extends WrappedRequest[A](request) {
+class LeagueRequest[A](val league: League, request: Request[A]) extends WrappedRequest[A](request)
+class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
+
+class AuthLeagueRequest[A](val l: League, request: AuthRequest[A]) extends LeagueRequest[A](l, request) {
   def apiKey = request.apiKey
 }
 
-class LeagueRequest[A](val league: League, request: Request[A]) extends WrappedRequest[A](request)
-//class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
-class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
-class LeaguePeriodRequest[A](val period: Option[Int], request: LeagueRequest[A]) extends WrappedRequest[A](request){
+class LeaguePeriodRequest[A](val p: Option[Int], request: LeagueRequest[A]) extends PeriodRequest[A](p, request){
   def league = request.league
 }
 
@@ -34,7 +34,11 @@ class LeagueUserRequest[A](val user: User, val leagueUser: LeagueUser, request: 
   def league = request.league
 }
 
-class LeagueAction(val parser: BodyParser[AnyContent], leagueId: String)(implicit val ec: ExecutionContext) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
+class AuthLeagueUserRequest[A](val u: User, val lu: LeagueUser, request: AuthLeagueRequest[A]) extends LeagueUserRequest[A](u, lu, request){
+  def apiKey = request.apiKey
+}
+
+class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
   def executionContext = ec
   override def refine[A](input: Request[A]) = Future.successful {
     inTransaction(
@@ -47,18 +51,29 @@ class LeagueAction(val parser: BodyParser[AnyContent], leagueId: String)(implici
   }
 }
 
-class PeriodAction(val parser: BodyParser[AnyContent])(implicit val ec: ExecutionContext) extends ActionBuilder[PeriodRequest, AnyContent] with ActionRefiner[Request, PeriodRequest]{
+class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]){
   def executionContext = ec
-  override def refine[A](input: Request[A]) = Future.successful {
-    inTransaction(
-      (for {
-        period <- TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-        out <- Right(new PeriodRequest(period, input))
-      } yield out)
-    )
+  def refineGeneric[A <: Request[B], B](input: A): Either[Result, Option[Int]] = {
+      inTransaction(
+        TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+      )
+    }
+
+  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[Request, PeriodRequest]{
+    def executionContext = ec
+    def refine[A](input: Request[A]) = Future.successful{
+      refineGeneric[Request[A], A](input).map(p => new PeriodRequest(p, input))
+    }
+
+  }
+  def league()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeaguePeriodRequest]{
+    def executionContext = ec
+    def refine[A](input: LeagueRequest[A]) = Future.successful {
+      refineGeneric[LeagueRequest[A], A](input).map(p => new LeaguePeriodRequest(p, input))
+    }
   }
 }
-object LeaguePeriodAction{
+/*object LeaguePeriodAction{
   def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeaguePeriodRequest]{
     def executionContext = ec
     def refine[A](input: LeagueRequest[A]) = Future.successful {
@@ -70,11 +85,9 @@ object LeaguePeriodAction{
       )
     }
   }
-}
-class LeagueUserAction @Inject()(val userId: String){
-  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
-    def executionContext = ec
-    def refine[A](input: LeagueRequest[A]) = Future.successful {
+}*/
+class LeagueUserAction(val userId: String){
+  def refineGeneric[A <: LeagueRequest[B], B](input: A): Either[Result, (User, LeagueUser)] = {
       inTransaction(
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
@@ -86,9 +99,21 @@ class LeagueUserAction @Inject()(val userId: String){
           query <- TryHelper.tryOrResponse(() => join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.get.leagueId === input.league.id) and (u.externalId === externalUserId.?) and (u.id === internalUserId.?))
             select(u, lu.get)
             on(lu.get.userId === u.id)).single, BadRequest(f"User $userId not in league"))
-          out <- Right(new LeagueUserRequest(query._1, query._2, input))
-        } yield out)
+        } yield query)
       )
+    }
+
+  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
+    def executionContext = ec
+    def refine[A](input: LeagueRequest[A]) = Future.successful{
+      refineGeneric[LeagueRequest[A], A](input).map(q => new LeagueUserRequest(q._1, q._2, input))
+    }
+
+  }
+  def auth()(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
+    def executionContext = ec
+    def refine[A](input: AuthLeagueRequest[A]) = Future.successful {
+      refineGeneric[AuthLeagueRequest[A], A](input).map(q => new AuthLeagueUserRequest(q._1, q._2, input))
     }
   }
 }
