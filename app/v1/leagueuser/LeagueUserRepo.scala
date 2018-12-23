@@ -165,6 +165,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   override def combineUserLeagueUser(user: User, leagueUser: LeagueUser): UserWithLeagueUser = UserWithLeagueUser(user, leagueUser)
 
   override def detailedLeagueUser(user: User, leagueUser: LeagueUser, showTeam: Boolean, showScheduledTransfers: Boolean, showStats: Boolean): DetailedLeagueUser = {
+    //TODO use squeryls dynamic queries
     val team = showTeam match{
       case false => None
       case true => {

@@ -15,7 +15,7 @@ class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends Wr
 class AuthAction()(implicit val executionContext: ExecutionContext, val parser:BodyParser[AnyContent])
   extends ActionBuilder[AuthRequest, AnyContent] with ActionTransformer[Request, AuthRequest] {
   def transform[A](request: Request[A]) = Future.successful {
-    new AuthRequest(request.getQueryString("apiKey"), request)
+    new AuthRequest(request.headers.get("apiKey").orElse(request.getQueryString("apiKey")), request)
   }
 }
 
