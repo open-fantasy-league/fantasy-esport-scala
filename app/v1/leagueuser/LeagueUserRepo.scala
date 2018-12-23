@@ -264,14 +264,17 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
 
   override def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)] = {
     // TODO cross joins go weird?
-    from(
-      leagueUserStatTable, leagueStatFieldTable, leagueUserStatDailyTable
-    )((lus, lsf, s) =>
+    val q = join(
+      leagueStatFieldTable, leagueUserStatTable.leftOuter, leagueUserStatDailyTable.leftOuter
+    )((lsf, lus, s) =>
       where(
-        lus.leagueUserId === leagueUser.id and lsf.leagueId === leagueUser.leagueId and s.leagueUserStatId === lus.id and s.period === period
+        lus.get.leagueUserId === leagueUser.id and lsf.leagueId === leagueUser.leagueId and s.get.period === period
       )
-        select (lsf, s)
-    )
+        select (lsf, s.get)
+        on(lsf.id === lus.map(_.statFieldId), s.map(_.leagueUserStatId) === lus.map(_.id))
+    ).toList
+    //println(q.mkString(", "))
+    q
   }
 
   override def getLeagueUserStatWithUser(

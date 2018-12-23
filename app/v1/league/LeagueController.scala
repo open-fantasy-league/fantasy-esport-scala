@@ -147,6 +147,16 @@ class LeagueController @Inject()(
     }
   }
 
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
+    Future{
+      inTransaction{
+      val showTeam = !request.getQueryString("team").isEmpty
+      val showScheduledTransfers = !request.getQueryString("scheduledTransfers").isEmpty
+      val stats = !request.getQueryString("stats").isEmpty
+      Ok(Json.toJson(leagueUserRepo.detailedLeagueUser(request.user, request.leagueUser, showTeam, showScheduledTransfers, stats)))
+    }}
+  }
+
   def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       inTransaction {
