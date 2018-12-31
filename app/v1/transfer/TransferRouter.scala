@@ -21,10 +21,10 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case POST(p"/$leagueId/process") =>
       controller.processTransfersReq(leagueId)
 
-    case POST(p"/league/$leagueId/user/$userId") =>
+    case POST(p"/leagues/$leagueId/users/$userId") =>
       controller.scheduleTransferReq(userId, leagueId)
 
-    case GET(p"/league/$leagueId/user/$userId") =>
+    case GET(p"/leagues/$leagueId/users/$userId") =>
       controller.getUserTransfersReq(userId, leagueId)
   }
 

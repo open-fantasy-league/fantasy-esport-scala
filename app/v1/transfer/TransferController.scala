@@ -19,6 +19,19 @@ import auth._
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
+case class TransferSuccess(updatedMoney: Double, remainingTransfers: Option[Int])
+
+object TransferSuccess{
+  implicit val implicitWrites = new Writes[TransferSuccess] {
+    def writes(t: TransferSuccess): JsValue = {
+      Json.obj(
+        "updatedMoney" -> t.updatedMoney,
+        "remainingTransfers" -> t.remainingTransfers
+      )
+    }
+  }
+}
+
 class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -68,7 +81,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: TransferFormInput) = {
+    def success(input: TransferFormInput): Future[Result] = {
       println("yay")
       // verify leagueUser exists
       // verify doesnt violate remaining transfers
@@ -80,6 +93,9 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
       // still need further check that hero not already in team
       val sell = input.sell.toSet
       val buy = input.buy.toSet
+      if (sell.isEmpty && buy.isEmpty && !input.wildcard && !input.isCheck){
+        return Future.successful(BadRequest("Attempted to confirm transfers, however no changes planned"))
+      }
 
       Future {
         inTransaction {
@@ -100,9 +116,9 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelay)
-            finished <- if (input.isCheck) Right(Ok("Transfers are valid")) else
+            out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining)))) else
               updateDBScheduleTransfer(sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay, applyWildcard)
-          } yield finished).fold(identity, identity)
+          } yield out).fold(identity, identity)
         }
       }
     }
@@ -217,7 +233,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     leagueUser.changeTstamp = scheduledUpdateTime
     if (applyWildcard) leagueUser.usedWildcard = true
     AppDB.leagueUserTable.update(leagueUser)
-    Right(Ok("Transfers successfully processed"))
+    Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining))))
   }
 
   private def processLeagueUserTransfer(leagueUser: LeagueUser) = {

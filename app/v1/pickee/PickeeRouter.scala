@@ -21,10 +21,10 @@ class PickeeRouter @Inject()(controller: PickeeController) extends SimpleRouter 
     case GET(p"/$leagueId") =>
       controller.getReq(leagueId)
 
-    case GET(p"/league/$leagueId/stats") =>
+    case GET(p"/leagues/$leagueId/stats") =>
       controller.getStatsReq(leagueId)
 
-    case POST(p"/league/$leagueId/updateCosts") =>
+    case POST(p"/leagues/$leagueId/updateCosts") =>
       controller.recalibratePickees(leagueId)
 
   }
