@@ -55,7 +55,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     // TODO period filter
     // TODO filter by league
     val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
-      (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id)
+      (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
       select((m, r, p, s, pck))
 //    ).groupBy(_._1).mapValues(_.map(_._2))
     )
