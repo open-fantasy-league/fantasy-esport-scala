@@ -70,8 +70,8 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
   def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
     Future{
       inTransaction{
-        val onlyPending = request.getQueryString("onlyPending").map(s => false)
-        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, onlyPending)))
+        val unprocessed = request.getQueryString("unprocessed").map(s => false)
+        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, unprocessed)))
       }
     }
   }
@@ -127,9 +127,9 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
   }
 
   private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
-    val newRemaining = leagueUser.remainingTransfers - toSell.size
-    leagueUser.remainingTransfers match{
-      case Some(x) if x - toSell.size < 0 => Left(BadRequest(
+    val newRemaining = leagueUser.remainingTransfers.map(_ - toSell.size)
+    newRemaining match{
+      case Some(x) if x < 0 => Left(BadRequest(
         f"Insufficient remaining transfers: $leagueUser.remainingTransfers"
       ))
       case Some(x) => Right(Some(x))

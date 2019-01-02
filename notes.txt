@@ -8,14 +8,14 @@ curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI100", "apiKe
 curl -X PUT localhost/api/v1/users/2/join/1
 
 curl -H "Content-Type: application/json" -X PATCH -d '{"transferOpen": true}'  http://localhost/api/v1/leagues/1
-curl -H "Content-Type: application/json" -X POST -d '{"buy": [1], "isCheck": false}'  http://localhost/api/v1/transfers/league/1/user/1
+curl -H "Content-Type: application/json" -X POST -d '{"buy": [1], "isCheck": false}'  http://localhost/api/v1/transfers/leagues/1/users/3
 
-curl -H "Content-Type: application/json" -X POST -d '{"sell": [1], "buy": [2], "isCheck": false, "wildcard": true}'  http://localhost/api/v1/transfers/league/1/user/1
+curl -H "Content-Type: application/json" -X POST -d '{"sell": [1], "buy": [2], "isCheck": false, "wildcard": true}'  http://localhost/api/v1/transfers/leagues/1/users/3
 
-curl -H "Content-Type: application/json" -X POST -d '{"sell": [1], "isCheck": false}'  http://localhost/api/v1/transfers/league/1/user/1
+curl -H "Content-Type: application/json" -X POST -d '{"sell": [1], "isCheck": false}'  http://localhost/api/v1/transfers/leagues/1/users/3
 
-curl -H "Content-Type: application/json" -X POST -d '{"buy": [1], "isCheck": false}'  http://localhost/api/v1/transfers/league/1/user/1
-curl -H "Content-Type: application/json" -X POST -d '{"buy": [2], "isCheck": false}'  http://localhost/api/v1/transfers/league/1/user/2
+curl -H "Content-Type: application/json" -X POST -d '{"buy": [1], "isCheck": false}'  http://localhost/api/v1/transfers/leagues/1/users/3
+curl -H "Content-Type: application/json" -X POST -d '{"buy": [2], "isCheck": false}'  http://localhost/api/v1/transfers/leagues/1/users/4
 
 curl -X POST -H "Content-Type: application/json" -d '{"matchId": 12, "tournamentId": 5401, "teamOne": "EG", "teamTwo": "VP", "teamOneVictory": false, "startTstamp": "2002-02-02 04:05:06.0", "pickees": [{"externalId": 1, "isTeamOne": true, "stats": [{"field": "points", "value": 4.0}, {"field": "picks", "value": 1}]}]}' localhost/api/v1/results/1
 

@@ -15,14 +15,14 @@ import models._
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TransferRepo{
-  def getLeagueUserTransfer(leagueUser: LeagueUser, onlyPending: Option[Boolean]): List[Transfer]
+  def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer]
 }
 
 @Singleton
 class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extends TransferRepo{
-  override def getLeagueUserTransfer(leagueUser: LeagueUser, onlyPending: Option[Boolean]): List[Transfer] = {
+  override def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer] = {
   from(AppDB.transferTable)(t =>
-    where(t.leagueUserId === leagueUser.id and not (t.processed === onlyPending.?))
+    where(t.leagueUserId === leagueUser.id and (t.processed === unprocessed.?))
     select(t)
     ).toList
   }
