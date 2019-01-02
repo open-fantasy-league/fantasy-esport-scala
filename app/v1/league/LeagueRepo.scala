@@ -34,11 +34,14 @@ object LeagueFull{
         "pickee" -> league.league.pickeeDescription,
         "teamSize" -> league.league.teamSize,
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
+        "transferOpen" -> league.league.transferOpen,
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields.map(_.name),
         "factionTypes" -> league.factions,
         "periods" -> league.periods,
-        "currentPeriod" -> league.currentPeriod
+        "currentPeriod" -> league.currentPeriod,
+        "started" -> !league.currentPeriod.isEmpty,
+        "ended" -> (league.currentPeriod.exists(_.ended) && league.currentPeriod.exists(_.nextPeriodId.isEmpty))
       )
     }
   }

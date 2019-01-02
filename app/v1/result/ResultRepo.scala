@@ -20,9 +20,9 @@ object SingleResult{
   implicit val implicitWrites = new Writes[SingleResult]{
     def writes(r: SingleResult): JsValue = {
       Json.obj(
-        "result" -> r.result,
+        "isTeamOne" -> r.result.isTeamOne,
         "pickee" -> r.pickee,
-        "results" -> r.results,
+        "stats" -> r.results,
       )
     }
   }
