@@ -31,17 +31,24 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 
 
 // TODO period descriptor
-case class LeagueFormInput(name: String, gameId: Long, isPrivate: Boolean, tournamentId: Long, periodDescription: String,
+case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
                            transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
-                           transferDelay: Int, prizeDescription: Option[String], prizeEmail: Option[String],
+                           transferDelayMinutes: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
                            pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
-                                 tournamentId: Option[Int], transferOpen: Option[Boolean])
+                                 tournamentId: Option[Int], transferOpen: Option[Boolean],
+                                 transferBlockedDuringPeriod: Option[Boolean],
+                                 transferDelayMinutes: Option[Int],
+                                 url: Option[String], transferLimit: Option[Int],
+                                 transferWildcard: Option[Boolean],
+                                 periodDescription: Option[String],
+                                 pickeeDescription: Option[String]
+                                 )
 
 class LeagueController @Inject()(
                                   cc: ControllerComponents, leagueRepo: LeagueRepo,
@@ -55,7 +62,7 @@ class LeagueController @Inject()(
     Form(
       mapping(
         "name" -> nonEmptyText,
-        "gameId" -> of(longFormat),
+        "gameId" -> optional(of(longFormat)),
         "isPrivate" -> boolean,
         "tournamentId" -> of(longFormat),
         "periodDescription" -> nonEmptyText,
@@ -79,7 +86,7 @@ class LeagueController @Inject()(
           )(FactionInput.apply)(FactionInput.unapply))
         )(FactionTypeInput.apply)(FactionTypeInput.unapply)),
         "startingMoney" -> default(of(doubleFormat), 50.0),
-        "transferDelay" -> default(number, 0),
+        "transferDelayMinutes" -> default(number, 0),
         //"factions" -> List of stuff
     // also singular prize with description and email fields
         "prizeDescription" -> optional(nonEmptyText),
@@ -108,6 +115,13 @@ class LeagueController @Inject()(
         "isPrivate" -> optional(boolean),
         "tournamentId" -> optional(number),
         "transferOpen" -> optional(boolean),
+        "transferBlockedDuringPeriod" -> optional(boolean),
+        "transferDelayMinutes" -> optional(number),
+        "url" -> optional(nonEmptyText),
+        "transferLimit" -> optional(number),
+        "transferWildcard" -> optional(boolean),
+        "periodDescription" -> optional(nonEmptyText),
+        "pickeeDescription" -> optional(nonEmptyText)
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
@@ -304,7 +318,13 @@ class LeagueController @Inject()(
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: UpdateLeagueFormInput) = Future(inTransaction(Ok(Json.toJson(leagueRepo.update(league, input)))))
+    def success(input: UpdateLeagueFormInput) = Future(
+      if (league.started && (!input.transferLimit.isEmpty || !input.transferWildcard.isEmpty)){
+        BadRequest("Cannot update transfer limits or wildcard after league has started")
+      } else{
+        inTransaction(Ok(Json.toJson(leagueRepo.update(league, input))))
+      }
+    )
 
     updateForm.bindFromRequest().fold(failure, success)
   }

@@ -16,6 +16,7 @@ import scala.util.Try
 import models._
 import utils.{IdParser, CostConverter}
 import auth._
+import v1.leagueuser.LeagueUserRepo
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
@@ -32,7 +33,7 @@ object TransferSuccess{
   }
 }
 
-class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -50,7 +51,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
   implicit val parser = parse.default
 
   // todo add a transfer check call
-  def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen new LeagueUserAction(userId).auth()).async { implicit request =>
+  def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers))).async { implicit request =>
     scheduleTransfer(request.league, request.leagueUser)
   }
 
@@ -115,7 +116,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
             newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
             _ <- updatedTeamSize(newTeamIds, league)
             _ <- validateFactionLimit(newTeamIds, league)
-            transferDelay = if (!league.started) None else Some(league.transferDelay)
+            transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining)))) else
               updateDBScheduleTransfer(sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay, applyWildcard)
           } yield out).fold(identity, identity)
@@ -200,7 +201,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
                                 toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,
                                 period: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
                               ): Either[Result, Result] = {
-    val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(td)))
+    val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(td)))
     if (toSell.nonEmpty) {
       AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.externalId == ts).get).map(
         p => new Transfer(

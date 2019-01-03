@@ -22,7 +22,7 @@ case class ResultFormInput(
                             startTstamp: Timestamp, pickees: List[PickeeFormInput]
                           )
 
-case class PickeeFormInput(externalId: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
+case class PickeeFormInput(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
 
 case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
 
@@ -42,7 +42,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         "teamOneVictory" -> boolean,
         "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss.S"),
         "pickees" -> list(mapping(
-          "externalId" -> of(longFormat),
+          "id" -> of(longFormat),
           "isTeamOne" -> boolean,
           "stats" -> list(mapping(
             "field" -> nonEmptyText,
@@ -86,7 +86,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: League): List[InternalPickee] = {
     pickees.map(ip => {
-      val internalId = AppDB.pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.externalId).single.id
+      val internalId = AppDB.pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.id).single.id
       InternalPickee(internalId, ip.isTeamOne, ip.stats)
     })
   }
@@ -147,10 +147,11 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           psd => psd.pickeeStatId === pickeeStat.id and (psd.period === league.currentPeriod.getOrElse(new Period()).value or psd.period.isNull)
         )
         AppDB.pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
-        val leagueUserStats = from(AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((lu, tp, lus, lusd, p) =>
+        val leagueUserStats = from(AppDB.leagueTable, AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((l, lu, tp, lus, lusd, p) =>
           //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.period.isNull or lusd.period === p.value))
-          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value))
+          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value) and from(AppDB.teamPickeeTable)(tp => where(tp.leagueUserId === lu.id) compute(count(tp.id))) === l.teamSize)
             select(lusd)
+            //group(lu)(where count(tp) == l.teamSize)
         )
         println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
         /*val leagueUserStat = AppDB.leagueUserStatTable.where(

@@ -12,7 +12,7 @@ import entry.SquerylEntrypointForMyApp._
 class League(
               var name: String,
               val apiKey: String, // the api user/platform that created the league
-              val gameId: Long,
+              val gameId: Option[Long],
               var isPrivate: Boolean,
               var tournamentId: Long,
               var pickeeDescription: String,
@@ -21,13 +21,10 @@ class League(
               var transferWildcard: Boolean,
               var startingMoney: Int,
               val teamSize: Int,
-              var transferDelay: Int = 0, // Only applies for when period 1 has started
-              var refundPeriod: Int = 0,
+              var transferDelayMinutes: Int = 0, // Only applies for when period 1 has started
               var transferOpen: Boolean = false,
               var transferBlockedDuringPeriod: Boolean = false,
-              var unfilledTeamPenaltyMultiplier: Double = 0.5,
               var url: String = "",
-              var autoUpdate: Boolean = true,
               var currentPeriodId: Option[Long] = None
             ) extends KeyedEntity[Long] {
   val id: Long = 0
@@ -48,7 +45,7 @@ class League(
   //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
-  def this() = this("", "AAA", 1, false, 0, "", "", None, false, 0, 5)
+  def this() = this("", "AAA", Some(1), false, 0, "", "", None, false, 0, 5)
 
 }
 
@@ -179,9 +176,8 @@ object League{
         "transferWildcard" -> league.transferWildcard,
         "startingMoney" -> league.startingMoney,
         "transferOpen" -> league.transferOpen,
-        "transferDelay" -> league.transferDelay,
+        "transferDelayMinutes" -> league.transferDelayMinutes,
         "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
-        "unfilledTeamPenaltyMultiplier" -> league.unfilledTeamPenaltyMultiplier,
         "url" -> league.url
       )
     }

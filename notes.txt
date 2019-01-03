@@ -32,12 +32,9 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 
 
 # stuff.......forUpdate on selects
-# make transferDelay minutes
 # check all optional wheres (except for unprocessed)
 # only have users deal with extenalIds, dont report back internal ids
 # indexes
 # commonise code for getting teams with leaderboards?
 # historic teams
-# make game id optional
-# make sure update league can patch everything it should
-# make sure get league shows everything useful
+# trailing slash empty req

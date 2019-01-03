@@ -9,6 +9,7 @@ import javax.inject.Inject
 import utils.{IdParser, TryHelper}
 import entry.SquerylEntrypointForMyApp._
 import com.typesafe.config.{Config, ConfigFactory}
+import v1.leagueuser.LeagueUserRepo
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 
@@ -87,7 +88,7 @@ class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[A
   }
 }*/
 class LeagueUserAction(val userId: String){
-  def refineGeneric[A <: LeagueRequest[B], B](input: A): Either[Result, (User, LeagueUser)] = {
+  def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
       inTransaction(
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
@@ -96,24 +97,32 @@ class LeagueUserAction(val userId: String){
             case true => (Some(userIdLong), None)
             case false => (None, Some(userIdLong))
           }
-          query <- TryHelper.tryOrResponse(() => join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.get.leagueId === input.league.id) and (u.externalId === externalUserId.?) and (u.id === internalUserId.?))
-            select(u, lu.get)
-            on(lu.get.userId === u.id)).single, BadRequest(f"User $userId not in league"))
-        } yield query)
+          (user, maybeLeagueUser) = join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.map(_.leagueId) === input.league.id) and (u.externalId === externalUserId.?) and (u.id === internalUserId.?))
+            select(u, lu)
+            on(lu.get.userId === u.id)).single
+          out <- maybeLeagueUser match {
+            case Some(x) => Right((user, x))
+            case None if (!insertOnMissing.isEmpty) => {
+              val leagueUser = insertOnMissing.get(List(user), input.league).head
+              Right((user, leagueUser))
+            }
+            case _ => Left(BadRequest(f"User $userId not in league"))
+          }
+        } yield out)
       )
     }
 
   def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
     def executionContext = ec
     def refine[A](input: LeagueRequest[A]) = Future.successful{
-      refineGeneric[LeagueRequest[A], A](input).map(q => new LeagueUserRequest(q._1, q._2, input))
+      refineGeneric[LeagueRequest[A], A](input, None).map(q => new LeagueUserRequest(q._1, q._2, input))
     }
-
   }
-  def auth()(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
+
+  def auth(insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
     def executionContext = ec
     def refine[A](input: AuthLeagueRequest[A]) = Future.successful {
-      refineGeneric[AuthLeagueRequest[A], A](input).map(q => new AuthLeagueUserRequest(q._1, q._2, input))
+      refineGeneric[AuthLeagueRequest[A], A](input, insertOnMissing).map(q => new AuthLeagueUserRequest(q._1, q._2, input))
     }
   }
 }

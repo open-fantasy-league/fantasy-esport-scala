@@ -34,14 +34,20 @@ object LeagueFull{
         "pickee" -> league.league.pickeeDescription,
         "teamSize" -> league.league.teamSize,
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
+        "transferWildcard" -> league.league.transferWildcard,
         "transferOpen" -> league.league.transferOpen,
+        "transferDelayMinutes" -> league.league.transferDelayMinutes,
+        "transferBlockedDuringPeriod" -> league.league.transferBlockedDuringPeriod,
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields.map(_.name),
         "factionTypes" -> league.factions,
         "periods" -> league.periods,
         "currentPeriod" -> league.currentPeriod,
         "started" -> !league.currentPeriod.isEmpty,
-        "ended" -> (league.currentPeriod.exists(_.ended) && league.currentPeriod.exists(_.nextPeriodId.isEmpty))
+        "ended" -> (league.currentPeriod.exists(_.ended) && league.currentPeriod.exists(_.nextPeriodId.isEmpty)),
+        "pickeeDescription" -> league.league.pickeeDescription,
+        "periodDescription" -> league.league.periodDescription,
+        "url" -> league.league.url
       )
     }
   }
@@ -102,6 +108,13 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league.name = input.name.getOrElse(league.name)
     league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
     league.transferOpen = input.transferOpen.getOrElse(league.transferOpen)
+    league.transferBlockedDuringPeriod = input.transferBlockedDuringPeriod.getOrElse(league.transferBlockedDuringPeriod)
+    league.transferDelayMinutes = input.transferDelayMinutes.getOrElse(league.transferDelayMinutes)
+    league.periodDescription = input.periodDescription.getOrElse(league.periodDescription)
+    league.pickeeDescription = input.pickeeDescription.getOrElse(league.pickeeDescription)
+    league.url = input.url.getOrElse(league.url)
+    league.transferLimit = if (!input.transferLimit.isEmpty) input.transferLimit else league.transferLimit
+    league.transferWildcard = input.transferWildcard.getOrElse(league.transferWildcard)
     // etc for other fields
     leagueTable.update(league)
     league
