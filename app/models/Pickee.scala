@@ -23,8 +23,7 @@ object Pickee{
   implicit val implicitWrites = new Writes[Pickee] {
     def writes(p: Pickee): JsValue = {
       Json.obj(
-        "internalId" -> p.id,
-        "externalId" -> p.externalId,
+        "id" -> p.externalId,
         "name" -> p.name,
         "cost" -> convertCost(p.cost),
         "active" -> p.active,
@@ -42,16 +41,13 @@ class TeamPickee(
   lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single
 }
 
-object TeamPickee{
+/*object TeamPickee{
   implicit val implicitWrites = new Writes[TeamPickee] {
     def writes(p: TeamPickee): JsValue = {
-      Json.obj(
-        "id" -> p.id,
-        "pickee" -> p.pickee
-      )
+      JsValue(p.pickee)
     }
   }
-}
+}*/
 
 class HistoricTeamPickee(
                           var pickeeId: Long,
@@ -62,15 +58,13 @@ class HistoricTeamPickee(
   lazy val pickee = AppDB.pickeeToHistoricTeamPickee.right(this).single
 }
 
-object HistoricTeamPickee{
+/*object HistoricTeamPickee{
   implicit val implicitWrites = new Writes[HistoricTeamPickee] {
     def writes(p: HistoricTeamPickee): JsValue = {
-      Json.obj(
-        "pickee" -> p.pickee
-      )
+      JsValue(p.pickee)
     }
   }
-}
+}*/
 
 class PickeeStat(
                        val statFieldId: Long,

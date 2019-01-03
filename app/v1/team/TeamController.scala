@@ -31,7 +31,7 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       inTransaction {
-        Ok(Json.toJson(request.league.users.associations.map(lu => lu.team.toList)))
+        Ok(Json.toJson(request.league.users.associations.map(lu => lu.team.map(_.pickee).toList)))
       }
     }
   }
