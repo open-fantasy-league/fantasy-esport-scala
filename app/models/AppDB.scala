@@ -24,6 +24,8 @@ object AppDB extends Schema {
   val pointsTable = table[Points]
   val matchTable = table[Matchu]
   val leaguePrizeTable = table[LeaguePrize]
+  on(userTable)(t => declare(columns(t.externalId, t.username) are(indexed)))
+  on(leagueTable)(t => declare(columns(t.isPrivate, t.gameId) are(indexed)))
 
   // League User has many to many relation. each user can play in many leagues. each league can have many users
   // TODO this should be true of user achievements as well

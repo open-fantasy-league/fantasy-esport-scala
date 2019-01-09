@@ -63,6 +63,7 @@ trait LeagueRepo{
   def update(league: League, input: UpdateLeagueFormInput): League
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
+  def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
   def getNextPeriod(league: League): Either[Result, Period]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
@@ -100,7 +101,8 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
   override def insert(input: LeagueFormInput): League = {
     leagueTable.insert(new League(input.name, input.apiKey, input.gameId, input.isPrivate, input.tournamentId, input.pickeeDescription,
       input.periodDescription, input.transferLimit, input.transferWildcard,
-      CostConverter.unconvertCost(input.startingMoney), input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod
+      CostConverter.unconvertCost(input.startingMoney), input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod,
+      transferDelayMinutes=input.transferDelayMinutes, url=input.url.getOrElse(""),
     ))
   }
 
@@ -118,6 +120,10 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     // etc for other fields
     leagueTable.update(league)
     league
+  }
+
+  override def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize = {
+    leaguePrizeTable.insert(new LeaguePrize(leagueId, description, email))
   }
 
   override def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField = {

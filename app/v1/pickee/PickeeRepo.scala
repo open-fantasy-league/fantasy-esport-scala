@@ -123,12 +123,13 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       )
         //select (p, ps, s, lsf, ft, f)
         select (p, ps, s, lsf, ft, f)
-        orderBy (lsf.name, s.value desc)
+        orderBy (p.name)
         on (ps.pickeeId === p.id, s.pickeeStatId === ps.id, ps.statFieldId === lsf.id, 
           pf.map(_.pickeeId) === p.id, pf.map(_.factionId) === f.map(_.id), f.map(_.factionTypeId) === ft.map(_.id)
           )
     )
     //v.map(x => x.              factionType.name -> x.faction.name).toMap
+    // TODO hmm have to resort after groupby
     val groupByPickee = query.groupBy(_._1)
     println(groupByPickee.mkString(","))
     val out: Iterable[PickeeStatsOutput] = groupByPickee.map({case (p, v) => {
@@ -136,7 +137,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       val factions = v.filter(x => !x._5.isEmpty).map(x => x._5.get.name -> x._6.get.name).toMap
       PickeeStatsOutput(p.externalId, p.name, stats, factions, CostConverter.convertCost(p.cost))
     //v.map({case (k2, v2) => StatsOutput(k2.name, v2.value)}).toList)}).toList
-  }})
+  }}).toSeq.sortBy(_.name)
   out
 }
 

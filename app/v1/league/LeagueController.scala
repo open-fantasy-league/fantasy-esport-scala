@@ -37,7 +37,7 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
                            transferDelayMinutes: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
-                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String
+                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String, url: Option[String]
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
@@ -103,7 +103,8 @@ class LeagueController @Inject()(
           "imgUrl" -> optional(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number),
-        "apiKey" -> nonEmptyText
+        "apiKey" -> nonEmptyText,
+        "url" -> optional(nonEmptyText)
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }
@@ -188,7 +189,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def endDayReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+  def endPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
       inTransaction {
         request.league.currentPeriod match {
@@ -202,7 +203,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def startDayReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
+  def startPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     println(request.apiKey)
     println(request.league)
     Future {
@@ -263,10 +264,17 @@ class LeagueController @Inject()(
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: LeagueFormInput) = {
+    def success(input: LeagueFormInput): Future[Result] = {
       println("yay")
+      Future{
       inTransaction {
         val newLeague = leagueRepo.insert(input)
+        (input.prizeDescription, input.prizeEmail) match {
+          case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.id, d, e)
+          case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
+          case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
+          case _ => ;
+        }
 
         val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
         val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
@@ -304,7 +312,6 @@ class LeagueController @Inject()(
           f => pickeeFactionTable.insert(new PickeeFaction(newPickeeIds(i), factionNamesToIds.get(f).get))
         })})
 
-        Future {
           Created(Json.toJson(newLeague))
         }
       }

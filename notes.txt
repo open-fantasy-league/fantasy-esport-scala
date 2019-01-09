@@ -38,3 +38,5 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # commonise code for getting teams with leaderboards?
 # historic teams
 # trailing slash empty req
+# make clear only support 1dp for prices
+# why is url empty for league?

@@ -40,7 +40,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         "teamOne" -> nonEmptyText,
         "teamTwo" -> nonEmptyText,
         "teamOneVictory" -> boolean,
-        "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss.S"),
+        "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss"),
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
           "isTeamOne" -> boolean,
