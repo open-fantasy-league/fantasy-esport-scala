@@ -10,12 +10,6 @@ import play.api.routing.sird._
 class TransferRouter @Inject()(controller: TransferController) extends SimpleRouter {
   val prefix = "/v1/transfers"
 
-  def link(id: Long): String = {
-    import com.netaporter.uri.dsl._
-    val url = prefix / id.toString
-    url.toString()
-  }
-
   override def routes: Routes = {
     // TODO background task continually processing
     case POST(p"/$leagueId/process") =>

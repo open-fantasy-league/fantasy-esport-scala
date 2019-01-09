@@ -11,11 +11,6 @@ import entry.SquerylEntrypointForMyApp._
 class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter {
   val prefix = "/v1/leagues"
   // TODO have a 'master router' for things like versioning query params
-//  def link(id: Long): String = {
-//    import com.netaporter.uri.dsl._
-//    val url = prefix / id.toString
-//    url.toString()
-//  }
 
   override def routes: Routes = {
 

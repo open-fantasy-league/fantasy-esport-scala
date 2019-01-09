@@ -9,12 +9,6 @@ import play.api.routing.sird._
 
 class UserRouter @Inject()(controller: UserController) extends SimpleRouter {
   val prefix = "/v1/users"
-  // TODO have a 'master router' for things like versioning query params
-    def link(id: Long): String = {
-      import com.netaporter.uri.dsl._
-      val url = prefix / id.toString
-      url.toString()
-    }
 
   override def routes: Routes = {
 

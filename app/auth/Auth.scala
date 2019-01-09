@@ -74,30 +74,18 @@ class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[A
     }
   }
 }
-/*object LeaguePeriodAction{
-  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeaguePeriodRequest]{
-    def executionContext = ec
-    def refine[A](input: LeagueRequest[A]) = Future.successful {
-      inTransaction(
-        (for {
-          period <- TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          out <- Right(new LeaguePeriodRequest(period, input))
-        } yield out)
-      )
-    }
-  }
-}*/
+
 class LeagueUserAction(val userId: String){
   def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
       inTransaction(
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
-          isInternal = !input.getQueryString("internalUserId").isEmpty
+          /*isInternal = !input.getQueryString("internalUserId").isEmpty
           (internalUserId, externalUserId) = isInternal match{
             case true => (Some(userIdLong), None)
             case false => (None, Some(userIdLong))
-          }
-          (user, maybeLeagueUser) = join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.map(_.leagueId) === input.league.id) and (u.externalId === externalUserId.?) and (u.id === internalUserId.?))
+          }*/
+          (user, maybeLeagueUser) = join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.map(_.leagueId) === input.league.id) and u.externalId === userIdLong)
             select(u, lu)
             on(lu.get.userId === u.id)).single
           out <- maybeLeagueUser match {
