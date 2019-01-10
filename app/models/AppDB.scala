@@ -24,26 +24,6 @@ object AppDB extends Schema {
   val pointsTable = table[Points]
   val matchTable = table[Matchu]
   val leaguePrizeTable = table[LeaguePrize]
-  on(userTable)(t => declare(columns(t.externalId, t.username) are(indexed)))
-  on(leagueTable)(t => declare(columns(t.isPrivate, t.gameId) are(indexed)))
-  on(periodTable)(t => declare(columns(t.nextPeriodId, t.value, t.leagueId) are(indexed)))
-  on(leaguePrizeTable)(t => declare(t.leagueId is(indexed)))
-  on(factionTypeTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
-  on(factionTable)(t => declare(columns(t.factionTypeId, t.name) are(indexed)))
-  on(leagueUserTable)(t => declare(columns(t.changeTstamp, t.leagueId, t.userId) are(indexed)))
-  on(leagueStatFieldTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
-  on(leagueUserStatTable)(t => declare(columns(t.statFieldId, t.leagueUserId) are(indexed)))
-  on(leagueUserStatDailyTable)(t => declare(columns(t.period, t.leagueUserStatId) are(indexed)))
-  on(pickeeTable)(t => declare(columns(t.externalId, t.leagueId, t.name) are(indexed)))
-  on(teamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId) are(indexed)))
-  on(historicTeamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId, t.period) are(indexed)))
-  on(pickeeStatTable)(t => declare(columns(t.statFieldId, t.pickeeId) are(indexed)))
-  on(pickeeStatDailyTable)(t => declare(columns(t.period, t.pickeeStatId) are(indexed)))
-  on(pickeeFactionTable)(t => declare(columns(t.factionId, t.pickeeId) are(indexed)))
-  on(resultTable)(t => declare(columns(t.pickeeId, t.matchId) are(indexed)))
-  on(pointsTable)(t => declare(columns(t.resultId, t.pointsFieldId) are(indexed)))
-  on(matchTable(t => declare(columns(t.leagueId, t.externalId, t.periodId) are(indexed)))
-  on(transferTable(t => declare(columns(t.leagueUserId, t.pickeeId, t.scheduledFor, t.processed) are(indexed)))
 
   // League User has many to many relation. each user can play in many leagues. each league can have many users
   // TODO this should be true of user achievements as well
@@ -151,4 +131,25 @@ object AppDB extends Schema {
       select((l, lsf))
         on(l.id === lsf.map(_.leagueId))
     )
+
+  on(userTable)(t => declare(columns(t.externalId, t.username) are(indexed)))
+  on(leagueTable)(t => declare(columns(t.isPrivate, t.gameId) are(indexed)))
+  on(periodTable)(t => declare(columns(t.nextPeriodId, t.value, t.leagueId) are(indexed)))
+  on(leaguePrizeTable)(t => declare(t.leagueId is(indexed)))
+  on(factionTypeTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
+  on(factionTable)(t => declare(columns(t.factionTypeId, t.name) are(indexed)))
+  on(leagueUserTable)(t => declare(columns(t.changeTstamp, t.leagueId, t.userId) are(indexed)))
+  on(leagueStatFieldTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
+  on(leagueUserStatTable)(t => declare(columns(t.statFieldId, t.leagueUserId) are(indexed)))
+  on(leagueUserStatDailyTable)(t => declare(columns(t.period, t.leagueUserStatId) are(indexed)))
+  on(pickeeTable)(t => declare(columns(t.externalId, t.leagueId, t.name) are(indexed)))
+  on(teamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId) are(indexed)))
+  on(historicTeamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId, t.period) are(indexed)))
+  on(pickeeStatTable)(t => declare(columns(t.statFieldId, t.pickeeId) are(indexed)))
+  on(pickeeStatDailyTable)(t => declare(columns(t.period, t.pickeeStatId) are(indexed)))
+  on(pickeeFactionTable)(t => declare(columns(t.factionId, t.pickeeId) are(indexed)))
+  on(resultTable)(t => declare(columns(t.pickeeId, t.matchId) are(indexed)))
+  on(pointsTable)(t => declare(columns(t.resultId, t.pointsFieldId) are(indexed)))
+  on(matchTable)(t => declare(columns(t.leagueId, t.externalId, t.period) are(indexed)))
+  on(transferTable)(t => declare(columns(t.leagueUserId, t.pickeeId, t.scheduledFor, t.processed) are(indexed)))
 }

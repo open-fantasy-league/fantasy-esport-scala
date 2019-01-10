@@ -100,7 +100,6 @@ class LeagueController @Inject()(
           "value" -> of(doubleFormat),
           "active" -> default(boolean, true),
           "factions" -> list(nonEmptyText),
-          "imgUrl" -> optional(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number),
         "apiKey" -> nonEmptyText,

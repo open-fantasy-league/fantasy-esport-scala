@@ -12,7 +12,6 @@ class Pickee(
               // and Antimage in league 2. however we still want a field which is always AM hero id
               var cost: Int,
               var active: Boolean = true,
-              var imgUrl: Option[String] = None
             ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val factions = AppDB.pickeeFactionTable.left(this)
@@ -27,7 +26,6 @@ object Pickee{
         "name" -> p.name,
         "cost" -> convertCost(p.cost),
         "active" -> p.active,
-        "imgUrl" -> p.imgUrl
       )
     }
   }

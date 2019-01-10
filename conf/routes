@@ -1,7 +1,5 @@
 GET        /                       controllers.HomeController.index
 
-->         /api/v1/posts              v1.post.PostRouter
-
 ->         /api/v1/leagues            v1.league.LeagueRouter
 
 ->         /api/v1/users              v1.user.UserRouter
@@ -11,6 +9,7 @@ GET        /                       controllers.HomeController.index
 ->         /api/v1/results            v1.result.ResultRouter
 
 ->         /api/v1/pickees            v1.pickee.PickeeRouter
+->         /api/v1/games            v1.game.GameRouter
 
 # Map static resources from the /public folder to the /assets URL path
 GET        /assets/*file        controllers.Assets.at(path="/public", file)

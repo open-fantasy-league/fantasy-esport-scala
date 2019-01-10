@@ -15,7 +15,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class PickeeFormInput(id: Long, name: String, value: Double, active: Boolean, factions: List[String], imgUrl: Option[String])
+case class PickeeFormInput(id: Long, name: String, value: Double, active: Boolean, factions: List[String])
 
 case class RepricePickeeFormInput(id: Long, cost: Double)
 
@@ -78,7 +78,6 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       // and AM in league 2. however we still want a field which is always AM hero id
       CostConverter.unconvertCost(pickee.value),
       pickee.active,
-      pickee.imgUrl
     ))
   }
 

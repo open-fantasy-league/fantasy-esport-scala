@@ -49,6 +49,18 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     )
   }
 
+  private val newPickeeForm: Form[PickeeFormInput] = {
+      Form(
+        mapping(
+          "id" -> of(longFormat),
+          "name" -> nonEmptyText,
+          "value" -> of(doubleFormat),
+          "active" -> default(boolean, true),
+          "factions" -> list(nonEmptyText)
+          )(PickeeFormInput.apply)(PickeeFormInput.unapply)
+      )
+  }
+
   def recalibratePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
 
     def failure(badForm: Form[RepricePickeeFormInputList]) = {
@@ -70,5 +82,23 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       }
     }
     repriceForm.bindFromRequest().fold(failure, success)
+  }
+
+  def addPickee(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+
+    def failure(badForm: Form[PickeeFormInput]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(input: PickeeFormInput) = {
+      Future {
+        inTransaction {
+            // TODO print out pickees that changed
+            val newPickee = pickeeRepo.insertPickee(request.league.id, input)
+            Created(Json.toJson(newPickee))
+        }
+      }
+    }
+    newPickeeForm.bindFromRequest().fold(failure, success)
   }
 }
