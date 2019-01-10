@@ -8,14 +8,16 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import models._
+import auth._
 import entry.SquerylEntrypointForMyApp._
 import utils.IdParser.parseLongId
 
 import scala.concurrent.{ExecutionContext, Future}
 case class GameFormInput(name: String, code: String, variant: String, description: String)
 
-class GameController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionContext)
+class GameController @Inject()(cc: ControllerComponents, auther: Auther)(implicit ec: ExecutionContext)
     extends AbstractController(cc) with play.api.i18n.I18nSupport{
+  implicit val parser = parse.default
 
   private val logger = Logger(getClass)
 
@@ -33,7 +35,7 @@ class GameController @Inject()(cc: ControllerComponents)(implicit ec: ExecutionC
       Future(inTransaction(Ok(Json.toJson(from(AppDB.gameTable)(select(_)).toList))))
   }
 
-  def process = Action.async { implicit request =>
+  def process = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     logger.trace("process: ")
     processJsonGame()
   }

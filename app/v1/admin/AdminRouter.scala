@@ -13,6 +13,9 @@ class AdminRouter @Inject()(controller: AdminController) extends SimpleRouter {
   override def routes: Routes = {
     // TODO background task continually processing
     case POST(p"/processTransfers") =>
-      controller.allProcessTransfersReq()
+      controller.allProcessTransfersReq
+
+    case POST(p"/rolloverPeriods") => controller.allRolloverPeriodReq
+    case POST(p"/addAPIUser") => controller.addAPIUser
   }
 }

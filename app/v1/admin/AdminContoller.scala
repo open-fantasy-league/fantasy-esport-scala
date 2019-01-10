@@ -4,6 +4,7 @@ import java.sql.Timestamp
 import javax.inject.Inject
 
 import entry.SquerylEntrypointForMyApp._
+import play.api.libs.json._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
@@ -27,7 +28,6 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
   }
 
   def allRolloverPeriodReq() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
-    // TODO request.remoteAddress
     // // TODO test add leagues, sleep before end transaction, and see how id's turn out
     // Thread.sleep(2000)
     Future {
@@ -36,6 +36,14 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)
         Ok("Periods rolled over")
+      }
+    }
+  }
+
+  def addAPIUser() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
+    Future {
+      inTransaction {
+        Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email"))))
       }
     }
   }
