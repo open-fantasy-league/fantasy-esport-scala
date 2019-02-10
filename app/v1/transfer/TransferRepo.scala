@@ -22,7 +22,7 @@ trait TransferRepo{
 class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extends TransferRepo{
   override def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer] = {
   from(AppDB.transferTable)(t =>
-    where(t.leagueUserId === leagueUser.id and (t.processed === unprocessed.?))
+    where(t.leagueUserId === leagueUser.id and (t.processed === unprocessed.map(!_).?))
     select(t)
     ).toList
   }

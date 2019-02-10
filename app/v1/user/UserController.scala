@@ -16,7 +16,7 @@ import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
 import auth._
 
-case class UserFormInput(username: String, externalId: Option[Long])
+case class UserFormInput(username: String, userId: Long)
 
 case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
@@ -28,7 +28,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     Form(
       mapping(
         "username" -> nonEmptyText,
-        "externalId" -> optional(of(longFormat))
+        "userId" -> of(longFormat)
       )(UserFormInput.apply)(UserFormInput.unapply)
     )
   }
@@ -38,7 +38,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     Form(
       mapping(
         "username" -> optional(nonEmptyText),
-        "externalId" -> optional(of(longFormat))
+        "userId" -> optional(of(longFormat))
       )(UpdateUserFormInput.apply)(UpdateUserFormInput.unapply)
     )
   }
@@ -103,7 +103,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     def success(input: UserFormInput) = {
       println("yay")
       inTransaction {
-        val newUser = AppDB.userTable.insert(new User(input.username, input.externalId))
+        println(input.username)
+        println(input.userId)
+        val newUser = AppDB.userTable.insert(new User(input.username, input.userId))
         Future {Created(Json.toJson(newUser)) }
       }
     }

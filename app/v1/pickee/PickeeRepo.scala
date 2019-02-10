@@ -21,7 +21,7 @@ case class RepricePickeeFormInput(id: Long, cost: Double)
 
 case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
 
-case class PickeeQuery(pickee: Pickee, factionType: FactionType, faction: Faction)
+case class PickeeQuery(pickee: Pickee, factionType: Option[FactionType], faction: Option[Faction])
 
 case class PickeeOut(pickee: Pickee, factions: Map[String, String])
 
@@ -42,7 +42,7 @@ object PickeeStatsOutput{
   implicit val implicitWrites = new Writes[PickeeStatsOutput] {
     def writes(p: PickeeStatsOutput): JsValue = {
       Json.obj(
-        "externalId" -> p.externalId,
+        "id" -> p.externalId,
         "name" -> p.name,
         "stats" -> p.stats,
         "factions" -> p.factions,
@@ -102,10 +102,13 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
 
   override def getPickeesWithFactions(leagueId: Long): Iterable[PickeeOut] = {
-  val query = from(leagueTable, pickeeTable, factionTypeTable, factionTable, pickeeFactionTable)(
-    (l, p, ft, f, pf) =>
-      where(p.leagueId === l.id and ft.leagueId === l.id and f.factionTypeId === ft.id and pf.pickeeId === p.id and pf.factionId === f.id)
+  val query = join(leagueTable, pickeeTable, pickeeFactionTable.leftOuter, factionTable.leftOuter, factionTypeTable.leftOuter)(
+    (l, p, pf, f, ft) =>
       select((p, ft, f))
+        on(
+        p.leagueId === l.id, pf.map(_.pickeeId) === p.id, pf.map(_.factionId) === f.map(_.id),
+        f.map(_.factionTypeId) === ft.map(_.id)
+      )
   )
   pickeeQueryExtractor(query.map(x => PickeeQuery(x._1, x._2, x._3)))
   }
@@ -156,7 +159,9 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
   override def pickeeQueryExtractor(query: Iterable[PickeeQuery]): Iterable[PickeeOut] = {
     query.groupBy(_.pickee).map({case (p, v) => {
-      val factions: Map[String, String] = v.map(x => x.factionType.name -> x.faction.name).toMap
+      val factions: Map[String, String] = (
+          for (x <- v if x.factionType.isDefined) yield x.factionType.get.name -> x.faction.get.name
+        ).toMap
       PickeeOut(p, factions)
     }})
   }

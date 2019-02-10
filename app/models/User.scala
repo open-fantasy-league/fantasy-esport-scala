@@ -8,13 +8,9 @@ import utils.CostConverter
 
 class User(
             var username: String,
-            val externalId: Option[Long],
+            val externalId: Long,
           ) extends KeyedEntity[Long] {
   val id: Long = 0
-
-  // If a class has an Option[] field, it becomes mandatory
-  // to implement a zero argument constructor
-  def this() = this("", None)
 
   lazy val leagues = AppDB.leagueUserTable.right(this)
 }

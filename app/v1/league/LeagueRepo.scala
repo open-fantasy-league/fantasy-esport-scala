@@ -179,7 +179,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     // currently will do weird ranks
     league.statFields.map(sf => {
       val leagueUserStatsOverall =
-        leagueUserRepo.getLeagueUserStat(league.id, sf.id, None)
+        leagueUserRepo.getLeagueUserStats(league.id, sf.id, None)
       var lastScore = Double.MaxValue // TODO java max num
       var lastScoreRank = 0
       val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({

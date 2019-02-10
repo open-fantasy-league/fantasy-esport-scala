@@ -12,6 +12,7 @@ import scala.util.Try
 import models.AppDB._
 import models._
 import utils.CostConverter
+import utils.GroupByOrderedImplicit._
 
 import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
@@ -21,7 +22,7 @@ case class Ranking(userId: Long, username: String, value: Double, rank: Int, pre
 
 case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
 
-case class UserHistoricTeamOut(id: Long, externalId: Option[Long], username: String, team: Iterable[Pickee])
+case class UserHistoricTeamOut(id: Long, externalId: Long, username: String, team: Iterable[Pickee])
 
 case class UserWithLeagueUser(user: User, info: LeagueUser)
 
@@ -53,8 +54,7 @@ object UserHistoricTeamOut{
   implicit val implicitWrites = new Writes[UserHistoricTeamOut] {
     def writes(ht: UserHistoricTeamOut): JsValue = {
       Json.obj(
-        "id" -> ht.id,
-        "externalId" -> ht.externalId,
+        "id" -> ht.externalId,
         "username" -> ht.username,
         "team" -> ht.team
       )
@@ -132,9 +132,10 @@ trait LeagueUserRepo{
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
   def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
-  def getLeagueUserStat(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
-  def getLeagueUserStatWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
-  def getLeagueUserStatsAndCurrentTeam(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
+  def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
+  def getLeagueUserStatsAndCurrentTeam(leagueId: Long, statFieldId: Long, period: Option[Int]):
+    Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
   def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
@@ -204,9 +205,10 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   }
 
   override def insertLeagueUser(league: League, userId: Long): LeagueUser = {
+    // dont give wildcard to people who join league late
     leagueUserTable.insert(new LeagueUser(
       league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit,
-      !league.transferWildcard
+      (!league.transferWildcard || league.started)
     ))
   }
 
@@ -231,7 +233,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   override def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings = {
     val rankings = includeTeam match{
       case false => {
-        val stats = this.getLeagueUserStatWithUser(league.id, statField.id, period)
+        val stats = this.getLeagueUserStatsWithUser(league.id, statField.id, period)
         var lastScore = Double.MaxValue // TODO java max num
         var lastScoreRank = 0
         stats.zipWithIndex.map({case (q, i) => {
@@ -248,14 +250,19 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        val stats = this.getLeagueUserStatsAndCurrentTeam(league.id, statField.id, period).groupBy(_._1)
+        val stats = this.getLeagueUserStatsAndCurrentTeam(league.id, statField.id, period).toList.groupByOrdered(_._1).toList
         var lastScore = Double.MaxValue // TODO java max num
         var lastScoreRank = 0
-        stats.map({case (u, v) => {
+        val tmp = stats.map({case (u, v) => {
           val team = v.flatMap(_._4)
-          (v.head, team)}}).zipWithIndex.map({case ((q, team), i) => {
+          (v.head, team)}
+        })
+        tmp.zipWithIndex.map({case ((q, team), i) => {
+          println(f"i: $i")
           val value = q._3.value
+          println(f"value: $value")
           val rank = if (value == lastScore) lastScoreRank else i + 1
+          println(f"rank: $rank")
           lastScore = value
           lastScoreRank = rank
           val previousRank = period match {
@@ -273,7 +280,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       league.id, league.name, statField.name, rankings
     )
   }
-  override def getLeagueUserStat(
+  override def getLeagueUserStats(
                                   leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Query[(LeagueUserStat, LeagueUserStatDaily)] = {
     from(
@@ -303,13 +310,12 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     q
   }
 
-  override def getLeagueUserStatWithUser(
+  override def getLeagueUserStatsWithUser(
                                   leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Query[(User, LeagueUserStat, LeagueUserStatDaily)] = {
-      println(s"period: ${period}")
       from(
-        userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
-      )((u, lu, lus, s) =>
+        userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, transferTable
+      )((u, lu, lus, s, t) =>
         where(
           lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
             lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
@@ -319,16 +325,19 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )
   }
 
-  override def getLeagueUserStatsAndCurrentTeam(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
+  override def getLeagueUserStatsAndCurrentTeam(leagueId: Long, statFieldId: Long, period: Option[Int]):
+    Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     join(
-      userTable, leagueUserTable.leftOuter, leagueUserStatTable.leftOuter, leagueUserStatDailyTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter
-    )((u, lu, lus, s, tp, p) =>
+      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
+    )((u, lu, lus, s, tp, p, t) =>
       where(
-          lu.map(_.leagueId) === leagueId and lus.map(_.statFieldId) === statFieldId and s.get.period === period
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
       )
-        select ((u, lus.get, s.get, p))
-        orderBy (s.map(_.value) desc)
-        on(lu.map(_.userId) === u.id, lus.map(_.leagueUserId) === lu.map(_.id), s.map(_.leagueUserStatId) === lus.map(_.id), tp.map(_.leagueUserId) === lu.map(_.id), tp.map(_.pickeeId) === p.map(_.id))
+        select ((u, lus, s, p))
+        orderBy (s.value desc)
+        on(
+        lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
+        tp.map(_.leagueUserId) === lu.id, tp.map(_.pickeeId) === p.map(_.id), t.leagueUserId === lu.id)
     )
   }
 

@@ -68,12 +68,11 @@ object Matchu{
   implicit val implicitWrites = new Writes[Matchu] {
     def writes(m: Matchu): JsValue = {
       Json.obj(
-        "id" -> m.id,
         // TODO should these come out as long numbers or strings?
         "startTime" -> m.startTstamp,
         "addedTime" -> m.addedTstamp,
         "tournamentId" -> m.tournamentId,
-        "externalId" -> m.externalId,
+        "id" -> m.externalId,
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
         "teamOneVictory" -> m.teamOneVictory,

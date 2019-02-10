@@ -37,3 +37,7 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # historic teams
 # trailing slash empty req
 # make clear only support 1dp for prices
+#-------------------------- ssl
+# new recal
+#---------- update server
+# dont have unfull teams

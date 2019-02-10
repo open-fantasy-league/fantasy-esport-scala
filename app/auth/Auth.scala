@@ -77,17 +77,15 @@ class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[A
 
 class LeagueUserAction(val userId: String){
   def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
+      println(userId)
       inTransaction(
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
-          /*isInternal = !input.getQueryString("internalUserId").isEmpty
-          (internalUserId, externalUserId) = isInternal match{
-            case true => (Some(userIdLong), None)
-            case false => (None, Some(userIdLong))
-          }*/
-          (user, maybeLeagueUser) = join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where((lu.map(_.leagueId) === input.league.id) and u.externalId === userIdLong)
+          query <- TryHelper.tryOrResponse(() => join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where(u.externalId === userIdLong)
             select(u, lu)
-            on(lu.get.userId === u.id)).single
+            // TODO FUCK SQUERYL> SERIOUSLY FUCKING FUCK FUCK FUCK THEM.
+            on(lu.map(_.userId) === u.id)).filter(q => q._2.isEmpty || q._2.get.leagueId == input.league.id).head, BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users"))
+          (user, maybeLeagueUser) = query
           out <- maybeLeagueUser match {
             case Some(x) => Right((user, x))
             case None if (!insertOnMissing.isEmpty) => {
@@ -100,10 +98,10 @@ class LeagueUserAction(val userId: String){
       )
     }
 
-  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
+  def apply(insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
     def executionContext = ec
     def refine[A](input: LeagueRequest[A]) = Future.successful{
-      refineGeneric[LeagueRequest[A], A](input, None).map(q => new LeagueUserRequest(q._1, q._2, input))
+      refineGeneric[LeagueRequest[A], A](input, insertOnMissing).map(q => new LeagueUserRequest(q._1, q._2, input))
     }
   }
 

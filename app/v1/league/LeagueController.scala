@@ -161,7 +161,7 @@ class LeagueController @Inject()(
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply(Some(leagueUserRepo.joinUsers))).async { implicit request =>
     Future{
       inTransaction{
       val showTeam = !request.getQueryString("team").isEmpty

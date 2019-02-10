@@ -102,6 +102,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
         inTransaction {
           (for {
           // TODO what does single return if no entries?
+            _ <- validateDuplicates(input.sell, sell, input.buy, buy)
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
@@ -111,10 +112,12 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
           // TODO log internal server errors as well
             currentTeamIds <- Try(currentTeam.map(tp => pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
               .toOption.toRight(InternalServerError("Missing pickee externalId"))
+            _ = println(currentTeamIds)
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
+            _ = println(sellOrWildcard)
             isValidPickees <- validatePickeeIds(currentTeamIds, pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
-            _ <- updatedTeamSize(newTeamIds, league)
+            _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining)))) else
@@ -125,6 +128,12 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     }
 
     transferForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def validateDuplicates(sellList: List[Long], sellSet: Set[Long], buyList: List[Long], buySet: Set[Long]): Either[Result, Any] = {
+    if (buyList.size != buySet.size) return Left(BadRequest("Cannot buy twice"))
+    if (sellList.size != sellSet.size) return Left(BadRequest("Cannot sell twice"))
+    return Right(true)
   }
 
   private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
@@ -158,6 +167,8 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
 
   private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long], wildcardApplied: Boolean, startingMoney: Int): Either[Result, Int] = {
     val spent = pickees.filter(p => toBuy.contains(p.externalId)).map(_.cost).sum
+    println(spent)
+    println(toBuy)
     val updated = wildcardApplied match {
       case false => leagueUser.money + pickees.filter(p => toSell.contains(p.externalId)).map(_.cost).sum - spent
       case true => startingMoney - spent
@@ -170,11 +181,12 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     }
   }
 
-  private def updatedTeamSize(newTeamIds: Set[Long], league: League): Either[Result, Int] = {
+  private def updatedTeamSize(newTeamIds: Set[Long], league: League, isCheck: Boolean): Either[Result, Int] = {
     newTeamIds.size match {
       case x if x <= league.teamSize => Right(x)
+      //case x if x < league.teamSize && !isCheck => Left(BadRequest(f"Cannot confirm transfers as team unfilled (require ${league.teamSize})"))
       case x => Left(BadRequest(
-        f"Exceeds maximum team size of $league.teamSize"
+        f"Exceeds maximum team size of ${league.teamSize}"
       ))
     }
   }
@@ -212,7 +224,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
       // TODO log internal server errors as well
       //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
       if (scheduledUpdateTime.isEmpty) {
-        AppDB.teamPickeeTable.deleteWhere(tp => tp.id in toSell.map(ts => pickees.find(_.externalId == ts).get.id))
+        AppDB.teamPickeeTable.deleteWhere(tp => tp.pickeeId in toSell.map(ts => pickees.find(_.externalId == ts).get.id))
       }
     }
     if (toBuy.nonEmpty) {
@@ -222,8 +234,6 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
       ))
       // TODO period -1
       // TODO have active before tounr,manet start, but not after it started
-      println(s"""pickees ${pickees.mkString(" ")}""")
-      println(s""" extids ${pickees.map(_.externalId).mkString(" ")}""")
       println(s"""tobuy ${toBuy.mkString("")}""")
       if (scheduledUpdateTime.isEmpty) {
         AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.externalId == tb).get.id, leagueUser.id)))
