@@ -34,10 +34,13 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # stuff.......forUpdate on selects
 # check all optional wheres (except for unprocessed)
 # commonise code for getting teams with leaderboards?
-# historic teams
+# historic teams (old period rankings use current team)
 # trailing slash empty req
 # make clear only support 1dp for prices
 #-------------------------- ssl
 # new recal
 #---------- update server
 # dont have unfull teams
+# cant buy and wildcard
+# no message for transfer cooldown
+# previous rank calculated wrong (not excluding transferless players)

@@ -284,11 +284,12 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
                                   leagueId: Long, statFieldId: Long, period: Option[Int]
                                 ): Query[(LeagueUserStat, LeagueUserStatDaily)] = {
     from(
-      leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable
-    )((lu, lus, s) =>
+      // inner join on transfer table so we dont rank users who never made a team
+      leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, transferTable
+    )((lu, lus, s, t) =>
       where(
         lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period and t.leagueUserId === lu.id
       )
         select (lus, s)
         orderBy (s.value desc)
@@ -318,7 +319,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )((u, lu, lus, s, t) =>
         where(
           lu.userId === u.id and lus.leagueUserId === lu.id and s.leagueUserStatId === lus.id and
-            lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
+            lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period and t.leagueUserId === lu.id
         )
           select ((u, lus, s))
           orderBy (s.value desc)
