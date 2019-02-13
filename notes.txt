@@ -34,13 +34,16 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # stuff.......forUpdate on selects
 # check all optional wheres (except for unprocessed)
 # commonise code for getting teams with leaderboards?
-# historic teams (old period rankings use current team)
+# ------------------------------historic teams (old period rankings use current team)
 # trailing slash empty req
 # make clear only support 1dp for prices
 #-------------------------- ssl
 # new recal
-#---------- update server
-# dont have unfull teams
+#------------------------- update server
+# ----------------------dont have unfull teams
 # cant buy and wildcard
-# no message for transfer cooldown
-# previous rank calculated wrong (not excluding transferless players)
+# ----------------------- no message for transfer cooldown
+# ----------------------------previous rank calculated wrong (not excluding transferless players)
+# -----------------------------combined uniques (i.e. period value and league)
+# ----------------------------- it will duplicate results (update script to first get results, check id's and latest timestamp)
+# json renderer to print out timestamps as strings

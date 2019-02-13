@@ -43,7 +43,7 @@ object LeagueFull{
         "factionTypes" -> league.factions,
         "periods" -> league.periods,
         "currentPeriod" -> league.currentPeriod,
-        "started" -> !league.currentPeriod.isEmpty,
+        "started" -> league.league.started,
         "ended" -> (league.currentPeriod.exists(_.ended) && league.currentPeriod.exists(_.nextPeriodId.isEmpty)),
         "pickeeDescription" -> league.league.pickeeDescription,
         "periodDescription" -> league.league.periodDescription,
@@ -140,7 +140,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
       case Some(p) if !p.ended => Left(BadRequest("Must end current period before start next"))
       case Some(p) => {
         p.nextPeriodId match {
-          case Some(np) => periodTable.lookup(np).toRight(InternalServerError(s"Could not find next period ${np}, for period ${p.id}"))
+          case Some(np) => periodTable.lookup(np).toRight(InternalServerError(s"Could not find next period $np, for period ${p.id}"))
           case None => Left(BadRequest("No more periods left to start. League is over"))
         }
       }
@@ -154,9 +154,9 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     val league = q.toList.head.league
     val periods = q.flatMap(_.period).toSet
     println(periods)
-    val currentPeriod = periods.find(_.id == league.currentPeriodId.getOrElse(-1L))
+    val currentPeriod = periods.find(p => league.currentPeriodId.contains(p.id))
     val statFields = q.flatMap(_.statField).toSet
-    val factions = q.map(f => (f.factionType, f.faction)).filter(!_._2.isEmpty).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
+    val factions = q.map(f => (f.factionType, f.faction)).filter(_._2.isDefined).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
     // keep factions as well
     val factionsOut = factions.map({case (k, v) => FactionTypeOut(k.name, k.description, v)})
     LeagueFull(league, factionsOut, periods, currentPeriod, statFields)
@@ -204,7 +204,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
   }
 
   override def addHistoricTeams(league: League) = {
-      league.users.associations.map(_.team).map(addHistoricTeamPickee(_, league.currentPeriod.getOrElse(new Period()).value))
+      league.users.associations.map(_.team).map(addHistoricTeamPickee(_, league.currentPeriod.get.value))
   }
 
   override def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int) = {
@@ -232,7 +232,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     from(leagueTable, periodTable)((l,p) =>
           where(l.currentPeriodId === p.id and p.ended === false and p.end <= currentTime and p.nextPeriodId.isNotNull)
           select((l, p))
-          ).map(Function.tupled(postEndPeriodHook))
+          ).foreach(Function.tupled(postEndPeriodHook))
   }
   override def startPeriods(currentTime: Timestamp) = {
     from(leagueTable, periodTable)((l,p) =>
@@ -240,7 +240,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
       // and is future period that should have started...so lets start it
       where(not(l.currentPeriodId === p.id) and p.ended === false and p.start <= currentTime)
       select((l, p))
-      ).map(Function.tupled(postStartPeriodHook))
+      ).foreach(Function.tupled(postStartPeriodHook))
   }
 }
 

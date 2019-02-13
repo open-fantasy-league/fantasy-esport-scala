@@ -12,7 +12,7 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
 
   override def routes: Routes = {
 
-    case POST(p"/$leagueId") =>
+    case POST(p"/leagues/$leagueId") =>
       controller.add(leagueId)
 
     case GET(p"/leagues/$leagueId") =>

@@ -2,7 +2,6 @@ package models
 
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
-import org.joda.time.DateTime
 import play.api.libs.json._
 
 class Resultu(  // Result is play/scala keyword. renaming makes things simpler/more obvious
@@ -68,7 +67,6 @@ object Matchu{
   implicit val implicitWrites = new Writes[Matchu] {
     def writes(m: Matchu): JsValue = {
       Json.obj(
-        // TODO should these come out as long numbers or strings?
         "startTime" -> m.startTstamp,
         "addedTime" -> m.addedTstamp,
         "tournamentId" -> m.tournamentId,

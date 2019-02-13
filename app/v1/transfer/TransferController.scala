@@ -133,7 +133,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
   private def validateDuplicates(sellList: List[Long], sellSet: Set[Long], buyList: List[Long], buySet: Set[Long]): Either[Result, Any] = {
     if (buyList.size != buySet.size) return Left(BadRequest("Cannot buy twice"))
     if (sellList.size != sellSet.size) return Left(BadRequest("Cannot sell twice"))
-    return Right(true)
+    Right(true)
   }
 
   private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
@@ -151,7 +151,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     // TODO return what ids are invalid
     (toSell ++ toBuy).subsetOf(pickees.map(_.externalId).toSet) match {
       case true => {
-        (toBuy.intersect(currentTeamIds)).isEmpty match {
+        toBuy.intersect(currentTeamIds).isEmpty match {
           case true => {
             toSell.subsetOf(currentTeamIds) match {
               case true => Right(true)

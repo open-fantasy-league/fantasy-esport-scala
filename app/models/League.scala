@@ -25,24 +25,22 @@ class League(
               var transferOpen: Boolean = false,
               var transferBlockedDuringPeriod: Boolean = false,
               var url: String = "",
-              var currentPeriodId: Option[Long] = None
+              var currentPeriodId: Option[Long] = None,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
 
   lazy val users = AppDB.leagueUserTable.left(this)
   lazy val pickees = AppDB.leagueToPickee.left(this)
+  //statFields
   def statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
   def factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
   def periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
   def firstPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.value === 1) select(p)).single
   def lastPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.nextPeriodId isNull) select(p)).single
-  //lazy val currentPeriod = from(AppDB.leagueToPeriod.left(this))((p) => where(p.id === this.currentPeriodId)).single
-  def currentPeriod: Option[Period] = AppDB.periodTable.lookup(this.currentPeriodId.getOrElse(-1L))
-  //lazy val currentPeriod: Option[Period] = this.periods.find(p => p.id == this.currentPeriodId)
-  //def currentPeriod: Option[Period] = from(AppDB.leagueToPeriod.left(this))(select(_)).toList.find(_.id == this.currentPeriodId)
-  def started = !this.currentPeriodId.isEmpty
+  def currentPeriod: Option[Period] = this.currentPeriodId.map(cp => AppDB.periodTable.lookup(cp).get)
+  def started = this.currentPeriodId.nonEmpty
   def ended = this.lastPeriod.ended
-  //lazy val prize: ManyToOne[LeaguePrize] = AppDB.leagueToLeaguePrize.right(this)
+  def prize: Option[LeaguePrize] = from(AppDB.leagueToLeaguePrize.left(this))(select(_)).singleOption
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
   def this() = this("", "AAA", Some(1), false, 0, "", "", None, false, 0, 5)

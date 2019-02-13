@@ -286,7 +286,7 @@ class LeagueController @Inject()(
         newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
         newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
         var nextPeriodId: Option[Long] = None
-        (input.periods.zipWithIndex).reverse.foreach({case (p, i) => {
+        input.periods.zipWithIndex.reverse.foreach({case (p, i) => {
           val newPeriod = leagueRepo.insertPeriod(newLeague.id, p, i+1, nextPeriodId)
           nextPeriodId = Some(newPeriod.id)
           newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
@@ -325,7 +325,7 @@ class LeagueController @Inject()(
     }
 
     def success(input: UpdateLeagueFormInput) = Future(
-      if (league.started && (!input.transferLimit.isEmpty || !input.transferWildcard.isEmpty)){
+      if (league.started && (input.transferLimit.isDefined || input.transferWildcard.isDefined)){
         BadRequest("Cannot update transfer limits or wildcard after league has started")
       } else{
         inTransaction(Ok(Json.toJson(leagueRepo.update(league, input))))

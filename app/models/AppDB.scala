@@ -131,25 +131,79 @@ object AppDB extends Schema {
       select((l, lsf))
         on(l.id === lsf.map(_.leagueId))
     )
+  //is(unique,indexed("idxEmailAddresses")) compositeKey(courseId, professorId) on(authors)(s => declare(
+  //   columns(s.firstName, s.lastName) are unique
+  //))
+  on(userTable)(t => declare(columns(t.externalId, t.username) are indexed))
+  on(leagueTable)(t => declare(columns(t.isPrivate, t.gameId) are indexed))
+  on(periodTable)(t => {
+    declare(columns(t.nextPeriodId, t.value, t.leagueId) are indexed)
+    declare(columns(t.value, t.leagueId) are unique)
+  })
+  on(leaguePrizeTable)(t => declare(t.leagueId is indexed))
+  on(factionTypeTable)(t => {
+    declare(columns(t.leagueId, t.name) are indexed)
+    declare(columns(t.leagueId, t.name) are unique)
+  })
+  on(factionTable)(t => {
+    declare(columns(t.factionTypeId, t.name) are indexed)
+    declare(columns(t.factionTypeId, t.name) are unique)
+  })
+  on(leagueUserTable)(t => {
+    declare(columns(t.changeTstamp, t.leagueId, t.userId) are indexed)
+    declare(columns(t.leagueId, t.userId) are unique)
+  })
+  on(leagueStatFieldTable)(t => {
+    declare(columns(t.leagueId, t.name) are indexed)
+    declare(columns(t.leagueId, t.name) are unique)
+  })
+  on(leagueUserStatTable)(t => {
+    declare(columns(t.statFieldId, t.leagueUserId) are indexed)
+    declare(columns(t.statFieldId, t.leagueUserId) are unique)
+  })
+  on(leagueUserStatDailyTable)(t => {
+    declare(columns(t.period, t.leagueUserStatId) are indexed)
+    declare(columns(t.period, t.leagueUserStatId) are unique)
+  })
+  on(pickeeTable)(t => {
+    declare(columns(t.externalId, t.leagueId, t.name) are indexed)
+    declare(columns(t.externalId, t.leagueId) are unique)
+    declare(columns(t.name, t.leagueId) are unique)
+  })
+  on(teamPickeeTable)(t => {
+    declare(columns(t.leagueUserId, t.pickeeId) are indexed)
+    declare(columns(t.leagueUserId, t.pickeeId) are unique)
+  })
+  on(historicTeamPickeeTable)(t => {
+    declare(columns(t.leagueUserId, t.pickeeId, t.period) are indexed)
+    declare(columns(t.leagueUserId, t.pickeeId, t.period) are unique)
+  })
+  on(pickeeStatTable)(t => {
+    declare(columns(t.statFieldId, t.pickeeId) are indexed)
+    declare(columns(t.statFieldId, t.pickeeId) are unique)
+  })
+  on(pickeeStatDailyTable)(t => {
+    declare(columns(t.period, t.pickeeStatId) are indexed)
+    declare(columns(t.period, t.pickeeStatId) are unique)
 
-  on(userTable)(t => declare(columns(t.externalId, t.username) are(indexed)))
-  on(leagueTable)(t => declare(columns(t.isPrivate, t.gameId) are(indexed)))
-  on(periodTable)(t => declare(columns(t.nextPeriodId, t.value, t.leagueId) are(indexed)))
-  on(leaguePrizeTable)(t => declare(t.leagueId is(indexed)))
-  on(factionTypeTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
-  on(factionTable)(t => declare(columns(t.factionTypeId, t.name) are(indexed)))
-  on(leagueUserTable)(t => declare(columns(t.changeTstamp, t.leagueId, t.userId) are(indexed)))
-  on(leagueStatFieldTable)(t => declare(columns(t.leagueId, t.name) are(indexed)))
-  on(leagueUserStatTable)(t => declare(columns(t.statFieldId, t.leagueUserId) are(indexed)))
-  on(leagueUserStatDailyTable)(t => declare(columns(t.period, t.leagueUserStatId) are(indexed)))
-  on(pickeeTable)(t => declare(columns(t.externalId, t.leagueId, t.name) are(indexed)))
-  on(teamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId) are(indexed)))
-  on(historicTeamPickeeTable)(t => declare(columns(t.leagueUserId, t.pickeeId, t.period) are(indexed)))
-  on(pickeeStatTable)(t => declare(columns(t.statFieldId, t.pickeeId) are(indexed)))
-  on(pickeeStatDailyTable)(t => declare(columns(t.period, t.pickeeStatId) are(indexed)))
-  on(pickeeFactionTable)(t => declare(columns(t.factionId, t.pickeeId) are(indexed)))
-  on(resultTable)(t => declare(columns(t.pickeeId, t.matchId) are(indexed)))
-  on(pointsTable)(t => declare(columns(t.resultId, t.pointsFieldId) are(indexed)))
-  on(matchTable)(t => declare(columns(t.leagueId, t.externalId, t.period) are(indexed)))
-  on(transferTable)(t => declare(columns(t.leagueUserId, t.pickeeId, t.scheduledFor, t.processed) are(indexed)))
+  })
+  on(pickeeFactionTable)(t => {
+    declare(columns(t.factionId, t.pickeeId) are indexed)
+    declare(columns(t.factionId, t.pickeeId) are unique)
+  })
+  on(resultTable)(t => {
+    declare(columns(t.pickeeId, t.matchId) are indexed)
+    declare(columns(t.pickeeId, t.matchId) are unique)
+  })
+  on(pointsTable)(t => {
+    declare(columns(t.resultId, t.pointsFieldId) are indexed)
+    declare(columns(t.resultId, t.pointsFieldId) are unique)
+  })
+  on(matchTable)(t => {
+    declare(columns(t.leagueId, t.externalId, t.period) are indexed)
+    declare(columns(t.externalId, t.leagueId) are unique)
+  })
+  on(transferTable)(t => {
+    declare(columns(t.leagueUserId, t.pickeeId, t.scheduledFor, t.processed) are indexed)
+  })
 }
