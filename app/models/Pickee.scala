@@ -39,14 +39,6 @@ class TeamPickee(
   lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single
 }
 
-/*object TeamPickee{
-  implicit val implicitWrites = new Writes[TeamPickee] {
-    def writes(p: TeamPickee): JsValue = {
-      JsValue(p.pickee)
-    }
-  }
-}*/
-
 class HistoricTeamPickee(
                           var pickeeId: Long,
                           var leagueUserId: Long,
@@ -55,14 +47,6 @@ class HistoricTeamPickee(
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToHistoricTeamPickee.right(this).single
 }
-
-/*object HistoricTeamPickee{
-  implicit val implicitWrites = new Writes[HistoricTeamPickee] {
-    def writes(p: HistoricTeamPickee): JsValue = {
-      JsValue(p.pickee)
-    }
-  }
-}*/
 
 class PickeeStat(
                        val statFieldId: Long,
