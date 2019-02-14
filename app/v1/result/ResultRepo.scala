@@ -1,6 +1,5 @@
 package v1.result
 
-import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
@@ -10,7 +9,6 @@ import play.api.libs.concurrent.CustomExecutionContext
 import models.AppDB._
 import models._
 import utils.GroupByOrderedImplicit._
-import scala.collection.mutable.ArrayBuffer
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 

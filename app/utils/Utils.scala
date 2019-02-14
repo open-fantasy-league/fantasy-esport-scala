@@ -6,7 +6,6 @@ import java.text.SimpleDateFormat
 import scala.util.Try
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
-import entry.SquerylEntrypointForMyApp._
 
 object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {

@@ -2,7 +2,6 @@ package models
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
-import entry.SquerylEntrypointForMyApp._
 
 class Pickee(
               val leagueId: Long,

@@ -1,14 +1,10 @@
 package v1.transfer
 
-import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
-import org.squeryl.{Query, Table, KeyedEntity}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
-import play.api.libs.json._
 
-import models.AppDB._
 import models._
 
 
@@ -23,7 +19,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
   override def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer] = {
   from(AppDB.transferTable)(t =>
     where(t.leagueUserId === leagueUser.id and (t.processed === unprocessed.map(!_).?))
-    select(t)
+    select t
     ).toList
   }
 }

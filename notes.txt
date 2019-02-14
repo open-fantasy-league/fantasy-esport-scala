@@ -48,7 +48,8 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ----------------------------- it will duplicate results (update script to first get results, check id's and latest timestamp)
 # --------------------------------json renderer to print out timestamps as strings
 # put transfer made time (not just scheduled for)
-# switch to decimal, not doubles for money
+# ------------------------------- switch to decimal, not doubles for money
 # reddit enter script
 # account type (site type unique)
 # update servr nginx conf
+# refactor into queries.scala. query-extractors.scala and the controller

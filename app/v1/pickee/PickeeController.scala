@@ -1,6 +1,5 @@
 package v1.pickee
 
-import java.sql.Timestamp
 import javax.inject.Inject
 
 import entry.SquerylEntrypointForMyApp._
@@ -11,9 +10,7 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
-import scala.util.Try
 import models.AppDB._
-import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
 import auth.{LeagueAction, AuthAction, Auther}
 

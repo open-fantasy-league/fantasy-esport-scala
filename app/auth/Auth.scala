@@ -8,8 +8,7 @@ import models._
 import javax.inject.Inject
 import utils.{IdParser, TryHelper}
 import entry.SquerylEntrypointForMyApp._
-import com.typesafe.config.{Config, ConfigFactory}
-import v1.leagueuser.LeagueUserRepo
+import com.typesafe.config.ConfigFactory
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 

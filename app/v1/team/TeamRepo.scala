@@ -1,12 +1,9 @@
 package v1.team
 
-import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
-import org.squeryl.{Query, Table, KeyedEntity}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
-import play.api.libs.json._
 
 import models.AppDB._
 import models._
