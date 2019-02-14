@@ -3,12 +3,11 @@ package models
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
 import play.api.libs.json._
-import utils.CostConverter._
 
 class LeagueUser(
                   val leagueId: Long,
                   val userId: Long,
-                  var money: Int,
+                  var money: BigDecimal,
                   var entered: Timestamp,
                   var remainingTransfers: Option[Int],
                   var usedWildcard: Boolean,
@@ -27,7 +26,7 @@ object LeagueUser{
       Json.obj(
         "userId" -> lu.userId,
         "leagueId" -> lu.leagueId,
-        "money" -> convertCost(lu.money),
+        "money" -> lu.money,
         "entered" -> lu.entered,
         "remainingTransfers" -> lu.remainingTransfers,
         "usedWildcard" -> lu.usedWildcard,

@@ -13,7 +13,6 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import scala.util.Try
 import models.AppDB._
-import utils.CostConverter.unconvertCost
 import utils.IdParser.parseLongId
 import utils.TryHelper.tryOrResponse
 import auth.{LeagueAction, AuthAction, Auther}
@@ -42,7 +41,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       mapping(
         "isInternalId" -> default(boolean, false),
         "pickees" -> list(
-          mapping("id" -> of(longFormat), "cost" -> of(doubleFormat))
+          mapping("id" -> of(longFormat), "cost" -> bigDecimal(10, 1))
           (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
         )
       )(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
@@ -54,7 +53,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         mapping(
           "id" -> of(longFormat),
           "name" -> nonEmptyText,
-          "value" -> of(doubleFormat),
+          "value" -> bigDecimal(10, 1),
           "active" -> default(boolean, true),
           "factions" -> list(nonEmptyText)
           )(PickeeFormInput.apply)(PickeeFormInput.unapply)
@@ -73,7 +72,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
             val leaguePickees = pickeeRepo.getPickees(request.league.id)
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
-              p.cost = unconvertCost(pickees.get(p.id).get.cost)
+              p.cost = pickees.get(p.id).get.cost
               p
             }))
             // TODO print out pickees that changed

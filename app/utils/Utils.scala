@@ -17,13 +17,6 @@ object IdParser {
   }
 }
 
-object CostConverter {
-  // use Ints to store cost to make calculations easier (avoid floating point).
-  // but divide by 10 for decimal lower cost when display
-  def convertCost(cost: Int): BigDecimal = cost / BigDecimal(10,1).decimal(10.0)
-  def unconvertCost(cost: BigDecimal): Int = (cost * 10).toInt
-}
-
 object TryHelper {
 
   def tryOrResponse[T](block: () => T, errorResponse: Result): Either[Result, T] = {

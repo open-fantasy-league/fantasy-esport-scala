@@ -1,20 +1,11 @@
 package v1.team
 
-import java.sql.Timestamp
 import javax.inject.Inject
-import java.util.concurrent.TimeUnit
 
 import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
-import play.api.data.Form
-import play.api.data.Forms._
 import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.collection.immutable.{List, Set}
-import scala.util.Try
-import models.AppDB._
-import models.{League, LeagueUser, Pickee, TeamPickee}
-import utils.{IdParser, CostConverter}
 import auth._
 import v1.leagueuser.LeagueUserRepo
 

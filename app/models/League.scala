@@ -18,7 +18,7 @@ class League(
               var periodDescription: String,
               var transferLimit: Option[Int],
               var transferWildcard: Boolean,
-              var startingMoney: Int,
+              var startingMoney: BigDecimal,
               val teamSize: Int,
               var transferDelayMinutes: Int = 0, // Only applies for when period 1 has started
               var transferOpen: Boolean = false,
@@ -42,7 +42,7 @@ class League(
   def prize: Option[LeaguePrize] = from(AppDB.leagueToLeaguePrize.left(this))(select(_)).singleOption
 
   // If a class has an Option[] field, it becomes mandatory to implement a zero argument constructor
-  def this() = this("", "AAA", Some(1), false, 0, "", "", None, false, 0, 5)
+  def this() = this("", "AAA", Some(1), false, 0, "", "", None, false, BigDecimal.decimal(50.0), 5)
 
 }
 

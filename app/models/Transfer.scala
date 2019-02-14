@@ -4,7 +4,6 @@ import java.sql.Timestamp
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
-import utils.CostConverter
 import utils.Formatter.timestampFormatFactory
 
 class Transfer(
@@ -13,7 +12,7 @@ class Transfer(
                 val isBuy: Boolean,
                 val scheduledFor: Timestamp,
                 var processed: Boolean,
-                val cost: Int,
+                val cost: BigDecimal,
                 val wasWildcard: Boolean = false
               ) extends KeyedEntity[Long] {
   val id: Long = 0
@@ -28,7 +27,7 @@ object Transfer{
         "isBuy" -> t.isBuy,
         "scheduledFor" -> t.scheduledFor,
         "processed" -> t.processed,
-        "cost" -> CostConverter.convertCost(t.cost),
+        "cost" -> t.cost,
         "wasWildcard" -> t.wasWildcard,
         "pickeeId" -> t.pickee.externalId,
         "pickeeName" -> t.pickee.name

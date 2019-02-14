@@ -7,7 +7,6 @@ import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
 import models._
-import utils.CostConverter
 import play.api.libs.json._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -22,7 +21,10 @@ case class PickeeQuery(pickee: Pickee, factionType: Option[FactionType], faction
 
 case class PickeeOut(pickee: Pickee, factions: Map[String, String])
 
-case class PickeeStatsOutput(externalId: Long, name: String, stats: Map[String, Double], factions: Map[String, String], cost: Double)
+case class PickeeStatsOutput(
+                              externalId: Long, name: String, stats: Map[String, Double], factions: Map[String, String],
+                              cost: BigDecimal
+                            )
 
 object PickeeOut{
   implicit val implicitWrites = new Writes[PickeeOut] {
@@ -73,7 +75,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       pickee.name,
       pickee.id, // in the case of dota we have the pickee id which is unique for AM in league 1
       // and AM in league 2. however we still want a field which is always AM hero id
-      CostConverter.unconvertCost(pickee.value),
+      pickee.value,
       pickee.active,
     ))
   }
@@ -134,7 +136,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     val out: Iterable[PickeeStatsOutput] = groupByPickee.map({case (p, v) => {
       val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => x._1.name -> x._2.value).toMap
       val factions = v.filter(x => !x._5.isEmpty).map(x => x._5.get.name -> x._6.get.name).toMap
-      PickeeStatsOutput(p.externalId, p.name, stats, factions, CostConverter.convertCost(p.cost))
+      PickeeStatsOutput(p.externalId, p.name, stats, factions, p.cost)
     //v.map({case (k2, v2) => StatsOutput(k2.name, v2.value)}).toList)}).toList
   }}).toSeq.sortBy(_.name)
   out

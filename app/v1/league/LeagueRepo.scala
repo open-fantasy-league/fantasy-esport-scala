@@ -11,11 +11,8 @@ import play.api.libs.json._
 
 import models.AppDB._
 import models._
-import utils.CostConverter
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.PickeeRepo
-
-import scala.collection.mutable.ArrayBuffer
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -101,7 +98,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
   override def insert(input: LeagueFormInput): League = {
     leagueTable.insert(new League(input.name, input.apiKey, input.gameId, input.isPrivate, input.tournamentId, input.pickeeDescription,
       input.periodDescription, input.transferLimit, input.transferWildcard,
-      CostConverter.unconvertCost(input.startingMoney), input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod,
+      input.startingMoney, input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod,
       transferDelayMinutes=input.transferDelayMinutes, url=input.url.getOrElse(""),
     ))
   }

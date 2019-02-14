@@ -3,14 +3,13 @@ package models
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
 import entry.SquerylEntrypointForMyApp._
-import utils.CostConverter.convertCost
 
 class Pickee(
               val leagueId: Long,
               var name: String,
               var externalId: Long, // in the case of dota we have the pickee id which is unique for Antimage in league 1
               // and Antimage in league 2. however we still want a field which is always AM hero id
-              var cost: Int,
+              var cost: BigDecimal,
               var active: Boolean = true,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
@@ -24,7 +23,7 @@ object Pickee{
       Json.obj(
         "id" -> p.externalId,
         "name" -> p.name,
-        "cost" -> convertCost(p.cost),
+        "cost" -> p.cost,
         "active" -> p.active,
       )
     }

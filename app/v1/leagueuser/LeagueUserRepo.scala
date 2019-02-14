@@ -11,7 +11,6 @@ import scala.util.Try
 
 import models.AppDB._
 import models._
-import utils.CostConverter
 import utils.GroupByOrderedImplicit._
 
 import scala.collection.mutable.ArrayBuffer

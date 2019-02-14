@@ -14,13 +14,12 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
-import utils.{IdParser, CostConverter}
 import auth._
 import v1.leagueuser.LeagueUserRepo
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
-case class TransferSuccess(updatedMoney: Double, remainingTransfers: Option[Int])
+case class TransferSuccess(updatedMoney: BigDecimal, remainingTransfers: Option[Int])
 
 object TransferSuccess{
   implicit val implicitWrites = new Writes[TransferSuccess] {
@@ -120,7 +119,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
-            out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining)))) else
+            out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
               updateDBScheduleTransfer(sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay, applyWildcard)
           } yield out).fold(identity, identity)
         }
@@ -165,7 +164,9 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     }
   }
 
-  private def updatedMoney(leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long], wildcardApplied: Boolean, startingMoney: Int): Either[Result, Int] = {
+  private def updatedMoney(
+                            leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long],
+                            wildcardApplied: Boolean, startingMoney: BigDecimal): Either[Result, BigDecimal] = {
     val spent = pickees.filter(p => toBuy.contains(p.externalId)).map(_.cost).sum
     println(spent)
     println(toBuy)
@@ -176,7 +177,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     updated match {
       case x if x >= 0 => Right(x)
       case x => Left(BadRequest(
-        f"Insufficient credits. Transfers would leave user at ${CostConverter.convertCost(x)} credits"
+        f"Insufficient credits. Transfers would leave user at $x credits"
       ))
     }
   }
@@ -211,7 +212,8 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
 
   private def updateDBScheduleTransfer(
                                 toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,
-                                period: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
+                                period: Int, newMoney: BigDecimal, newRemaining: Option[Int], transferDelay: Option[Int],
+                                applyWildcard: Boolean
                               ): Either[Result, Result] = {
     val currentEpochTime = System.currentTimeMillis()
     val currentTime = new Timestamp(currentEpochTime)
@@ -246,7 +248,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     leagueUser.changeTstamp = scheduledUpdateTime
     if (applyWildcard) leagueUser.usedWildcard = true
     AppDB.leagueUserTable.update(leagueUser)
-    Right(Ok(Json.toJson(TransferSuccess(CostConverter.convertCost(newMoney), newRemaining))))
+    Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining))))
   }
 
   private def processLeagueUserTransfer(leagueUser: LeagueUser) = {
