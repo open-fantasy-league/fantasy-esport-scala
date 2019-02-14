@@ -1,13 +1,12 @@
 package models
 
 import java.sql.Timestamp
-import org.joda.time.DateTime
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
 
-import scala.collection.mutable.ArrayBuffer
 import entry.SquerylEntrypointForMyApp._
+import utils.Formatter.timestampFormatFactory
 
 class League(
               var name: String,
@@ -135,6 +134,7 @@ object LeaguePrize{
 }
 
 object Period{
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[Period] {
     def writes(p: Period): JsValue = {
       Json.obj(
@@ -159,6 +159,7 @@ object FactionType{
 }
 
 object League{
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[League] {
     def writes(league: League): JsValue = {
       Json.obj(

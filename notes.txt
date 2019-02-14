@@ -31,7 +31,7 @@ curl -H "Content-Type: application/json" -X POST -d '{"pickees": [{"id": 1, "cos
 curl -X POST http://localhost/api/v1/leagues/1/endDay
 
 
-# stuff.......forUpdate on selects
+# stuff.......forUpdate on selects -> transfer stuff?
 # check all optional wheres (except for unprocessed)
 # commonise code for getting teams with leaderboards?
 # ------------------------------historic teams (old period rankings use current team)
@@ -46,4 +46,9 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ----------------------------previous rank calculated wrong (not excluding transferless players)
 # -----------------------------combined uniques (i.e. period value and league)
 # ----------------------------- it will duplicate results (update script to first get results, check id's and latest timestamp)
-# json renderer to print out timestamps as strings
+# --------------------------------json renderer to print out timestamps as strings
+# put transfer made time (not just scheduled for)
+# switch to decimal, not doubles for money
+# reddit enter script
+# account type (site type unique)
+# update servr nginx conf

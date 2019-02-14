@@ -5,6 +5,7 @@ import java.sql.Timestamp
 import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
 import utils.CostConverter
+import utils.Formatter.timestampFormatFactory
 
 class Transfer(
                 val leagueUserId: Long,
@@ -20,6 +21,7 @@ class Transfer(
 }
 
 object Transfer{
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[Transfer] {
     def writes(t: Transfer): JsValue = {
       Json.obj(

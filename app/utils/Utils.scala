@@ -1,5 +1,8 @@
 package utils
 
+import java.sql.Timestamp
+import java.text.SimpleDateFormat
+
 import scala.util.Try
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
@@ -17,8 +20,8 @@ object IdParser {
 object CostConverter {
   // use Ints to store cost to make calculations easier (avoid floating point).
   // but divide by 10 for decimal lower cost when display
-  def convertCost(cost: Int): Double = cost / 10.0
-  def unconvertCost(cost: Double): Int = (cost * 10).toInt
+  def convertCost(cost: Int): BigDecimal = cost / BigDecimal(10,1).decimal(10.0)
+  def unconvertCost(cost: BigDecimal): Int = (cost * 10).toInt
 }
 
 object TryHelper {
@@ -28,15 +31,15 @@ object TryHelper {
       Right(block())
     }
     catch {
-      case e: Exception => {print(e); Left(errorResponse)}
+      case e: Exception => print(e); Left(errorResponse)
     }
   }
 }
 
-import collection.mutable.{LinkedHashMap, LinkedHashSet, Map => MutableMap}
 
 //https://stackoverflow.com/a/9608800
 object GroupByOrderedImplicit {
+  import collection.mutable.{LinkedHashMap, LinkedHashSet, Map => MutableMap}
   implicit class GroupByOrderedImplicitImpl[A](val t: Traversable[A]) extends AnyVal {
     def groupByOrdered[K](f: A => K): MutableMap[K, LinkedHashSet[A]] = {
       val map = LinkedHashMap[K,LinkedHashSet[A]]().withDefault(_ => LinkedHashSet[A]())
@@ -46,5 +49,17 @@ object GroupByOrderedImplicit {
       }
       map
     }
+  }
+}
+
+object Formatter {
+  import play.api.libs.json._
+  def timestampFormatFactory(formatStr: String): Format[Timestamp] = new Format[Timestamp] {
+    val format = new SimpleDateFormat(formatStr)
+
+    // how just super reads?
+    def reads(json: JsValue): JsResult[Timestamp] = JsSuccess(new Timestamp(format.parse(json.as[String]).getTime))
+
+    def writes(ts: Timestamp) = JsString(format.format(ts))
   }
 }

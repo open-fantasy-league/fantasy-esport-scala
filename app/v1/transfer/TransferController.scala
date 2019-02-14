@@ -213,11 +213,13 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
                                 toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,
                                 period: Int, newMoney: Int, newRemaining: Option[Int], transferDelay: Option[Int], applyWildcard: Boolean
                               ): Either[Result, Result] = {
-    val scheduledUpdateTime = transferDelay.map(td => new Timestamp(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(td)))
+    val currentEpochTime = System.currentTimeMillis()
+    val currentTime = new Timestamp(currentEpochTime)
+    val scheduledUpdateTime = transferDelay.map(td => new Timestamp(currentEpochTime + TimeUnit.MINUTES.toMillis(td)))
     if (toSell.nonEmpty) {
       AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.externalId == ts).get).map(
         p => new Transfer(
-          leagueUser.id, p.id, false, scheduledUpdateTime.getOrElse(new Timestamp(System.currentTimeMillis())),
+          leagueUser.id, p.id, false, scheduledUpdateTime.getOrElse(currentTime),
             scheduledUpdateTime.isEmpty, p.cost, applyWildcard
           )
       ))
@@ -229,7 +231,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     }
     if (toBuy.nonEmpty) {
       AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.externalId == tb).get).map(
-        p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime.getOrElse(new Timestamp(System.currentTimeMillis())),
+        p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime.getOrElse(currentTime),
           scheduledUpdateTime.isEmpty, p.cost)
       ))
       // TODO period -1

@@ -1,6 +1,5 @@
 package v1.league
 
-import scala.collection.mutable.ArrayBuffer
 import java.sql.Timestamp
 
 import javax.inject.Inject
@@ -12,11 +11,11 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
-import utils.{CostConverter, IdParser}
+import utils.IdParser
 import utils.TryHelper._
 import auth._
 import models.AppDB._
-import models.{League, Pickee, PickeeStat, LeagueUserStat, LeagueUserStatDaily, LeagueStatField, FactionType, Faction,
+import models.{League, FactionType, Faction,
   PickeeFaction
 }
 import v1.leagueuser.LeagueUserRepo
@@ -33,7 +32,8 @@ case class FactionTypeInput(name: String, description: Option[String], max: Opti
 // TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
-                           transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput], startingMoney: Double,
+                           transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput],
+                           startingMoney: BigDecimal,
                            transferDelayMinutes: Int, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            // TODO List is linked lsit. check thats fine. or change to vector
@@ -85,7 +85,7 @@ class LeagueController @Inject()(
             "max" -> optional(number)
           )(FactionInput.apply)(FactionInput.unapply))
         )(FactionTypeInput.apply)(FactionTypeInput.unapply)),
-        "startingMoney" -> default(of(doubleFormat), 50.0),
+        "startingMoney" -> default(bigDecimal(10, 1), BigDecimal.decimal(50.0)),
         "transferDelayMinutes" -> default(number, 0),
         //"factions" -> List of stuff
     // also singular prize with description and email fields
@@ -97,7 +97,7 @@ class LeagueController @Inject()(
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
           "name" -> nonEmptyText,
-          "value" -> of(doubleFormat),
+          "value" -> bigDecimal(10, 1),
           "active" -> default(boolean, true),
           "factions" -> list(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),

@@ -1,6 +1,5 @@
 package v1.pickee
 
-import java.sql.Timestamp
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
@@ -11,13 +10,11 @@ import models._
 import utils.CostConverter
 import play.api.libs.json._
 
-import scala.collection.mutable.ArrayBuffer
-
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class PickeeFormInput(id: Long, name: String, value: Double, active: Boolean, factions: List[String])
+case class PickeeFormInput(id: Long, name: String, value: BigDecimal, active: Boolean, factions: List[String])
 
-case class RepricePickeeFormInput(id: Long, cost: Double)
+case class RepricePickeeFormInput(id: Long, cost: BigDecimal)
 
 case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
 

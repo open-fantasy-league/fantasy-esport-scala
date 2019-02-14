@@ -1,9 +1,11 @@
 package models
 
 import java.sql.Timestamp
+import java.text.SimpleDateFormat
 
 import org.squeryl.KeyedEntity
-import play.api.libs.json.{JsValue, Json, Writes}
+import play.api.libs.json._
+import utils.Formatter.timestampFormatFactory
 
 class Matchu( // because match is an sql keyword
               val leagueId: Long,
@@ -22,6 +24,14 @@ class Matchu( // because match is an sql keyword
 }
 
 object Matchu{
+//  implicit val timestampFormat = new Format[Timestamp]{
+//    val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+//    // how just super reads?
+//    def reads(json: JsValue): JsResult[Timestamp] = JsSuccess(new Timestamp(format.parse(json.as[String]).getTime))
+//    def writes(ts: Timestamp) = JsString(format.format(ts))
+//  }
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+
   implicit val implicitWrites = new Writes[Matchu] {
     def writes(m: Matchu): JsValue = {
       Json.obj(
