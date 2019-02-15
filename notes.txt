@@ -31,12 +31,12 @@ curl -H "Content-Type: application/json" -X POST -d '{"pickees": [{"id": 1, "cos
 curl -X POST http://localhost/api/v1/leagues/1/endDay
 
 
-# stuff.......forUpdate on selects -> transfer stuff?
+# stuff.......forUpdate on selects -> transfer stuff?  aTable.where(t => t.aField === aValue).forUpdate
 # check all optional wheres (except for unprocessed)
-# commonise code for getting teams with leaderboards?
+# commonise code for getting teams with leaderboards? (dont think doable....just do th refactor)
 # ------------------------------historic teams (old period rankings use current team)
 # trailing slash empty req
-# make clear only support 1dp for prices
+# -----------------------------make clear only support 1dp for prices
 #-------------------------- ssl
 # new recal
 #------------------------- update server
@@ -45,11 +45,13 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ----------------------- no message for transfer cooldown
 # ----------------------------previous rank calculated wrong (not excluding transferless players)
 # -----------------------------combined uniques (i.e. period value and league)
-# ----------------------------- it will duplicate results (update script to first get results, check id's and latest timestamp)
+# ----------------------------- it will durplicate results (update script to first get results, check id's and latest timestamp)
 # --------------------------------json renderer to print out timestamps as strings
 # put transfer made time (not just scheduled for)
 # ------------------------------- switch to decimal, not doubles for money
 # reddit enter script
-# account type (site type unique)
+# ----------------------------  account type (site type unique) .... how find from db which are steam for set to 1?
 # update servr nginx conf
 # refactor into queries.scala. query-extractors.scala and the controller
+# -------------------------------------- test can still login through steam
+# test updatd databass
