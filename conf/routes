@@ -11,6 +11,8 @@ GET        /                       controllers.HomeController.index
 ->         /api/v1/pickees            v1.pickee.PickeeRouter
 ->         /api/v1/games            v1.game.GameRouter
 
+->         /api/v1/admin         v1.admin.AdminRouter
+
 # Map static resources from the /public folder to the /assets URL path
 GET        /assets/*file        controllers.Assets.at(path="/public", file)
 

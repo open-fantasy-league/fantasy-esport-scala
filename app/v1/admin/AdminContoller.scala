@@ -11,10 +11,12 @@ import models._
 import auth._
 import v1.league.LeagueRepo
 
-class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo, AuthAction: AuthAction, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo, auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
-  def allProcessTransfersReq() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
+  implicit val parser = parse.default
+
+  def allProcessTransfersReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
       val currentTime = new Timestamp(System.currentTimeMillis())
       inTransaction {
@@ -27,7 +29,7 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
     }
   }
 
-  def allRolloverPeriodReq() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
+  def allRolloverPeriodReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     // // TODO test add leagues, sleep before end transaction, and see how id's turn out
     // Thread.sleep(2000)
     Future {
@@ -40,10 +42,10 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
     }
   }
 
-  def addAPIUser() = (AuthAction andThen Auther.AdminCheckAction).async { implicit request =>
+  def addAPIUser() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
       inTransaction {
-        Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email"))))
+        Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email", 1))))
       }
     }
   }

@@ -9,8 +9,8 @@ class APIUser(
                var email: String,
                var role: Int = 0 // TODO this should be enum
              ) extends KeyedEntity[String] {
-  val id: String = "A"//randomUUID().toString
-  def key = id
+  val id: String = randomUUID().toString
+  def key: String = id
 }
 
 object APIUser{

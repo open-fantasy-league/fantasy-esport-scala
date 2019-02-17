@@ -10,6 +10,7 @@ class Transfer(
                 val leagueUserId: Long,
                 val pickeeId: Long,
                 val isBuy: Boolean,
+                val timeMade: Timestamp,
                 val scheduledFor: Timestamp,
                 var processed: Boolean,
                 val cost: BigDecimal,
@@ -25,6 +26,7 @@ object Transfer{
     def writes(t: Transfer): JsValue = {
       Json.obj(
         "isBuy" -> t.isBuy,
+        "timeMade" -> t.timeMade,
         "scheduledFor" -> t.scheduledFor,
         "processed" -> t.processed,
         "cost" -> t.cost,

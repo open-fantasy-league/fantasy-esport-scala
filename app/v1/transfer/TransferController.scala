@@ -221,7 +221,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     if (toSell.nonEmpty) {
       AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.externalId == ts).get).map(
         p => new Transfer(
-          leagueUser.id, p.id, false, scheduledUpdateTime.getOrElse(currentTime),
+          leagueUser.id, p.id, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
             scheduledUpdateTime.isEmpty, p.cost, applyWildcard
           )
       ))
@@ -233,7 +233,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     }
     if (toBuy.nonEmpty) {
       AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.externalId == tb).get).map(
-        p => new Transfer(leagueUser.id, p.id, true, scheduledUpdateTime.getOrElse(currentTime),
+        p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
           scheduledUpdateTime.isEmpty, p.cost)
       ))
       // TODO period -1

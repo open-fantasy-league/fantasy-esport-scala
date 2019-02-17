@@ -114,9 +114,10 @@ class LeagueUserAction(val userId: String){
 
 
 class Auther @Inject(){
-  val config = ConfigFactory.load()
-  val adminKey = config.getString("adminKey")
-  val adminHost = config.getString("adminHost")
+  val conf = ConfigFactory.load()
+  lazy val adminKey = conf.getString("adminKey")
+  lazy val adminHost = conf.getString("adminHost")
+
   def AuthLeagueAction(leagueId: String)(implicit ec: ExecutionContext) = new ActionRefiner[AuthRequest, AuthLeagueRequest] {
     def executionContext = ec
     def refine[A](input: AuthRequest[A]) = Future.successful {

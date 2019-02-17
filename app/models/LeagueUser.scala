@@ -2,7 +2,9 @@ package models
 
 import org.squeryl.KeyedEntity
 import java.sql.Timestamp
+
 import play.api.libs.json._
+import utils.Formatter.timestampFormatFactory
 
 class LeagueUser(
                   val leagueId: Long,
@@ -21,6 +23,7 @@ class LeagueUser(
 }
 
 object LeagueUser{
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[LeagueUser] {
     def writes(lu: LeagueUser): JsValue = {
       Json.obj(
