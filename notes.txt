@@ -67,6 +67,6 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # --------------------- option to only giv pre-starts wildcard!!!!!
 # recalibration script
 # sort out cron
-# results target period/team for timestamp!!!!
+# -----------------------------results target period/team for timestamp!!!!
 # period constraints
 # rankings without team is broken (too many rows)

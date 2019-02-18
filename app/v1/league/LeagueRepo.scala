@@ -46,7 +46,7 @@ object LeagueFull{
         "periodDescription" -> league.league.periodDescription,
         "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
-        "url" -> league.league.url
+        "url" -> {if league.league.urlVerified) league.league.url else ""
       )
     }
   }
@@ -112,12 +112,14 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league.transferDelayMinutes = input.transferDelayMinutes.getOrElse(league.transferDelayMinutes)
     league.periodDescription = input.periodDescription.getOrElse(league.periodDescription)
     league.pickeeDescription = input.pickeeDescription.getOrElse(league.pickeeDescription)
-    league.url = input.url.getOrElse(league.url)
     league.transferLimit = if (input.transferLimit.nonEmpty) input.transferLimit else league.transferLimit
     league.transferWildcard = input.transferWildcard.getOrElse(league.transferWildcard)
     league.noWildcardForLateRegister = input.noWildcardForLateRegister.getOrElse(league.noWildcardForLateRegister)
     league.applyPointsAtStartTime = input.applyPointsAtStartTime.getOrElse(league.applyPointsAtStartTime)
-    // etc for other fields
+    input.url.foreach(u => {
+      league.url = u
+      league.urlVerified = false
+    })
     leagueTable.update(league)
     league
   }
