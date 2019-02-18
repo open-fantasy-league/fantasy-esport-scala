@@ -1,16 +1,18 @@
 package v1.leagueuser
 
 import java.sql.Timestamp
+
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
-import org.squeryl.{Query, Table, KeyedEntity}
+import org.squeryl.{KeyedEntity, Query, Table}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
-import scala.util.Try
 
+import scala.util.Try
 import models.AppDB._
 import models._
+import org.squeryl.dsl.ast.TrueLogicalBoolean
 import utils.GroupByOrderedImplicit._
 
 import scala.collection.mutable.ArrayBuffer
@@ -346,19 +348,22 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
 
   override def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
   Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
+    println(timestamp)
     join (
       userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable.leftOuter,
       teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
     ) ((u, lu, lus, s, team, tp, p, t) =>
       where (
-        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === Some(period)
-        and team.map(_.started).map(_ < timestamp) and team.map(_.ended).map(_ >= timestamp)
+        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
+        and team.map(_.started).map(_ < timestamp).getOrElse(TrueLogicalBoolean) and team.flatMap(_.ended).map(_ >= timestamp).getOrElse(TrueLogicalBoolean)
       )
-        select ((u, lus, s, p) )
-        orderBy (s.value desc)
-        on (
+      select ((u, lus, s, p))
+      orderBy (s.value desc)
+      on (
         lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
-        team.map(_.leagueUserId) === lu.id, tp.map(_.teamId) === team.map(_.id), tp.map(_.pickeeId) === p.map (_.id), t.leagueUserId === lu.id)
+        team.map(_.leagueUserId) === lu.id, tp.map(_.teamId) === team.map(_.id), tp.map(_.pickeeId) === p.map(_.id),
+        t.leagueUserId === lu.id
+      )
     )
   }
 

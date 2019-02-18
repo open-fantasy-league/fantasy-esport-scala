@@ -49,7 +49,7 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ------------------------------- switch to decimal, not doubles for money
 # ------------------------------- reddit enter script
 # ----------------------------  account type (site type unique) .... how find from db which are steam for set to 1?
-# update servr nginx conf
+# update servr nginx conf!!!!!!!!!!!!!!!!!!!
 # refactor into queries.scala. query-extractors.scala and the controller
 # -------------------------------------- test can still login through steam
 # test updatd databass
@@ -59,11 +59,14 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ------------------------------------- how the fuck does admin actually work with syntax fuckups?
 # -------------------------------------upgrade srvr pgres
 # add url checker for tournament. only display if been validated
-# laderboard missing day 1, whn on day 2
-# no hero leaderboards/ no pickee rankings (comment out)
+# --------------------------------------laderboard missing day 1, whn on day 2
+# no hero leaderboards/ no pickee rankings (comment out)!!!!!
+# no friends :(  (comment out)!!!!!
 
 # -------------------- rollover periods updates priod end/start values
-# option to only giv pre-starts wildcard
+# option to only giv pre-starts wildcard!!!!!
 # recalibration script
 # sort out cron
-# results target period/team for timestamp
+# results target period/team for timestamp!!!!
+# period constraints
+# rankings without team is broken (too many rows)

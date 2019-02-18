@@ -178,10 +178,7 @@ class LeagueController @Inject()(
           statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           includeTeam = request.getQueryString("team")
-          /*rankings <- tryOrResponse(
-            () => leagueUserRepo.getRankings(league, statField, period), InternalServerError("internal Server Error")
-          )*/
-          rankings = leagueUserRepo.getRankings(request.league, statField, period, !includeTeam.isEmpty)
+          rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined)
           out = Ok(Json.toJson(rankings))
         } yield out).fold(identity, identity)
       }
@@ -193,7 +190,7 @@ class LeagueController @Inject()(
       inTransaction {
         request.league.currentPeriod match {
           case Some(p) if !p.ended => {
-            leagueRepo.postEndPeriodHook(request.league, p)
+            leagueRepo.postEndPeriodHook(request.league, p, new Timestamp(System.currentTimeMillis()))
             Ok("Successfully ended day")
           }
           case _ => BadRequest("Period already ended (Must start next period first)")
@@ -209,7 +206,7 @@ class LeagueController @Inject()(
       inTransaction {
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league)
-          _ = leagueRepo.postStartPeriodHook(request.league, newPeriod)
+          _ = leagueRepo.postStartPeriodHook(request.league, newPeriod, new Timestamp(System.currentTimeMillis()))
           out = Ok(f"Successfully started period $newPeriod") // TODO replace with period descriptor
         } yield out).fold(identity, identity)
       }
