@@ -117,13 +117,16 @@ class TransferController @Inject()(
             _ = println(currentTeamIds)
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
             _ = println(sellOrWildcard)
-            _ <- validatePickeeIds(currentTeamIds, pickees, sell, buy)
+            // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
+            _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateFactionLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
-              updateDBScheduleTransfer(sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney, newRemaining, transferDelay, applyWildcard)
+              updateDBScheduleTransfer(
+                sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney,
+                newRemaining, transferDelay, applyWildcard)
           } yield out).fold(identity, identity)
         }
       }

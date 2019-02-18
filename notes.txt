@@ -37,10 +37,9 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # trailing slash empty req
 # -----------------------------make clear only support 1dp for prices
 #-------------------------- ssl
-# new recal
+# ------------------------------- new recal
 #------------------------- update server
 # ----------------------dont have unfull teams
-# cant buy and wildcard
 # ----------------------- no message for transfer cooldown
 # ----------------------------previous rank calculated wrong (not excluding transferless players)
 # -----------------------------combined uniques (i.e. period value and league)
@@ -55,7 +54,10 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # -------------------------------------- test can still login through steam
 # test updatd databass
 # ------------------------------------- make time's utc
-# check wildcard and rebuy same hero
-# check transfer delay with real value works
+# ------------------------------------- check wildcard and rebuy same hero....neeed fix
+# check transfer delay with real value works (check points scoring)
 # ------------------------------------- how the fuck does admin actually work with syntax fuckups?
-# upgrade srvr pgres
+# -------------------------------------upgrade srvr pgres
+# add url checker for tournament. only display if been validated
+# laderboard missing day 1, whn on day 2
+# no hero leaderboards/ no pickee rankings

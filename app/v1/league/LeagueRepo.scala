@@ -224,9 +224,8 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     from(leagueTable, periodTable)((l,p) =>
       // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
       // and is future period that should have started...so lets start it
-      where(not(l.currentPeriodId === p.id) and p.ended === false and p.start <= currentTime)
-      select((l, p))
-      ).foreach(Function.tupled(postStartPeriodHook))
+      where(p.leagueId === l.id and (l.currentPeriodId.isNull or not(l.currentPeriodId === p.id)) and p.ended === false and p.start <= currentTime)
+        select((l, p))).foreach(Function.tupled(postStartPeriodHook))
   }
 }
 

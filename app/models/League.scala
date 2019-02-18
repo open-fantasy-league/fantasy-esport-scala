@@ -10,7 +10,7 @@ import utils.Formatter.timestampFormatFactory
 
 class League(
               var name: String,
-              val apiKey: String, // the api user/platform that created the league
+              var apiKey: String, // the api user/platform that created the league
               val gameId: Option[Long],
               var isPrivate: Boolean,
               var tournamentId: Long,

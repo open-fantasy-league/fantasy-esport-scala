@@ -219,14 +219,7 @@ class LeagueController @Inject()(
   def getHistoricTeamsReq(leagueId: String, period: String) = 
   {
     (new LeagueAction(leagueId) andThen new PeriodAction().league()).async { implicit request =>
-    Future {
-      inTransaction {
-        (for {
-          period <- IdParser.parseIntId(period, "period")
-          out = Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, period)))
-        } yield out).fold(identity, identity)
-      }
-    }
+    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, request.p.get)))))
   }}
 
   def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
@@ -238,7 +231,7 @@ class LeagueController @Inject()(
       inTransaction {
         (for {
           periodValueInt <- IdParser.parseIntId(periodValue, "period value")
-          out = handleUpdatePeriodForm(request.league.id, periodValueInt)//Ok(Json.toJson(leagueUserRepo.getHistoricTeams(league, period)))
+          out = handleUpdatePeriodForm(request.league.id, periodValueInt)
         } yield out).fold(identity, identity)
       }
     }
@@ -286,13 +279,14 @@ class LeagueController @Inject()(
         newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
         newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
         var nextPeriodId: Option[Long] = None
+        // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
         input.periods.zipWithIndex.reverse.foreach({case (p, i) => {
           val newPeriod = leagueRepo.insertPeriod(newLeague.id, p, i+1, nextPeriodId)
           nextPeriodId = Some(newPeriod.id)
           newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
           newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
         }})
-        var factionNamesToIds =  collection.mutable.Map[String, Long]()
+        val factionNamesToIds =  collection.mutable.Map[String, Long]()
 
         input.factions.foreach(ft => {
           val newFactionType = factionTypeTable.insert(

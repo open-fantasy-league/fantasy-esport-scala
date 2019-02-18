@@ -22,7 +22,6 @@ object AppDB extends Schema {
   val factionTable = table[Faction]("faction")
   val teamTable = table[Team]("team")
   val teamPickeeTable = table[TeamPickee]("team_pickee")
-  val historicTeamPickeeTable = table[HistoricTeamPickee]("historic_team_pickee")
   val pickeeStatTable = table[PickeeStat]("pickee_stat")
   val pickeeStatDailyTable = table[PickeeStatDaily]("pickee_stat_daily")
   val transferTable = table[Transfer]("transfer")
@@ -88,10 +87,6 @@ object AppDB extends Schema {
 
   val pickeeToTeamPickee =
     oneToManyRelation(pickeeTable, teamPickeeTable).
-      via((p, o) => p.id === o.pickeeId)
-
-  val pickeeToHistoricTeamPickee =
-    oneToManyRelation(pickeeTable, historicTeamPickeeTable).
       via((p, o) => p.id === o.pickeeId)
 
   val pickeeToPickeeStat =
@@ -194,10 +189,7 @@ object AppDB extends Schema {
     declare(columns(t.teamId, t.pickeeId) are indexed)
     declare(columns(t.teamId, t.pickeeId) are unique)
   })
-  on(historicTeamPickeeTable)(t => {
-    declare(columns(t.leagueUserId, t.pickeeId, t.period) are indexed)
-    declare(columns(t.leagueUserId, t.pickeeId, t.period) are unique)
-  })
+
   on(pickeeStatTable)(t => {
     declare(columns(t.statFieldId, t.pickeeId) are indexed)
     declare(columns(t.statFieldId, t.pickeeId) are unique)

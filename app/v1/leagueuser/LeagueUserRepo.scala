@@ -142,9 +142,7 @@ trait LeagueUserRepo{
   def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
-//  def addHistoricTeams(league: League)
-//  def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
-  def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
+  def getHistoricTeams(league: League, period: Int): Iterable[LeagueUserTeamOut]
   def joinUsers(users: Iterable[User], league: League): Iterable[LeagueUser]
   def userInLeague(userId: Long, leagueId: Long): Boolean
   def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
@@ -336,7 +334,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
         teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
       ) ((u, lu, lus, s, team, tp, p, t) =>
         where (
-          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period.isNull and team.map(_.ended.isEmpty) === true
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period.isNull and team.map(_.ended.isNull)
         )
           select ((u, lus, s, p))
           orderBy (s.value desc)
@@ -401,12 +399,19 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     leagueUserStatTable.update(newLeagueUserStats)
   }
 
-  override def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut] = {
-    from(historicTeamPickeeTable, leagueUserTable, leagueTable, userTable, pickeeTable)(
-      (h, lu, l, u, p) => where(h.leagueUserId === lu.id and lu.leagueId === league.id and h.period === period and u.id === lu.userId and h.pickeeId === p.id)
-        select ((p, u))
-        ).groupBy(_._2).map({case (user, v) => {
-          UserHistoricTeamOut(user.id, user.externalId, user.username, v.map(_._1))
+  override def getHistoricTeams(league: League, period: Int): Iterable[LeagueUserTeamOut] = {
+    val endPeriodTstamp = from(periodTable)(
+      p => where(p.value === period and p.leagueId === league.id)
+        select p
+    ).single.end
+    join(userTable, leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)(
+      (u, lu, t, tp, p) => where(lu.leagueId === league.id and t.map(_.started).map(_ < endPeriodTstamp)
+        and t.map(_.ended).map(_ >= endPeriodTstamp))
+        select ((lu, p))
+      on(lu.userId === u.id, t.map(_.leagueUserId) === lu.id,
+        tp.map(_.teamId) === t.map(_.id), tp.map(_.pickeeId) === p.map(_.id))
+        ).groupBy(_._1).map({case (lu, v) => {
+          LeagueUserTeamOut(lu, v.flatMap(_._2))
         }})
   }
 

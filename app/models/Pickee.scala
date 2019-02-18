@@ -37,14 +37,6 @@ class TeamPickee(
   lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single
 }
 
-class HistoricTeamPickee(
-                          var pickeeId: Long,
-                          var leagueUserId: Long,
-                          val period: Int
-                        ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  lazy val pickee = AppDB.pickeeToHistoricTeamPickee.right(this).single
-}
 
 class PickeeStat(
                        val statFieldId: Long,

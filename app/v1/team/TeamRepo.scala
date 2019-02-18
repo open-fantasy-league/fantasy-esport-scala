@@ -19,7 +19,7 @@ trait TeamRepo{
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
   override def getLeagueUserTeam(leagueUser: LeagueUser): List[(Team, Option[Pickee])] = {
     val query = join(teamTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((t, tp, p) =>
-        where(t.leagueUserId === leagueUser.id)
+        where(t.leagueUserId === leagueUser.id and t.ended.isNull)
         select(t, p)
         on(tp.map(_.teamId) === t.id, tp.map(_.pickeeId) === p.map(_.id))
         )
