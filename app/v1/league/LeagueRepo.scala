@@ -44,6 +44,8 @@ object LeagueFull{
         "ended" -> (league.currentPeriod.exists(_.ended) && league.currentPeriod.exists(_.nextPeriodId.isEmpty)),
         "pickeeDescription" -> league.league.pickeeDescription,
         "periodDescription" -> league.league.periodDescription,
+        "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
+        "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
         "url" -> league.league.url
       )
     }
@@ -95,9 +97,10 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
 
   override def insert(input: LeagueFormInput): League = {
     leagueTable.insert(new League(input.name, input.apiKey, input.gameId, input.isPrivate, input.tournamentId, input.pickeeDescription,
-      input.periodDescription, input.transferLimit, input.transferWildcard,
-      input.startingMoney, input.teamSize, transferBlockedDuringPeriod=input.transferBlockedDuringPeriod,
-      transferDelayMinutes=input.transferDelayMinutes, url=input.url.getOrElse(""),
+      input.periodDescription, input.transferInfo.transferLimit, input.transferInfo.transferWildcard,
+      input.startingMoney, input.teamSize, transferBlockedDuringPeriod=input.transferInfo.transferBlockedDuringPeriod,
+      transferDelayMinutes=input.transferInfo.transferDelayMinutes, url=input.url.getOrElse(""), applyPointsAtStartTime=input.applyPointsAtStartTime,
+      noWildcardForLateRegister=input.transferInfo.noWildcardForLateRegister
     ))
   }
 
@@ -112,6 +115,8 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league.url = input.url.getOrElse(league.url)
     league.transferLimit = if (input.transferLimit.nonEmpty) input.transferLimit else league.transferLimit
     league.transferWildcard = input.transferWildcard.getOrElse(league.transferWildcard)
+    league.noWildcardForLateRegister = input.noWildcardForLateRegister.getOrElse(league.noWildcardForLateRegister)
+    league.applyPointsAtStartTime = input.applyPointsAtStartTime.getOrElse(league.applyPointsAtStartTime)
     // etc for other fields
     leagueTable.update(league)
     league

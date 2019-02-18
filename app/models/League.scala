@@ -24,7 +24,10 @@ class League(
               var transferOpen: Boolean = false,
               var transferBlockedDuringPeriod: Boolean = false,
               var url: String = "",
+              var urlVerified: Boolean = false,
               var currentPeriodId: Option[Long] = None,
+              var applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
+              var noWildcardForLateRegister: Boolean = false // late defined as after league has startd
             ) extends KeyedEntity[Long] {
   val id: Long = 0
 
@@ -177,7 +180,9 @@ object League{
         "transferOpen" -> league.transferOpen,
         "transferDelayMinutes" -> league.transferDelayMinutes,
         "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
-        "url" -> league.url
+        "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
+        "url" -> {if (league.urlVerified) league.url else ""},
+        "noWildcardForLateRegister" -> league.noWildcardForLateRegister
       )
     }
   }

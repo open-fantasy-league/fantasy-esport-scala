@@ -28,16 +28,18 @@ case class FactionInput(name: String, max: Option[Int])
 
 case class FactionTypeInput(name: String, description: Option[String], max: Option[Int], types: List[FactionInput])
 
+case class TransferInput(
+                          transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
+                          transferBlockedDuringPeriod: Boolean, noWildcardForLateRegister: Boolean,
+                        )
 
 // TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
-                           periods: List[PeriodInput], teamSize: Int, transferLimit: Option[Int],
-                           transferWildcard: Boolean, transferBlockedDuringPeriod: Boolean, factions: List[FactionTypeInput],
-                           startingMoney: BigDecimal,
-                           transferDelayMinutes: Int, prizeDescription: Option[String], prizeEmail: Option[String],
+                           periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, factions: List[FactionTypeInput],
+                           startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
-                           // TODO List is linked lsit. check thats fine. or change to vector
-                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String, url: Option[String]
+                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String,
+                           applyPointsAtStartTime: Boolean, url: Option[String]
                           )
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
@@ -47,7 +49,8 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                                  url: Option[String], transferLimit: Option[Int],
                                  transferWildcard: Option[Boolean],
                                  periodDescription: Option[String],
-                                 pickeeDescription: Option[String]
+                                 pickeeDescription: Option[String],
+                                 applyPointsAtStartTime: Option[Boolean], noWildcardForLateRegister: Option[Boolean]
                                  )
 
 class LeagueController @Inject()(
@@ -73,9 +76,13 @@ class LeagueController @Inject()(
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
         //"captain" -> default(boolean, false),
-        "transferLimit" -> optional(number), // use -1 for no transfer limit I think
-        "transferWildcard" -> boolean,
-        "transferBlockedDuringPeriod" -> default(boolean, false),
+        "transferInfo" -> mapping(
+          "transferLimit" -> optional(number),
+          "transferDelayMinutes" -> default(number, 0),
+          "transferWildcard" -> boolean,
+          "transferBlockedDuringPeriod" -> default(boolean, false),
+          "noWildcardForLateRegister" -> default(boolean, false),
+        )(TransferInput.apply)(TransferInput.unapply),
         "factions" -> list(mapping(
           "name" -> nonEmptyText,
           "description" -> optional(nonEmptyText),
@@ -86,7 +93,6 @@ class LeagueController @Inject()(
           )(FactionInput.apply)(FactionInput.unapply))
         )(FactionTypeInput.apply)(FactionTypeInput.unapply)),
         "startingMoney" -> default(bigDecimal(10, 1), BigDecimal.decimal(50.0)),
-        "transferDelayMinutes" -> default(number, 0),
         //"factions" -> List of stuff
     // also singular prize with description and email fields
         "prizeDescription" -> optional(nonEmptyText),
@@ -103,6 +109,7 @@ class LeagueController @Inject()(
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number),
         "apiKey" -> nonEmptyText,
+        "applyPointsAtStartTime" -> default(boolean, true),
         "url" -> optional(nonEmptyText)
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
@@ -121,7 +128,9 @@ class LeagueController @Inject()(
         "transferLimit" -> optional(number),
         "transferWildcard" -> optional(boolean),
         "periodDescription" -> optional(nonEmptyText),
-        "pickeeDescription" -> optional(nonEmptyText)
+        "pickeeDescription" -> optional(nonEmptyText),
+        "applyPointsAtStartTime" -> optional(boolean),
+        "noWildcardForLateRegister" -> optional(boolean),
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }

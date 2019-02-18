@@ -1,14 +1,14 @@
 package v1.result
 
 import java.sql.Timestamp
-import javax.inject.Inject
 
+import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._
 import play.api.data.Form
-import play.api.data.Forms._
+import play.api.data.Forms.{sqlTimestamp, _}
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import models._
@@ -18,7 +18,7 @@ import auth._
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
-                            startTstamp: Timestamp, pickees: List[PickeeFormInput]
+                            startTstamp: Timestamp, targetAtTstamp: Option[Timestamp], pickees: List[PickeeFormInput]
                           )
 
 case class PickeeFormInput(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
@@ -40,6 +40,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         "teamTwo" -> nonEmptyText,
         "teamOneVictory" -> boolean,
         "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss"),
+        "targetAtTstamp" -> optional(sqlTimestamp("yyyy-MM-dd HH:mm:ss")),
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
           "isTeamOne" -> boolean,
@@ -70,10 +71,12 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           (for {
             validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
             internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
-            insertedMatch <- newMatch(input, league)
+            now = new Timestamp(System.currentTimeMillis())
+            insertedMatch <- newMatch(input, league, now)
             insertedResults <- newResults(input, league, insertedMatch, internalPickee)
             insertedStats <- newStats(league, insertedMatch.id, internalPickee)
-            updatedStats <- updateStats(insertedStats, league)
+            correctPeriod <- getPeriod(input, league, now)
+            updatedStats <- updateStats(insertedStats, league, correctPeriod)
             success = "Successfully added results"
           } yield success).fold(identity, Created(_))
         }
@@ -90,11 +93,29 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     })
   }
 
-  private def newMatch(input: ResultFormInput, league: League): Either[Result, Matchu] = {
+  private def getPeriod(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Int] = {
+    val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
+      case (Some(x), _) => x
+      case (_, true) => input.startTstamp
+      case _ => now
+    }
+    tryOrResponse(() => {from(periodTable)(
+      p => where(p.start > targetedAtTstamp and p.leagueId === league.id and p.end <= targetedAtTstamp)
+        select p
+    ).single.value}, BadRequest("Cannot add result outside of period"))
+  }
+
+  private def newMatch(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Matchu] = {
     // TODO log/get original stack trace
+      // targeted at overrides apply at start
+    val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
+      case (Some(x), _) => x
+      case (_, true) => input.startTstamp
+      case _ => now
+    }
     tryOrResponse[Matchu](() => matchTable.insert(new Matchu(
       league.id, input.matchId, league.currentPeriod.getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
-      input.teamOneVictory, input.startTstamp, new Timestamp(System.currentTimeMillis())
+      input.teamOneVictory, input.startTstamp, now, targetedAtTstamp
     )), InternalServerError("Internal server error adding match"))
   }
 
@@ -132,7 +153,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 //    )))).toRight(InternalServerError("Internal server error adding result"))
   }
 
-  private def updateStats(newStats: List[(Points, Long)], league: League): Either[Result, Any] = {
+  private def updateStats(newStats: List[(Points, Long)], league: League, period: Int): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeStat = pickeeStatTable.where(
@@ -143,7 +164,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         println(s.pointsFieldId)
         // has both the specific period and the overall entry
         val pickeeStats = pickeeStatDailyTable.where(
-          psd => psd.pickeeStatId === pickeeStat.id and (psd.period === league.currentPeriod.getOrElse(new Period()).value or psd.period.isNull)
+          psd => psd.pickeeStatId === pickeeStat.id and (psd.period === period or psd.period.isNull)
         )
         pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
         val leagueUserStats = from(
@@ -152,7 +173,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.period.isNull or lusd.period === p.value))
           where(lu.leagueId === league.id and t.leagueUserId === lu.id and t.ended.isNull and tp.teamId === t.id and tp.pickeeId === pickeeId
             and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId
-            and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value) and
+            and (lusd.period.isNull or lusd.period === period) and
             from(teamPickeeTable)(tp => where(tp.teamId === t.id) compute(count(tp.id))) === l.teamSize)
             select(lusd)
             //group(lu)(where count(tp) == l.teamSize)
@@ -178,7 +199,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           results = resultRepo.get(period).toList
           success = Ok(Json.toJson(results))
         } yield success).fold(identity, identity)
-        //Future{Ok(views.html.index())}
       }
     }
   }

@@ -17,7 +17,8 @@ class Matchu( // because match is an sql keyword
               var teamTwo: String,
               var teamOneVictory: Boolean,
               val startTstamp: Timestamp,
-              val addedTstamp: Timestamp,
+              val addedDBTstamp: Timestamp,
+              val targetedAtTstamp: Timestamp // what timestamp do we look up teams for
             )
   extends KeyedEntity[Long] {
   val id: Long = 0
@@ -36,7 +37,8 @@ object Matchu{
     def writes(m: Matchu): JsValue = {
       Json.obj(
         "startTime" -> m.startTstamp,
-        "addedTime" -> m.addedTstamp,
+        "addedTime" -> m.addedDBTstamp,
+        "targetedAtTime" -> m.targetedAtTstamp,
         "tournamentId" -> m.tournamentId,
         "id" -> m.externalId,
         "teamOne" -> m.teamOne,

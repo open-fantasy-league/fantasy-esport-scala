@@ -211,7 +211,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     // dont give wildcard to people who join league late
     leagueUserTable.insert(new LeagueUser(
       league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit,
-      (!league.transferWildcard || league.started)
+      !league.transferWildcard || (league.started && league.noWildcardForLateRegister)
     ))
   }
 

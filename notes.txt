@@ -60,11 +60,11 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # -------------------------------------upgrade srvr pgres
 # add url checker for tournament. only display if been validated
 # --------------------------------------laderboard missing day 1, whn on day 2
-# no hero leaderboards/ no pickee rankings (comment out)!!!!!
-# no friends :(  (comment out)!!!!!
+# ------------------- no hero leaderboards/ no pickee rankings (comment out)!!!!!
+# ------------------------ no friends :(  (comment out)!!!!!
 
 # -------------------- rollover periods updates priod end/start values
-# option to only giv pre-starts wildcard!!!!!
+# --------------------- option to only giv pre-starts wildcard!!!!!
 # recalibration script
 # sort out cron
 # results target period/team for timestamp!!!!
