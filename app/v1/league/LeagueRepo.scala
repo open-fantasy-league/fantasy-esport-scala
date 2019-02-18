@@ -66,8 +66,8 @@ trait LeagueRepo{
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
   def updateHistoricRanks(league: League)
-  def postStartPeriodHook(league: League, period: Period)
-  def postEndPeriodHook(league: League, period: Period)
+  def postStartPeriodHook(league: League, period: Period, timestamp: Timestamp)
+  def postEndPeriodHook(league: League, period: Period, timestamp: Timestamp)
   def startPeriods(currentTime: Timestamp)
   def endPeriods(currentTime: Timestamp)
 }
@@ -110,7 +110,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league.periodDescription = input.periodDescription.getOrElse(league.periodDescription)
     league.pickeeDescription = input.pickeeDescription.getOrElse(league.pickeeDescription)
     league.url = input.url.getOrElse(league.url)
-    league.transferLimit = if (!input.transferLimit.isEmpty) input.transferLimit else league.transferLimit
+    league.transferLimit = if (input.transferLimit.nonEmpty) input.transferLimit else league.transferLimit
     league.transferWildcard = input.transferWildcard.getOrElse(league.transferWildcard)
     // etc for other fields
     leagueTable.update(league)
@@ -172,7 +172,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
   override def updateHistoricRanks(league: League) = {
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
-    league.statFields.map(sf => {
+    league.statFields.foreach(sf => {
       val leagueUserStatsOverall =
         leagueUserRepo.getLeagueUserStats(league.id, sf.id, None)
       var lastScore = Double.MaxValue // TODO java max num
@@ -198,14 +198,17 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     })
   }
 
-  override def postEndPeriodHook(league: League, period: Period) = {
+  override def postEndPeriodHook(league: League, period: Period, timestamp: Timestamp) = {
     period.ended = true
+    period.end = timestamp
     periodTable.update(period)
     league.transferOpen = true
     leagueTable.update(league)
   }
 
-  override def postStartPeriodHook(league: League, period: Period) = {
+  override def postStartPeriodHook(league: League, period: Period, timestamp: Timestamp) = {
+    period.start = timestamp
+    periodTable.update(period)
     league.currentPeriodId = Some(period.id)
     if (league.transferBlockedDuringPeriod) {
       league.transferOpen = false
@@ -218,14 +221,14 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     from(leagueTable, periodTable)((l,p) =>
           where(l.currentPeriodId === p.id and p.ended === false and p.end <= currentTime and p.nextPeriodId.isNotNull)
           select((l, p))
-          ).foreach(Function.tupled(postEndPeriodHook))
+          ).foreach(t => postEndPeriodHook(t._1, t._2, currentTime))
   }
   override def startPeriods(currentTime: Timestamp) = {
     from(leagueTable, periodTable)((l,p) =>
       // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
       // and is future period that should have started...so lets start it
       where(p.leagueId === l.id and (l.currentPeriodId.isNull or not(l.currentPeriodId === p.id)) and p.ended === false and p.start <= currentTime)
-        select((l, p))).foreach(Function.tupled(postStartPeriodHook))
+        select((l, p))).foreach(t => postStartPeriodHook(t._1, t._2, currentTime))
   }
 }
 
