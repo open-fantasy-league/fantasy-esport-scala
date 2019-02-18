@@ -56,8 +56,8 @@ class LeagueControllerSpec extends PlaySpec with MockitoSugar{
       val request = FakeRequest(POST, "/").withJsonBody(Json.parse(
         s"""{"name": "cat3", "isPrivate": true, "tournamentId": 5401, "totalDays": 5, "dayStart": 1122, "dayEnd": 113345,
           | "transferOpen": false, "gameId": 1, "pickeeDescription": "Hero", "pickees":
-          |  [{"id": 1, "name": "dog", "value": 20.0, "faction": "animal"}], "factionLimit": 2,
-          |   "factionDescription": "Team", "extraStats": ["wins", "picks", "bans"]}""".stripMargin
+          |  [{"id": 1, "name": "dog", "value": 20.0, "limit": "animal"}], "limitLimit": 2,
+          |   "limitDescription": "Team", "extraStats": ["wins", "picks", "bans"]}""".stripMargin
       ))
       //val request = FakeRequest(POST)
       //val result = call(action, request)

@@ -18,7 +18,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
 
   implicit val parser = parse.default
   def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(pickeeRepo.getPickeesWithFactions(request.league.id)))))
+    Future(inTransaction(Ok(Json.toJson(pickeeRepo.getPickeesWithLimits(request.league.id)))))
   }
 
   def getStatsReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
@@ -52,7 +52,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
           "name" -> nonEmptyText,
           "value" -> bigDecimal(10, 1),
           "active" -> default(boolean, true),
-          "factions" -> list(nonEmptyText)
+          "limits" -> list(nonEmptyText)
           )(PickeeFormInput.apply)(PickeeFormInput.unapply)
       )
   }
@@ -69,7 +69,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
             val leaguePickees = pickeeRepo.getPickees(request.league.id)
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.id)).map(p => {
-              p.cost = pickees.get(p.id).get.cost
+              p.cost = pickees(p.id).cost
               p
             }))
             // TODO print out pickees that changed

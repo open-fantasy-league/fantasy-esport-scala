@@ -35,7 +35,7 @@ class League(
   lazy val pickees = AppDB.leagueToPickee.left(this)
   //statFields
   def statFields = from(AppDB.leagueToLeagueStatField.left(this))(select(_)).toList
-  def factionTypes = from(AppDB.leagueToFactionType.left(this))(select(_)).toList
+  def limitTypes = from(AppDB.leagueToLimitType.left(this))(select(_)).toList
   def periods = from(AppDB.leagueToPeriod.left(this))(select(_)).toList
   def firstPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.value === 1) select(p)).single
   def lastPeriod = from(AppDB.leagueToPeriod.left(this))(p => where(p.nextPeriodId isNull) select(p)).single
@@ -64,7 +64,7 @@ class LeaguePrize(
   val id: Long = 0
 }
 
-class FactionType(
+class LimitType(
                   val leagueId: Long,
                   val name: String,
                   var description: String,
@@ -73,11 +73,11 @@ class FactionType(
   val id: Long = 0
 }
 
-case class FactionTypeOut(name: String, description: String, factions: Iterable[Faction])
+case class LimitTypeOut(name: String, description: String, limits: Iterable[Limit])
 
 
-class Faction(
-                   val factionTypeId: Long,
+class Limit(
+                   val limitTypeId: Long,
                    val name: String,
                    var max: Int,
                  ) extends KeyedEntity[Long] {
@@ -101,9 +101,9 @@ class Period(
 }
 
 
-object Faction{
-  implicit val implicitWrites = new Writes[Faction] {
-    def writes(f: Faction): JsValue = {
+object Limit{
+  implicit val implicitWrites = new Writes[Limit] {
+    def writes(f: Limit): JsValue = {
       Json.obj(
         "name" -> f.name,
         "max" -> f.max
@@ -112,13 +112,13 @@ object Faction{
   }
 }
 
-object FactionTypeOut{
-  implicit val implicitWrites = new Writes[FactionTypeOut] {
-    def writes(ft: FactionTypeOut): JsValue = {
+object LimitTypeOut{
+  implicit val implicitWrites = new Writes[LimitTypeOut] {
+    def writes(ft: LimitTypeOut): JsValue = {
       Json.obj(
         "name" -> ft.name,
         "description" -> ft.description,
-        "factions" -> ft.factions
+        "limits" -> ft.limits
       )
     }
   }
@@ -150,9 +150,9 @@ object Period{
   }
 }
 
-object FactionType{
-  implicit val implicitWrites = new Writes[FactionType] {
-    def writes(ft: FactionType): JsValue = {
+object LimitType{
+  implicit val implicitWrites = new Writes[LimitType] {
+    def writes(ft: LimitType): JsValue = {
       Json.obj(
         "name" -> ft.name,
         "description" -> ft.description,

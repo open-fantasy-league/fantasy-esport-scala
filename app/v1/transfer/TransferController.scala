@@ -61,7 +61,6 @@ class TransferController @Inject()(
   def processTransfersReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
-        //org.squeryl.Session.currentSession.setLogger(String => Unit)
         val currentTime = new Timestamp(System.currentTimeMillis())
         // TODO better way? hard with squeryls weird dsl
         val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
@@ -86,15 +85,6 @@ class TransferController @Inject()(
     }
 
     def success(input: TransferFormInput): Future[Result] = {
-      println("yay")
-      // verify leagueUser exists
-      // verify doesnt violate remaining transfers
-      // verify can afford change
-      // verify doesnt break team size lim
-      // verify doesnt break faction limit
-
-      // stop people from buying two of same hero at once
-      // still need further check that hero not already in team
       val sell = input.sell.toSet
       val buy = input.buy.toSet
       if (sell.isEmpty && buy.isEmpty && !input.wildcard && !input.isCheck){
@@ -104,7 +94,6 @@ class TransferController @Inject()(
       Future {
         inTransaction {
           (for {
-          // TODO what does single return if no entries?
             _ <- validateDuplicates(input.sell, sell, input.buy, buy)
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
@@ -121,7 +110,7 @@ class TransferController @Inject()(
             _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
-            _ <- validateFactionLimit(newTeamIds, league)
+            _ <- validateLimitLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
               updateDBScheduleTransfer(
@@ -198,23 +187,19 @@ class TransferController @Inject()(
     }
   }
 
-  private def validateFactionLimit(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
+  private def validateLimitLimit(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
     //Right("cat")
     // TODO errrm this is a bit messy
-    league.factionTypes.forall(factionType => {
-      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.factions).groupBy(_.factionTypeId)
+    league.limitTypes.forall(limitType => {
+      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
         .forall({case (k, v) => v.size <= v.head.max})
     }) match {
         case true => Right(true)
         case false => Left(BadRequest(
-          f"Exceeds faction limit"
+          f"Exceeds limit limit"
         ))
       }
   }
-
-//  private def processTransferOrJustCheck() = {
-//    Right(Ok("Transfers are valid")) if input.isCheck else processTransfer(sell, buy, pickees, leagueUser.id, league.currentDay)
-//  }
 
   private def updateDBScheduleTransfer(
                                 toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,

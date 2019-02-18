@@ -59,7 +59,6 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
       (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
       select((m, r, p, s, pck))
       orderBy(p.value asc)
-//    ).groupBy(_._1).mapValues(_.map(_._2))
     )
     val query = queryRaw.map(q => ResultQuery(q._1, q._2, q._3, q._4, q._5))
     resultQueryExtractor(query)

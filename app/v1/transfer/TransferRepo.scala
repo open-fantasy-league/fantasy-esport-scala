@@ -47,7 +47,6 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
     val now = new Timestamp(System.currentTimeMillis())
     // TODO need to lock here?
     // TODO map and filter together
-    println("in proc trans")
     val transfers = transferTable.where(t => t.processed === false and t.leagueUserId === leagueUser.id)
     // TODO single iteration
     val toSellIds = transfers.filter(!_.isBuy).map(_.pickeeId).toSet

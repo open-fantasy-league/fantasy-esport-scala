@@ -49,7 +49,6 @@ object Formatter {
   def timestampFormatFactory(formatStr: String): Format[Timestamp] = new Format[Timestamp] {
     val format = new SimpleDateFormat(formatStr)
 
-    // how just super reads?
     def reads(json: JsValue): JsResult[Timestamp] = JsSuccess(new Timestamp(format.parse(json.as[String]).getTime))
 
     def writes(ts: Timestamp) = JsString(format.format(ts))

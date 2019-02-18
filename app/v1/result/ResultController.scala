@@ -56,7 +56,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.                          PermissionCheckAction).async{ implicit request =>
     processJsonResult(request.league)
-    //    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
   private def processJsonResult[A](league: League)(implicit request: Request[A]): Future[Result] = {
@@ -106,8 +105,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
   }
 
   private def newMatch(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Matchu] = {
-    // TODO log/get original stack trace
-      // targeted at overrides apply at start
+      // targetedAt overrides applyAtStart
     val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
       case (_, true) => input.startTstamp
@@ -134,23 +132,15 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     // i.e. avoidss what i was worried about where if user transferred a hero midway through processing, maybe they can
     // score points from hero they were selling, then also hero they were buying, with rrace condition
     // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
-    // TODO log/get original stack trace
-    // DOLIST actually creatte leagueuserstats tables
     val newStats = pickees.flatMap(ip => ip.stats.map(s => {
       val result = resultTable.where(
         r => r.matchId === matchId and r.pickeeId === ip.id
         ).single
-      println(result)
       val points = if (s.field == "points") s.value * league.currentPeriod.get.multiplier else s.value
       (new Points(result.id, leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
         ip.id)
     }))
-    // TODO try top option right func
     tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
-//    Try(pointsTable.insert(input.pickees.map(ip => new Resultu(
-//      matchu.id, pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.externalId).single.id,
-//      input.startTstamp, new Timestamp(System.currentTimeMillis()), ip.isTeamOne
-//    )))).toRight(InternalServerError("Internal server error adding result"))
   }
 
   private def updateStats(newStats: List[(Points, Long)], league: League, period: Int): Either[Result, Any] = {
@@ -159,9 +149,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         val pickeeStat = pickeeStatTable.where(
           ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === pickeeId
         ).single
-        println(pickeeStat)
-        println(s.value)
-        println(s.pointsFieldId)
         // has both the specific period and the overall entry
         val pickeeStats = pickeeStatDailyTable.where(
           psd => psd.pickeeStatId === pickeeStat.id and (psd.period === period or psd.period.isNull)
@@ -178,16 +165,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
             select(lusd)
             //group(lu)(where count(tp) == l.teamSize)
         )
-        println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
-        /*val leagueUserStat = leagueUserStatTable.where(
-          lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId
-        )
-        val leagueUserStats = leagueUserStatDailyTable.where(
-          lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.period === league.currentPeriod.getOrElse(new Period()).value or lud.period.isNull)
-        )*/
         leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
-        true // whats a good thing to put here
-        // now update league user points if pickee in team
     }}), InternalServerError("Internal server error updating stats"))
   }
 

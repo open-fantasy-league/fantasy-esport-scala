@@ -16,7 +16,7 @@ import v1.pickee.PickeeRepo
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class LeagueFull(league: League, factions: Iterable[FactionTypeOut], periods: Iterable[Period], currentPeriod: Option[Period], statFields: Iterable[LeagueStatField])
+case class LeagueFull(league: League, limits: Iterable[LimitTypeOut], periods: Iterable[Period], currentPeriod: Option[Period], statFields: Iterable[LeagueStatField])
 
 object LeagueFull{
   implicit val implicitWrites = new Writes[LeagueFull] {
@@ -37,7 +37,7 @@ object LeagueFull{
         "transferBlockedDuringPeriod" -> league.league.transferBlockedDuringPeriod,
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields.map(_.name),
-        "factionTypes" -> league.factions,
+        "limitTypes" -> league.limits,
         "periods" -> league.periods,
         "currentPeriod" -> league.currentPeriod,
         "started" -> league.league.started,
@@ -46,13 +46,13 @@ object LeagueFull{
         "periodDescription" -> league.league.periodDescription,
         "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
-        "url" -> {if league.league.urlVerified) league.league.url else ""
+        "url" -> {if (league.league.urlVerified) league.league.url else ""}
       )
     }
   }
 }
 
-case class LeagueFullQuery(league: League, period: Option[Period], factionType: Option[FactionType], faction: Option[Faction], statField: Option[LeagueStatField])
+case class LeagueFullQuery(league: League, period: Option[Period], limitType: Option[LimitType], limit: Option[Limit], statField: Option[LeagueStatField])
 
 
 trait LeagueRepo{
@@ -81,10 +81,10 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
   }
 
   override def getWithRelated(id: Long): LeagueFull = {
-    val queryResult = join(leagueTable, periodTable.leftOuter, factionTypeTable.leftOuter, factionTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) => 
+    val queryResult = join(leagueTable, periodTable.leftOuter, limitTypeTable.leftOuter, limitTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) =>
         where(l.id === id)
         select((l, p, ft, f, s))
-        on(l.id === p.map(_.leagueId), l.id === ft.map(_.leagueId), f.map(_.factionTypeId) === ft.map(_.id), s.map(_.leagueId) === l.id)
+        on(l.id === p.map(_.leagueId), l.id === ft.map(_.leagueId), f.map(_.limitTypeId) === ft.map(_.id), s.map(_.leagueId) === l.id)
         ).map(LeagueFullQuery.tupled(_))
     leagueFullQueryExtractor(queryResult)
         // deconstruct tuple
@@ -158,10 +158,10 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     println(periods)
     val currentPeriod = periods.find(p => league.currentPeriodId.contains(p.id))
     val statFields = q.flatMap(_.statField).toSet
-    val factions = q.map(f => (f.factionType, f.faction)).filter(_._2.isDefined).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
-    // keep factions as well
-    val factionsOut = factions.map({case (k, v) => FactionTypeOut(k.name, k.description, v)})
-    LeagueFull(league, factionsOut, periods, currentPeriod, statFields)
+    val limits = q.map(f => (f.limitType, f.limit)).filter(_._2.isDefined).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
+    // keep limits as well
+    val limitsOut = limits.map({case (k, v) => LimitTypeOut(k.name, k.description, v)})
+    LeagueFull(league, limitsOut, periods, currentPeriod, statFields)
   }
 
   override def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period = {

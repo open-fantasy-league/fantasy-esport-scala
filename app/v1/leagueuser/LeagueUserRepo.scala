@@ -237,7 +237,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     val rankings = includeTeam match{
       case false => {
         val stats = this.getLeagueUserStatsWithUser(league.id, statField.id, period)
-        var lastScore = Double.MaxValue // TODO java max num
+        var lastScore = Double.MaxValue
         var lastScoreRank = 0
         stats.zipWithIndex.map({case (q, i) => {
           val value = q._3.value
@@ -254,7 +254,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
         }})}
       case true => {
         val stats = this.getLeagueUserStatsAndTeam(league, statField.id, period, None).toList.groupByOrdered(_._1).toList
-        var lastScore = Double.MaxValue // TODO java max num
+        var lastScore = Double.MaxValue
         var lastScoreRank = 0
         val tmp = stats.map({case (u, v) => {
           val team = v.flatMap(_._4)
@@ -300,7 +300,6 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   }
 
   override def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)] = {
-    // TODO cross joins go weird?
     val q = join(
       leagueStatFieldTable, leagueUserStatTable.leftOuter, leagueUserStatDailyTable.leftOuter
     )((lsf, lus, s) =>
@@ -310,7 +309,6 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
         select (lsf, s.get)
         on(lsf.id === lus.map(_.statFieldId), s.map(_.leagueUserStatId) === lus.map(_.id))
     ).toList
-    //println(q.mkString(", "))
     q
   }
 
@@ -369,10 +367,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
 
   override def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
-    // TODO what about current day?
-    // squeryl optionally do tp map if period exists
-    // TODO add new timestamp field to transfer? so in future can construct team at any time just from transfers table
-    // cannot dynamically specify table or will not compile
+    // hahaha. rofllwefikl!s
     (period, league.currentPeriod, timestamp) match {
       case (None, _, None) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
       case (_, None, _) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)

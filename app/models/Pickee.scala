@@ -12,7 +12,7 @@ class Pickee(
               var active: Boolean = true,
             ) extends KeyedEntity[Long] {
   val id: Long = 0
-  lazy val factions = AppDB.pickeeFactionTable.left(this)
+  lazy val limits = AppDB.pickeeLimitTable.left(this)
 
 }
 
@@ -54,9 +54,9 @@ class PickeeStatDaily(
   val id: Long = 0
 }
 
-class PickeeFaction(
+class PickeeLimit(
                   val pickeeId: Long,
-                  val factionId: Long,
+                  val limitId: Long,
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

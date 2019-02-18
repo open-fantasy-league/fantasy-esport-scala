@@ -47,7 +47,6 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def joinLeague(userId: String, leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction {
-        // TODO check not already joined
         (for {
           userId <- parseLongId(userId, "User")
           user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
@@ -85,14 +84,12 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
   }
   // TODO tolerantJson?
-  // TODO userAuth -- associate a user with apiKey that created it?
   def update(userId: String) = Action.async(parse.json) { implicit request =>
     processJsonUpdateUser(userId)
   }
 
   def add = Action.async(parse.json){ implicit request =>
     processJsonUser()
-//    scala.concurrent.Future{ Ok(views.html.index())}
   }
 
   private def processJsonUser[A]()(implicit request: Request[A]): Future[Result] = {
@@ -101,7 +98,6 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
 
     def success(input: UserFormInput) = {
-      println("yay")
       inTransaction {
         println(input.username)
         println(input.userId)
@@ -119,8 +115,6 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     }
 
     def success(input: UpdateUserFormInput) = {
-      println("yay")
-
       Future {
         inTransaction {
           (for {

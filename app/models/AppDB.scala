@@ -18,8 +18,8 @@ object AppDB extends Schema {
   val leagueStatFieldTable = table[LeagueStatField]("league_stat_field")
   val periodTable = table[Period]("period")
   val pickeeTable = table[Pickee]("pickee")
-  val factionTypeTable = table[FactionType]("faction_type")
-  val factionTable = table[Faction]("faction")
+  val limitTypeTable = table[LimitType]("limit_type")
+  val limitTable = table[Limit]("limit")
   val teamTable = table[Team]("team")
   val teamPickeeTable = table[TeamPickee]("team_pickee")
   val pickeeStatTable = table[PickeeStat]("pickee_stat")
@@ -35,22 +35,22 @@ object AppDB extends Schema {
   manyToManyRelation(leagueTable, userTable, "league_user").
     via[LeagueUser]((l, u, lu) => (lu.leagueId === l.id, u.id === lu.userId))
 
-  // although you can argue a faction can be applicable to multiple leagues
-  // the way factions are used to limit pickees, differently for different leagues,
-  // means each identically named faction type needs to be treated separately for different leagues
-  // (i.e. when you update faction limit to say 'can only have 2, not 3, players from team A for league 1202,
+  // although you can argue a limit can be applicable to multiple leagues
+  // the way limits are used to limit pickees, differently for different leagues,
+  // means each identically named limit type needs to be treated separately for different leagues
+  // (i.e. when you update limit limit to say 'can only have 2, not 3, players from team A for league 1202,
   // league 1201 shouldnt suddenly change limits)
-  val leagueToFactionType =
-    oneToManyRelation(leagueTable, factionTypeTable).
+  val leagueToLimitType =
+    oneToManyRelation(leagueTable, limitTypeTable).
       via((l, ft) => l.id === ft.leagueId)
 
-  val factionTypeToFaction =
-    oneToManyRelation(factionTypeTable, factionTable).
-      via((ft, o) => ft.id === o.factionTypeId)
+  val limitTypeToLimit =
+    oneToManyRelation(limitTypeTable, limitTable).
+      via((ft, o) => ft.id === o.limitTypeId)
 
-  val pickeeFactionTable =
-    manyToManyRelation(pickeeTable, factionTable, "pickee_faction").
-      via[PickeeFaction]((p, f, pf) => (pf.pickeeId === p.id, f.id === pf.factionId))
+  val pickeeLimitTable =
+    manyToManyRelation(pickeeTable, limitTable, "pickee_limit").
+      via[PickeeLimit]((p, f, pf) => (pf.pickeeId === p.id, f.id === pf.limitId))
 
   // lets do all our oneToMany foreign keys
   val leagueUserToLeagueUserStat =
@@ -150,13 +150,13 @@ object AppDB extends Schema {
     declare(columns(t.value, t.leagueId) are unique)
   })
   on(leaguePrizeTable)(t => declare(t.leagueId is indexed))
-  on(factionTypeTable)(t => {
+  on(limitTypeTable)(t => {
     declare(columns(t.leagueId, t.name) are indexed)
     declare(columns(t.leagueId, t.name) are unique)
   })
-  on(factionTable)(t => {
-    declare(columns(t.factionTypeId, t.name) are indexed)
-    declare(columns(t.factionTypeId, t.name) are unique)
+  on(limitTable)(t => {
+    declare(columns(t.limitTypeId, t.name) are indexed)
+    declare(columns(t.limitTypeId, t.name) are unique)
   })
   on(leagueUserTable)(t => {
     declare(columns(t.changeTstamp, t.leagueId, t.userId) are indexed)
@@ -199,9 +199,9 @@ object AppDB extends Schema {
     declare(columns(t.period, t.pickeeStatId) are unique)
 
   })
-  on(pickeeFactionTable)(t => {
-    declare(columns(t.factionId, t.pickeeId) are indexed)
-    declare(columns(t.factionId, t.pickeeId) are unique)
+  on(pickeeLimitTable)(t => {
+    declare(columns(t.limitId, t.pickeeId) are indexed)
+    declare(columns(t.limitId, t.pickeeId) are unique)
   })
   on(resultTable)(t => {
     declare(columns(t.pickeeId, t.matchId) are indexed)

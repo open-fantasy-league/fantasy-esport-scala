@@ -15,8 +15,8 @@ import utils.IdParser
 import utils.TryHelper._
 import auth._
 import models.AppDB._
-import models.{League, FactionType, Faction,
-  PickeeFaction
+import models.{League, LimitType, Limit,
+  PickeeLimit
 }
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
@@ -24,9 +24,9 @@ import v1.pickee.{PickeeRepo, PickeeFormInput}
 case class PeriodInput(start: Timestamp, end: Timestamp, multiplier: Double)
 case class UpdatePeriodInput(start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double])
 
-case class FactionInput(name: String, max: Option[Int])
+case class LimitInput(name: String, max: Option[Int])
 
-case class FactionTypeInput(name: String, description: Option[String], max: Option[Int], types: List[FactionInput])
+case class LimitTypeInput(name: String, description: Option[String], max: Option[Int], types: List[LimitInput])
 
 case class TransferInput(
                           transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
@@ -35,7 +35,7 @@ case class TransferInput(
 
 // TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
-                           periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, factions: List[FactionTypeInput],
+                           periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: Option[List[String]],
                            pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String,
@@ -83,21 +83,20 @@ class LeagueController @Inject()(
           "transferBlockedDuringPeriod" -> default(boolean, false),
           "noWildcardForLateRegister" -> default(boolean, false),
         )(TransferInput.apply)(TransferInput.unapply),
-        "factions" -> list(mapping(
+        "limits" -> list(mapping(
           "name" -> nonEmptyText,
           "description" -> optional(nonEmptyText),
           "max" -> optional(number),
           "types" -> list(mapping(
             "name" -> nonEmptyText,
             "max" -> optional(number)
-          )(FactionInput.apply)(FactionInput.unapply))
-        )(FactionTypeInput.apply)(FactionTypeInput.unapply)),
+          )(LimitInput.apply)(LimitInput.unapply))
+        )(LimitTypeInput.apply)(LimitTypeInput.unapply)),
         "startingMoney" -> default(bigDecimal(10, 1), BigDecimal.decimal(50.0)),
-        //"factions" -> List of stuff
     // also singular prize with description and email fields
         "prizeDescription" -> optional(nonEmptyText),
         "prizeEmail" -> optional(nonEmptyText),
-        // dont need a list of factions as input, as we just take them from their entry in pickee list
+        // dont need a list of limits as input, as we just take them from their entry in pickee list
         "extraStats" -> optional(list(nonEmptyText)), // i.e. picks, wins. extra info to display on leaderboards other than points
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
         "pickees" -> list(mapping(
@@ -105,7 +104,7 @@ class LeagueController @Inject()(
           "name" -> nonEmptyText,
           "value" -> bigDecimal(10, 1),
           "active" -> default(boolean, true),
-          "factions" -> list(nonEmptyText),
+          "limits" -> list(nonEmptyText),
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number),
         "apiKey" -> nonEmptyText,
@@ -209,14 +208,12 @@ class LeagueController @Inject()(
   }
 
   def startPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
-    println(request.apiKey)
-    println(request.league)
     Future {
       inTransaction {
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league)
           _ = leagueRepo.postStartPeriodHook(request.league, newPeriod, new Timestamp(System.currentTimeMillis()))
-          out = Ok(f"Successfully started period $newPeriod") // TODO replace with period descriptor
+          out = Ok(f"Successfully started period $newPeriod")
         } yield out).fold(identity, identity)
       }
     }
@@ -263,7 +260,6 @@ class LeagueController @Inject()(
     }
 
     def success(input: LeagueFormInput): Future[Result] = {
-      println("yay")
       Future{
       inTransaction {
         val newLeague = leagueRepo.insert(input)
@@ -292,23 +288,20 @@ class LeagueController @Inject()(
           newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
           newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
         }})
-        val factionNamesToIds =  collection.mutable.Map[String, Long]()
+        val limitNamesToIds =  collection.mutable.Map[String, Long]()
 
-        input.factions.foreach(ft => {
-          val newFactionType = factionTypeTable.insert(
-            new FactionType(newLeague.id, ft.name, ft.description.getOrElse(ft.name), ft.max)
+        input.limits.foreach(ft => {
+          val newLimitType = limitTypeTable.insert(
+            new LimitType(newLeague.id, ft.name, ft.description.getOrElse(ft.name), ft.max)
           )
           ft.types.foreach(f => {
-            val newFaction = factionTable.insert(new Faction(newFactionType.id, f.name, ft.max.getOrElse(f.max.get)))
-            factionNamesToIds(newFaction.name) = newFaction.id.toLong
+            val newLimit = limitTable.insert(new Limit(newLimitType.id, f.name, ft.max.getOrElse(f.max.get)))
+            limitNamesToIds(newLimit.name) = newLimit.id.toLong
           })
-          //if (input.pickees.flatMap(_.factions) not in factionNames)
-          // rollback
-          // BadRequest("Invalid pickee faction type given")
         })
-        input.pickees.zipWithIndex.foreach({case (p, i) => p.factions.foreach({
+        input.pickees.zipWithIndex.foreach({case (p, i) => p.limits.foreach({
           // Try except key error
-          f => pickeeFactionTable.insert(new PickeeFaction(newPickeeIds(i), factionNamesToIds.get(f).get))
+          f => pickeeLimitTable.insert(new PickeeLimit(newPickeeIds(i), limitNamesToIds(f)))
         })})
 
           Created(Json.toJson(newLeague))
