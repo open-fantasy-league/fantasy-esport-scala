@@ -11,7 +11,7 @@ import v1.leagueuser.LeagueUserRepo
 
 case class TeamFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, delaySeconds: Option[Int])
 
-class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
   implicit val parser = parse.default
 
@@ -20,9 +20,10 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   }
 
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+    // TODO yo this is so inefficient
     Future {
       inTransaction {
-        Ok(Json.toJson(request.league.users.associations.map(lu => lu.team.map(_.pickee).toList)))
+        Ok(Json.toJson(request.league.users.associations.map(lu => teamRepo.getLeagueUserTeam(lu).flatMap(_._2))))
       }
     }
   }

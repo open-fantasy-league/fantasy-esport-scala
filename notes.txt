@@ -57,4 +57,5 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # ------------------------------------- make time's utc
 # check wildcard and rebuy same hero
 # check transfer delay with real value works
-# how the fuck does admin actually work with syntax fuckups?
+# ------------------------------------- how the fuck does admin actually work with syntax fuckups?
+# upgrade srvr pgres

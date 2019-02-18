@@ -20,6 +20,7 @@ object AppDB extends Schema {
   val pickeeTable = table[Pickee]("pickee")
   val factionTypeTable = table[FactionType]("faction_type")
   val factionTable = table[Faction]("faction")
+  val teamTable = table[Team]("team")
   val teamPickeeTable = table[TeamPickee]("team_pickee")
   val historicTeamPickeeTable = table[HistoricTeamPickee]("historic_team_pickee")
   val pickeeStatTable = table[PickeeStat]("pickee_stat")
@@ -113,9 +114,13 @@ object AppDB extends Schema {
     oneToManyRelation(leagueUserTable, transferTable).
       via((lu, o) => lu.id === o.leagueUserId)
 
-  val leagueUserToTeamPickee =
-    oneToManyRelation(leagueUserTable, teamPickeeTable).
+  val leagueUserToTeam =
+    oneToManyRelation(leagueUserTable, teamTable).
       via((lu, o) => lu.id === o.leagueUserId)
+
+  val teamToTeamPickee =
+    oneToManyRelation(teamTable, teamPickeeTable).
+      via((t, o) => t.id === o.teamId)
 
   val resultToPoints =
     oneToManyRelation(resultTable, pointsTable).
@@ -179,9 +184,15 @@ object AppDB extends Schema {
     declare(columns(t.externalId, t.leagueId) are unique)
     declare(columns(t.name, t.leagueId) are unique)
   })
+  on(teamTable)(t => {
+    declare(columns(t.leagueUserId, t.started, t.ended) are indexed)
+    // use fancy constaint for time-range
+    declare(columns(t.leagueUserId, t.started) are unique)
+    declare(columns(t.leagueUserId, t.ended) are unique)
+  })
   on(teamPickeeTable)(t => {
-    declare(columns(t.leagueUserId, t.pickeeId) are indexed)
-    declare(columns(t.leagueUserId, t.pickeeId) are unique)
+    declare(columns(t.teamId, t.pickeeId) are indexed)
+    declare(columns(t.teamId, t.pickeeId) are unique)
   })
   on(historicTeamPickeeTable)(t => {
     declare(columns(t.leagueUserId, t.pickeeId, t.period) are indexed)

@@ -11,9 +11,8 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
-import scala.util.Try
 import models._
-import utils.IdParser.parseLongId
+import models.AppDB._
 import utils.TryHelper.tryOrResponse
 import auth._
 
@@ -86,14 +85,14 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: League): List[InternalPickee] = {
     pickees.map(ip => {
-      val internalId = AppDB.pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.id).single.id
+      val internalId = pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.id).single.id
       InternalPickee(internalId, ip.isTeamOne, ip.stats)
     })
   }
 
   private def newMatch(input: ResultFormInput, league: League): Either[Result, Matchu] = {
     // TODO log/get original stack trace
-    tryOrResponse[Matchu](() => AppDB.matchTable.insert(new Matchu(
+    tryOrResponse[Matchu](() => matchTable.insert(new Matchu(
       league.id, input.matchId, league.currentPeriod.getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
       input.teamOneVictory, input.startTstamp, new Timestamp(System.currentTimeMillis())
     )), InternalServerError("Internal server error adding match"))
@@ -104,7 +103,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     val newRes = pickees.map(p => new Resultu(
       matchu.id, p.id, p.isTeamOne
     ))
-    tryOrResponse(() => {AppDB.resultTable.insert(newRes); newRes}, InternalServerError("Internal server error adding result"))
+    tryOrResponse(() => {resultTable.insert(newRes); newRes}, InternalServerError("Internal server error adding result"))
   }
 
   private def newStats(league: League, matchId: Long, pickees: List[InternalPickee]): Either[Result, List[(Points, Long)]] = {
@@ -117,18 +116,18 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     // TODO log/get original stack trace
     // DOLIST actually creatte leagueuserstats tables
     val newStats = pickees.flatMap(ip => ip.stats.map(s => {
-      val result = AppDB.resultTable.where(
+      val result = resultTable.where(
         r => r.matchId === matchId and r.pickeeId === ip.id
         ).single
       println(result)
       val points = if (s.field == "points") s.value * league.currentPeriod.get.multiplier else s.value
-      (new Points(result.id, AppDB.leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
+      (new Points(result.id, leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
         ip.id)
     }))
     // TODO try top option right func
-    tryOrResponse(() => {AppDB.pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
-//    Try(AppDB.pointsTable.insert(input.pickees.map(ip => new Resultu(
-//      matchu.id, AppDB.pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.externalId).single.id,
+    tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
+//    Try(pointsTable.insert(input.pickees.map(ip => new Resultu(
+//      matchu.id, pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.externalId).single.id,
 //      input.startTstamp, new Timestamp(System.currentTimeMillis()), ip.isTeamOne
 //    )))).toRight(InternalServerError("Internal server error adding result"))
   }
@@ -136,31 +135,36 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
   private def updateStats(newStats: List[(Points, Long)], league: League): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
-        val pickeeStat = AppDB.pickeeStatTable.where(
+        val pickeeStat = pickeeStatTable.where(
           ps => ps.statFieldId === s.pointsFieldId and ps.pickeeId === pickeeId
         ).single
         println(pickeeStat)
         println(s.value)
         println(s.pointsFieldId)
         // has both the specific period and the overall entry
-        val pickeeStats = AppDB.pickeeStatDailyTable.where(
+        val pickeeStats = pickeeStatDailyTable.where(
           psd => psd.pickeeStatId === pickeeStat.id and (psd.period === league.currentPeriod.getOrElse(new Period()).value or psd.period.isNull)
         )
-        AppDB.pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
-        val leagueUserStats = from(AppDB.leagueTable, AppDB.leagueUserTable, AppDB.teamPickeeTable, AppDB.leagueUserStatTable, AppDB.leagueUserStatDailyTable, AppDB.periodTable)((l, lu, tp, lus, lusd, p) =>
+        pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
+        val leagueUserStats = from(
+          leagueTable, leagueUserTable, teamTable, teamPickeeTable, leagueUserStatTable,
+          leagueUserStatDailyTable, periodTable)((l, lu, t, tp, lus, lusd, p) =>
           //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.period.isNull or lusd.period === p.value))
-          where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value) and from(AppDB.teamPickeeTable)(tp => where(tp.leagueUserId === lu.id) compute(count(tp.id))) === l.teamSize)
+          where(lu.leagueId === league.id and t.leagueUserId === lu.id and t.ended.isNull and tp.teamId === t.id and tp.pickeeId === pickeeId
+            and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId
+            and p.id === league.currentPeriodId.get and (lusd.period.isNull or lusd.period === p.value) and
+            from(teamPickeeTable)(tp => where(tp.teamId === t.id) compute(count(tp.id))) === l.teamSize)
             select(lusd)
             //group(lu)(where count(tp) == l.teamSize)
         )
         println(s"""leagueUserStats ${leagueUserStats.mkString(",")}""")
-        /*val leagueUserStat = AppDB.leagueUserStatTable.where(
+        /*val leagueUserStat = leagueUserStatTable.where(
           lus => lus.leagueUserId in leagueUsers and lus.statFieldId === s.pointsFieldId
         )
-        val leagueUserStats = AppDB.leagueUserStatDailyTable.where(
+        val leagueUserStats = leagueUserStatDailyTable.where(
           lud => lud.leagueUserStatId in leagueUserStat.map(_.id) and (lud.period === league.currentPeriod.getOrElse(new Period()).value or lud.period.isNull)
         )*/
-        AppDB.leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
+        leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
         true // whats a good thing to put here
         // now update league user points if pickee in team
     }}), InternalServerError("Internal server error updating stats"))

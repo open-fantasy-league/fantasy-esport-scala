@@ -14,8 +14,10 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
+import models.AppDB._
 import auth._
 import v1.leagueuser.LeagueUserRepo
+import v1.team.TeamRepo
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
@@ -32,7 +34,9 @@ object TransferSuccess{
   }
 }
 
-class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TransferController @Inject()(
+                                    cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
+                                    leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -61,7 +65,7 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
         val currentTime = new Timestamp(System.currentTimeMillis())
         // TODO better way? hard with squeryls weird dsl
         val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-          .map(processLeagueUserTransfer)
+          .map(transferRepo.processLeagueUserTransfer)
         Ok("Transfer updates processed")
       }
     }
@@ -107,14 +111,13 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
             newRemaining <- updatedRemainingTransfers(leagueUser, sell)
             pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeam = leagueUser.team.toList
-          // TODO log internal server errors as well
-            currentTeamIds <- Try(currentTeam.map(tp => pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
-              .toOption.toRight(InternalServerError("Missing pickee externalId"))
+            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2).map(
+              tp => pickees.find(lp => lp.id == tp.id).get.externalId).toSet
+            ).toOption.toRight(InternalServerError("Missing pickee externalId"))
             _ = println(currentTeamIds)
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
             _ = println(sellOrWildcard)
-            isValidPickees <- validatePickeeIds(currentTeamIds, pickees, sell, buy)
+            _ <- validatePickeeIds(currentTeamIds, pickees, sell, buy)
             newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateFactionLimit(newTeamIds, league)
@@ -218,53 +221,31 @@ class TransferController @Inject()(cc: ControllerComponents, Auther: Auther, tra
     val currentEpochTime = System.currentTimeMillis()
     val currentTime = new Timestamp(currentEpochTime)
     val scheduledUpdateTime = transferDelay.map(td => new Timestamp(currentEpochTime + TimeUnit.MINUTES.toMillis(td)))
-    if (toSell.nonEmpty) {
-      AppDB.transferTable.insert(toSell.map(ts => pickees.find(_.externalId == ts).get).map(
-        p => new Transfer(
-          leagueUser.id, p.id, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-            scheduledUpdateTime.isEmpty, p.cost, applyWildcard
-          )
-      ))
-      // TODO log internal server errors as well
-      //currentTeamIds <- Try(leagueUser.team.map(tp => league.pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet)
-      if (scheduledUpdateTime.isEmpty) {
-        AppDB.teamPickeeTable.deleteWhere(tp => tp.pickeeId in toSell.map(ts => pickees.find(_.externalId == ts).get.id))
-      }
-    }
-    if (toBuy.nonEmpty) {
-      AppDB.transferTable.insert(toBuy.map(tb => pickees.find(_.externalId == tb).get).map(
-        p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-          scheduledUpdateTime.isEmpty, p.cost)
-      ))
-      // TODO period -1
-      // TODO have active before tounr,manet start, but not after it started
-      println(s"""tobuy ${toBuy.mkString("")}""")
-      if (scheduledUpdateTime.isEmpty) {
-        AppDB.teamPickeeTable.insert(toBuy.map(tb => new TeamPickee(pickees.find(_.externalId == tb).get.id, leagueUser.id)))
-      }
+    val toSellPickees = toSell.map(ts => pickees.find(_.externalId == ts).get)
+    transferTable.insert(toSellPickees.map(
+      p => new Transfer(
+        leagueUser.id, p.id, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+          scheduledUpdateTime.isEmpty, p.cost, applyWildcard
+        )
+    ))
+    val toBuyPickees = toBuy.map(tb => pickees.find(_.externalId == tb).get)
+    transferTable.insert(toBuyPickees.map(
+      p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+        scheduledUpdateTime.isEmpty, p.cost)
+    ))
+    val currentTeamQ = teamRepo.getLeagueUserTeam(leagueUser)
+    if (scheduledUpdateTime.isEmpty) {
+      transferRepo.changeTeam(
+        leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeamQ.flatMap(_._2).map(_.id).toSet,
+        currentTeamQ.headOption.map(_._1), currentTime
+      )
     }
     leagueUser.money = newMoney
     leagueUser.remainingTransfers = newRemaining
     leagueUser.changeTstamp = scheduledUpdateTime
     if (applyWildcard) leagueUser.usedWildcard = true
-    AppDB.leagueUserTable.update(leagueUser)
+    leagueUserTable.update(leagueUser)
     Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining))))
-  }
-
-  private def processLeagueUserTransfer(leagueUser: LeagueUser) = {
-    // TODO need to lock here?
-    // TODO map and filter together
-    println("in proc trans")
-    val transfers = AppDB.transferTable.where(t => t.processed === false and t.leagueUserId === leagueUser.id)
-    AppDB.teamPickeeTable.insert(transfers.filter(_.isBuy).map(t => new TeamPickee(t.pickeeId, t.leagueUserId)))
-    AppDB.teamPickeeTable.deleteWhere(tp =>
-      (tp.leagueUserId === leagueUser.id) and (tp.pickeeId in transfers.filter(!_.isBuy).map(_.pickeeId))
-    )
-    AppDB.transferTable.update(transfers.map(t => {
-      t.processed = true; t
-    }))
-    leagueUser.changeTstamp = None
-    AppDB.leagueUserTable.update(leagueUser)
   }
 
   private def shouldApplyWildcard(attemptingWildcard: Boolean, league: League, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Boolean] = {

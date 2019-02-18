@@ -65,8 +65,6 @@ trait LeagueRepo{
   def getNextPeriod(league: League): Either[Result, Period]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
-  def addHistoricTeams(league: League)
-  def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def updateHistoricRanks(league: League)
   def postStartPeriodHook(league: League, period: Period)
   def postEndPeriodHook(league: League, period: Period)
@@ -200,20 +198,11 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     })
   }
 
-  override def addHistoricTeams(league: League) = {
-      league.users.associations.map(_.team).map(addHistoricTeamPickee(_, league.currentPeriod.get.value))
-  }
-
-  override def addHistoricTeamPickee(team: Iterable[TeamPickee], currentPeriod: Int) = {
-    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentPeriod)))
-  }
-
   override def postEndPeriodHook(league: League, period: Period) = {
     period.ended = true
     periodTable.update(period)
     league.transferOpen = true
     leagueTable.update(league)
-    addHistoricTeams(league)
   }
 
   override def postStartPeriodHook(league: League, period: Period) = {

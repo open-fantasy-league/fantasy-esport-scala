@@ -31,7 +31,7 @@ object Pickee{
 
 class TeamPickee(
                   var pickeeId: Long,
-                  var leagueUserId: Long
+                  var teamId: Long
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
   lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single

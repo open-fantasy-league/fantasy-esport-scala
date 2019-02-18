@@ -12,16 +12,16 @@ import models._
 class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TeamRepo{
-  def getLeagueUserTeam(leagueUser: LeagueUser): List[Pickee]
+  def getLeagueUserTeam(leagueUser: LeagueUser): List[(Team, Option[Pickee])]
 }
 
 @Singleton
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
-  override def getLeagueUserTeam(leagueUser: LeagueUser): List[Pickee] = {
-    val query = join(teamPickeeTable, pickeeTable.leftOuter)((tp, p) => 
-        where(tp.leagueUserId === leagueUser.id)
-        select(p.get)
-        on(tp.pickeeId === p.map(_.id))
+  override def getLeagueUserTeam(leagueUser: LeagueUser): List[(Team, Option[Pickee])] = {
+    val query = join(teamTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((t, tp, p) =>
+        where(t.leagueUserId === leagueUser.id)
+        select(t, p)
+        on(tp.map(_.teamId) === t.id, tp.map(_.pickeeId) === p.map(_.id))
         )
     query.toList
   }

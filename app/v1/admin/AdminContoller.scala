@@ -10,8 +10,11 @@ import scala.concurrent.{ExecutionContext, Future}
 import models._
 import auth._
 import v1.league.LeagueRepo
+import v1.transfer.TransferRepo
 
-class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo, auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class AdminController @Inject()(
+                                 cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
+                                 auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
@@ -23,7 +26,7 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
         val updates = from(AppDB.leagueUserTable)(lu =>
               where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
               select(lu)
-            ).map(processLeagueUserTransfer)
+            ).map(transferRepo.processLeagueUserTransfer)
         Ok("Transfer updates processed")
       }
     }
@@ -48,21 +51,6 @@ class AdminController @Inject()(cc: ControllerComponents, leagueRepo: LeagueRepo
         Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email", 1))))
       }
     }
-  }
-
-  private def processLeagueUserTransfer(leagueUser: LeagueUser) = {
-    // TODO map and filter together
-    println("in proc trans")
-    val transfers = AppDB.transferTable.where(t => t.processed === false and t.leagueUserId === leagueUser.id)
-    AppDB.teamPickeeTable.insert(transfers.filter(_.isBuy).map(t => new TeamPickee(t.pickeeId, t.leagueUserId)))
-    AppDB.teamPickeeTable.deleteWhere(tp =>
-      (tp.leagueUserId === leagueUser.id) and (tp.pickeeId in transfers.filter(!_.isBuy).map(_.pickeeId))
-    )
-    AppDB.transferTable.update(transfers.map(t => {
-      t.processed = true; t
-    }))
-    leagueUser.changeTstamp = None
-    AppDB.leagueUserTable.update(leagueUser)
   }
 
 }

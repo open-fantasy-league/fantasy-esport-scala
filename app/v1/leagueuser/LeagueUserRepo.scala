@@ -133,17 +133,17 @@ trait LeagueUserRepo{
   def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
   def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
-  def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int]):
+  def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
-  def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int]):
+  def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
-  def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int]):
+  def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
   def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
-  def addHistoricTeams(league: League)
-  def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
+//  def addHistoricTeams(league: League)
+//  def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int)
   def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut]
   def joinUsers(users: Iterable[User], league: League): Iterable[LeagueUser]
   def userInLeague(userId: Long, leagueId: Long): Boolean
@@ -175,7 +175,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     val team = showTeam match{
       case false => None
       case true => {
-        Some(teamRepo.getLeagueUserTeam(leagueUser))
+        Some(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2))
       }
     }
     // todo boolean to option?
@@ -253,7 +253,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        val stats = this.getLeagueUserStatsAndTeam(league, statField.id, period).toList.groupByOrdered(_._1).toList
+        val stats = this.getLeagueUserStatsAndTeam(league, statField.id, period, None).toList.groupByOrdered(_._1).toList
         var lastScore = Double.MaxValue // TODO java max num
         var lastScoreRank = 0
         val tmp = stats.map({case (u, v) => {
@@ -329,68 +329,69 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )
   }
 
-  override def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int]):
+  override def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
       join (
-        userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
-      ) ((u, lu, lus, s, tp, p, t) =>
+        userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable.leftOuter,
+        teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
+      ) ((u, lu, lus, s, team, tp, p, t) =>
         where (
-          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period.isNull and team.map(_.ended.isEmpty) === true
         )
-          select ((u, lus, s, p) )
+          select ((u, lus, s, p))
           orderBy (s.value desc)
           on (
           lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
-          tp.map (_.leagueUserId) === lu.id, tp.map (_.pickeeId) === p.map (_.id), t.leagueUserId === lu.id)
+          team.map(_.leagueUserId) === lu.id, tp.map(_.teamId) === team.map(_.id), tp.map (_.pickeeId) === p.map (_.id), t.leagueUserId === lu.id)
       )
   }
 
-  override def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int]):
+  override def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
   Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     join (
-      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, historicTeamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
-    ) ((u, lu, lus, s, tp, p, t) =>
+      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable.leftOuter,
+      teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
+    ) ((u, lu, lus, s, team, tp, p, t) =>
       where (
-        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period and tp.map(_.period) === period
+        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === Some(period)
+        and team.map(_.started).map(_ < timestamp) and team.map(_.ended).map(_ >= timestamp)
       )
         select ((u, lus, s, p) )
         orderBy (s.value desc)
         on (
         lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
-        tp.map (_.leagueUserId) === lu.id, tp.map (_.pickeeId) === p.map (_.id), t.leagueUserId === lu.id)
+        team.map(_.leagueUserId) === lu.id, tp.map(_.teamId) === team.map(_.id), tp.map(_.pickeeId) === p.map (_.id), t.leagueUserId === lu.id)
     )
   }
 
-  override def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int]):
+  override def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     // TODO what about current day?
     // squeryl optionally do tp map if period exists
     // TODO add new timestamp field to transfer? so in future can construct team at any time just from transfers table
     // cannot dynamically specify table or will not compile
-    (period, league.currentPeriod) match {
-      case (None, _) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, period)
-      case (_, None) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, period)
-      case (Some(periodVal), Some(currentPeriod)) if periodVal == currentPeriod.value =>
-        this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, period)
-      case _ => this.leagueUserStatsAndHistoricTeamQuery(league.id, statFieldId, period)
+    (period, league.currentPeriod, timestamp) match {
+      case (None, _, None) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
+      case (_, None, _) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
+      case (Some(periodVal), Some(currentPeriod), None) if periodVal == currentPeriod.value =>
+        this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
+      case (Some(_), _, Some(_)) => throw new Exception("Specify period, or timestamp. not both")
+      case (None, _, Some(t)) => {
+        val period = from(periodTable)(
+          p => where(p.start > t and p.leagueId === league.id and p.end <= t)
+            select p
+        ).single
+        this.leagueUserStatsAndHistoricTeamQuery(league.id, statFieldId, period.value, t)
+      }
+      case (Some(pVal), _, None) => {
+        val endPeriodTstamp = from(periodTable)(
+          p => where(p.value === pVal and p.leagueId === league.id)
+          select p
+        ).single.end
+        this.leagueUserStatsAndHistoricTeamQuery(league.id, statFieldId, pVal, endPeriodTstamp)
+      }
     }
   }
-
-//  override def getLeagueUserStatsAndOldTeam(leagueId: Long, statFieldId: Long, period: Option[Int]):
-//  Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
-//    join(
-//      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, historicTeamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
-//    )((u, lu, lus, s, htp, p, t) =>
-//      where(
-//        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period and htp.map(_.period) === period
-//      )
-//        select ((u, lus, s, p))
-//        orderBy (s.value desc)
-//        on(
-//        lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
-//        htp.map(_.leagueUserId) === lu.id, htp.map(_.pickeeId) === p.map(_.id), t.leagueUserId === lu.id)
-//    )
-//  }
 
   override def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily]): Unit = {
     leagueUserStatDailyTable.update(newLeagueUserStatsDaily)
@@ -398,16 +399,6 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
 
   override def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat]): Unit = {
     leagueUserStatTable.update(newLeagueUserStats)
-  }
-
-  override def addHistoricTeams(league: League): Unit ={
-    (for{
-      _ <- league.users.associations.map(_.team).map(addHistoricPickee(_, league.currentPeriod.getOrElse(new Period()).value))
-    } yield None)
-  }
-
-  override def addHistoricPickee(team: Iterable[TeamPickee], currentPeriod: Int) = {
-    historicTeamPickeeTable.insert(team.map(t => new HistoricTeamPickee(t.pickeeId, t.leagueUserId, currentPeriod)))
   }
 
   override def getHistoricTeams(league: League, period: Int): Iterable[UserHistoricTeamOut] = {
@@ -435,24 +426,24 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   }
 
   override def userInLeague(userId: Long, leagueId: Long): Boolean = {
-    !from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).isEmpty
+    from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).nonEmpty
   }
 
   override def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut] = {
-    join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) =>
+    join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
           where(lu.leagueId === leagueId)
           select((lu, p))
-          on(lu.id === tp.map(_.leagueUserId), tp.map(_.pickeeId) === p.map(_.id))
+          on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
           ).groupBy(_._1).map({case (leagueUser, v) => {
             LeagueUserTeamOut(leagueUser, v.flatMap(_._2))
           }})
   }
 
   override def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut = {
-    val query = join(leagueUserTable, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, tp, p) => 
+    val query = join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
         where(lu.leagueId === leagueId and lu.userId === userId)
         select((lu, p))
-        on(lu.id === tp.map(_.leagueUserId), tp.map(_.pickeeId) === p.map(_.id))
+        on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
         )
     val leagueUser = query.head._1
     val team = query.flatMap(_._2)

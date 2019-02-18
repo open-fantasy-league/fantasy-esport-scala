@@ -16,10 +16,10 @@ class LeagueUser(
                   var changeTstamp: Option[Timestamp] = None
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
-  lazy val team = AppDB.leagueUserToTeamPickee.left(this)
+  //lazy val team = AppDB.leagueUserToTeam.left(this)
   lazy val league = AppDB.leagueUserTable.leftTable
   lazy val user = AppDB.leagueUserTable.rightTable
-  lazy val transfers = AppDB.leagueUserToTransfer.left(this)
+  //lazy val transfers = AppDB.leagueUserToTransfer.left(this)
 }
 
 object LeagueUser{
@@ -37,6 +37,14 @@ object LeagueUser{
       )
     }
   }
+}
+
+class Team(
+          val leagueUserId: Long,
+          val started: Timestamp,
+          var ended: Option[Timestamp] = None,
+          ) extends KeyedEntity[Long] {
+  val id: Long = 0
 }
 
 class LeagueUserStat(
