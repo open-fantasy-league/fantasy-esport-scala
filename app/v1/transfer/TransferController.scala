@@ -97,7 +97,7 @@ class TransferController @Inject()(
             _ <- validateDuplicates(input.sell, sell, input.buy, buy)
             validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
-            newRemaining <- updatedRemainingTransfers(leagueUser, sell)
+            newRemaining <- updatedRemainingTransfers(league, leagueUser, sell)
             pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
             currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2).map(
@@ -130,7 +130,10 @@ class TransferController @Inject()(
     Right(true)
   }
 
-  private def updatedRemainingTransfers(leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
+  private def updatedRemainingTransfers(league: League, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
+    if (!league.started){
+      return Right(leagueUser.remainingTransfers)
+    }
     val newRemaining = leagueUser.remainingTransfers.map(_ - toSell.size)
     newRemaining match{
       case Some(x) if x < 0 => Left(BadRequest(

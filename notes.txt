@@ -70,3 +70,7 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # -----------------------------results target period/team for timestamp!!!!
 # period constraints
 # rankings without team is broken (too many rows)
+
+alter table pickee alter column cost type numeric(3, 1);
+# rollback on error
+# years out by 1

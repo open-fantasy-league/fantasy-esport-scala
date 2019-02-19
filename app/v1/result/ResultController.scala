@@ -64,20 +64,26 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     }
 
     def success(input: ResultFormInput) = {
-      println("yay")
-      Future{
-        inTransaction {
-          (for {
-            validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
-            internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
-            now = new Timestamp(System.currentTimeMillis())
-            insertedMatch <- newMatch(input, league, now)
-            insertedResults <- newResults(input, league, insertedMatch, internalPickee)
-            insertedStats <- newStats(league, insertedMatch.id, internalPickee)
-            correctPeriod <- getPeriod(input, league, now)
-            updatedStats <- updateStats(insertedStats, league, correctPeriod)
-            success = "Successfully added results"
-          } yield success).fold(identity, Created(_))
+      Future {
+        var error: Option[Result] = None
+        try {
+          inTransaction {
+            (for {
+              validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
+              internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
+              now = new Timestamp(System.currentTimeMillis())
+              insertedMatch <- newMatch(input, league, now)
+              insertedResults <- newResults(input, league, insertedMatch, internalPickee)
+              insertedStats <- newStats(league, insertedMatch.id, internalPickee)
+              correctPeriod <- getPeriod(input, league, now)
+              updatedStats <- updateStats(insertedStats, league, correctPeriod)
+              success = "Successfully added results"
+            } yield success).fold(l => {
+              error = Some(l); throw new Exception("fuck")
+            }, Created(_))
+          }
+        } catch {
+          case _: Throwable => error.get
         }
       }
     }
@@ -101,7 +107,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     tryOrResponse(() => {from(periodTable)(
       p => where(p.start > targetedAtTstamp and p.leagueId === league.id and p.end <= targetedAtTstamp)
         select p
-    ).single.value}, BadRequest("Cannot add result outside of period"))
+    ).single.value}, InternalServerError("Cannot add result outside of period"))
   }
 
   private def newMatch(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Matchu] = {
