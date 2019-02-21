@@ -58,14 +58,14 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
       (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
       select((m, r, p, s, pck))
-      orderBy(p.value asc)
+      orderBy(m.targetedAtTstamp desc, p.value asc)
     )
     val query = queryRaw.map(q => ResultQuery(q._1, q._2, q._3, q._4, q._5))
     resultQueryExtractor(query)
   }
 
   override def resultQueryExtractor(query: Iterable[ResultQuery]): Iterable[ResultsOut] = {
-    val grouped = query.groupBy(_.matchu)
+    val grouped = query.groupByOrdered(_.matchu)
     grouped.map({case (matchu, v) => 
       val results = v.groupByOrdered(tup => (tup.resultu, tup.pickee)).map({case ((resultu, pickee), x) => SingleResult(resultu, pickee, x.map(y => y.statField.name -> y.points.value).toMap)})//(collection.breakOut): List[SingleResult]
       ResultsOut(matchu, results)

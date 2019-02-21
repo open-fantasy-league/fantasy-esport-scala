@@ -36,7 +36,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
                            oldTeamIds: Set[Long], oldTeam: Option[Team], time: Timestamp
                          ) = {
     val newTeam = teamTable.insert(new Team(leagueUser.id, time))
-    val newPickees: Set[Long] = oldTeamIds ++ toBuyIds -- toSellIds
+    val newPickees: Set[Long] = oldTeamIds -- toSellIds ++ toBuyIds
     oldTeam.foreach(t => {t.ended = Some(time); teamTable.update(t)})
     leagueUser.changeTstamp = None
     leagueUserTable.update(leagueUser)

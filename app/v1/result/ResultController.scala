@@ -99,11 +99,16 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
   }
 
   private def getPeriod(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Int] = {
+    println(league.applyPointsAtStartTime)
+    println(input.targetAtTstamp)
+    println(now)
+    println(input.startTstamp)
     val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
       case (_, true) => input.startTstamp
       case _ => now
     }
+    return Right(2)
     tryOrResponse(() => {from(periodTable)(
       p => where(p.start > targetedAtTstamp and p.leagueId === league.id and p.end <= targetedAtTstamp)
         select p

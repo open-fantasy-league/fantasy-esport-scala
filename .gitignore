@@ -11,3 +11,4 @@ target
 
 /.vscode
 *secure.conf
+/conf/application.conf
