@@ -135,7 +135,7 @@ trait LeagueUserRepo{
   def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
   def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
-  def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long):
+  def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long, statsPeriod: Option[Int]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
   def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
@@ -327,14 +327,15 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )
   }
 
-  override def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long):
+  override def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long, statsPeriod: Option[Int]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
       join (
         userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable.leftOuter,
         teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
       ) ((u, lu, lus, s, team, tp, p, t) =>
         where (
-          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period.isNull and team.map(_.ended.isNull)
+          lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === statsPeriod and
+            team.map(_.ended.isNull)
         )
           select ((u, lus, s, p))
           orderBy (s.value desc)
@@ -348,18 +349,21 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
   Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     println(timestamp)
     join (
-      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable.leftOuter,
+      userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable,
       teamPickeeTable.leftOuter, pickeeTable.leftOuter, transferTable
     ) ((u, lu, lus, s, team, tp, p, t) =>
       where (
-        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === period
-        and team.map(_.started).map(_ < timestamp).getOrElse(TrueLogicalBoolean) and team.flatMap(_.ended).map(_ >= timestamp).getOrElse(TrueLogicalBoolean)
+        lu.leagueId === leagueId and lus.statFieldId === statFieldId and s.period === Some(period)
+          and team.ended === from(teamTable)(t =>
+            where (t.leagueUserId === lu.id and t.started < timestamp and t.ended > timestamp)
+              compute(min(t.ended))
+        )
       )
       select ((u, lus, s, p))
       orderBy (s.value desc)
       on (
         lu.userId === u.id, lus.leagueUserId === lu.id, s.leagueUserStatId === lus.id,
-        team.map(_.leagueUserId) === lu.id, tp.map(_.teamId) === team.map(_.id), tp.map(_.pickeeId) === p.map(_.id),
+        team.leagueUserId === lu.id, tp.map(_.teamId) === team.id, tp.map(_.pickeeId) === p.map(_.id),
         t.leagueUserId === lu.id
       )
     )
@@ -369,10 +373,10 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     // hahaha. rofllwefikl!s
     (period, league.currentPeriod, timestamp) match {
-      case (None, _, None) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
-      case (_, None, _) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
+      case (None, _, None) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, None)
+      case (_, None, _) => this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, None)
       case (Some(periodVal), Some(currentPeriod), None) if periodVal == currentPeriod.value =>
-        this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId)
+        this.leagueUserStatsAndCurrentTeamQuery(league.id, statFieldId, Some(periodVal))
       case (Some(_), _, Some(_)) => throw new Exception("Specify period, or timestamp. not both")
       case (None, _, Some(t)) => {
         val period = from(periodTable)(
