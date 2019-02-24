@@ -1,4 +1,4 @@
-# Play REST API
+# Fantasy Esport API
 
 API responsible for storing and managing fantasy league teams and standings
 
