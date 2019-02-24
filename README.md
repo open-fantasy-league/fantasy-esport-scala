@@ -1,88 +1,44 @@
 # Play REST API
 
-[![Build Status](https://travis-ci.org/playframework/play-scala-rest-api-example.svg?branch=2.6.x)](https://travis-ci.org/playframework/play-scala-rest-api-example)
+API responsible for storing and managing fantasy league teams and standings
 
-This is the example project for [Making a REST API in Play](http://developer.lightbend.com/guides/play-rest-api/index.html).
+### leaderboards support:
+- supports daily/weekly leaderboards as well as whole league leaderboards
+- supports a 'previousRank' field so can show up/down arrows for recent progress
+- auto-rollover of days/periods (time to rollover can be specified)
 
-## Appendix
+### team support:
+- ability to verify transfers are valid before making them
+- update a team in bulk (multiple sell/buy at once)
+- configurable user money (1 decimal place)
+- ability to open and close transfer window
+- can autoclose transfer window whilst games in play
+- can add an optional 'wildcard' (reset team and set user money back to starting money)
+- can specify team size
+- can specify custom limits (i.e. only 4 defenders. only 3 players from team X). limit can be applied to everything (i.e. 3 players per team), or different numbers for each instance of limit (i.e. 4 defenders, but 2 strikers)
+- optional transfer delay
+
+### other support
+- lets you add any number of extra scoring fields, which are leaderboard accessible
+- supports points multipliers for different days/weeks
+- updating of players cost
+
 
 ### Running
 
-You need to download and install sbt for this application to run.
+requires jdk 1.8+ and scala 2.something?
+requires postgresql 9+ installed
+with that should just be able to git clone, then sbt run from project directory
 
-Once you have sbt installed, the following at the command prompt will start up Play in development mode:
+starts on port 9000
 
-```bash
-sbt run
-```
-
-Play will start up on the HTTP port at <http://localhost:9000/>.   You don't need to deploy or reload anything -- changing any source code while the server is running will automatically recompile and hot-reload the application on the next HTTP request. 
+bit hackily first have to create tables and add admin api user by calling home index (just localhost:9000), hopefully this will be better in future
 
 ### Usage
 
-If you call the same URL from the command line, you’ll see JSON. Using httpie, we can execute the command:
+there are lots of example api calls in the notes.txt (some may 404 due to syntax changing a little)
 
-```bash
-http --verbose http://localhost:9000/v1/posts
-```
-
-and get back:
-
-```routes
-GET /v1/posts HTTP/1.1
-```
-
-Likewise, you can also send a POST directly as JSON:
-
-```bash
-http --verbose POST http://localhost:9000/v1/posts title="hello" body="world"
-```
-
-and get:
-
-```routes
-POST /v1/posts HTTP/1.1
-```
-
-### Load Testing
-
-The best way to see what Play can do is to run a load test.  We've included Gatling in this test project for integrated load testing.
-
-Start Play in production mode, by [staging the application](https://www.playframework.com/documentation/2.5.x/Deploying) and running the play script:s
-
-```bash
-sbt stage
-cd target/universal/stage
-bin/play-rest-api-example -Dplay.crypto.secret=testing
-```
-
-Then you'll start the Gatling load test up (it's already integrated into the project):
-
-```bash
-sbt gatling:test
-```
-
-For best results, start the gatling load test up on another machine so you do not have contending resources.  You can edit the [Gatling simulation](http://gatling.io/docs/2.2.2/general/simulation_structure.html#simulation-structure), and change the numbers as appropriate.
-
-Once the test completes, you'll see an HTML file containing the load test chart:
-
-```bash
- ./rest-api/target/gatling/gatlingspec-1472579540405/index.html
-```
-
-That will contain your load test results.
-
-
-
-# for intellij install scala and sbt plugins.
-# also go project structure and find and use jdk 8
-# then edit configurations and add a 'run' for sbt
-
-
-#TODO:
-
-- have league generate an invite link (for now just do from leagueID)
-- have add user to league based off of said invite link
-- have result/match addition
-- have update stats/leaderboards loop
-- should go back to one big league table? also remember to add wildcard for leagueUsers
+### Info
+runs on scala play frame-work
+currently uses squeryl for db access/stuff, but will be replaced with scala slick
+permissive license so anyone can use/build upon themselves without issue
