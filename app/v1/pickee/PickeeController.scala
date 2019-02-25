@@ -69,7 +69,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
             val leaguePickees = pickeeRepo.getPickees(request.league.id)
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.externalId)).map(p => {
-              p.cost = pickees(p.id).cost
+              p.cost = pickees(p.externalId).cost
               p
             }))
             // TODO print out pickees that changed

@@ -8,7 +8,6 @@ target
 /.project
 /.settings
 /RUNNING_PID
-
 /.vscode
 *secure.conf
 /conf/application.conf
