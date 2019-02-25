@@ -29,6 +29,7 @@ libraryDependencies += filters
 libraryDependencies ++=  Seq(
   jdbc,
   "org.squeryl" %% "squeryl" % "0.9.10",
+  "com.typesafe.play" % "anorm_2.12" % "2.6.0-M1",
 //  "mysql" % "mysql-connector-java" % "5.1.10",
 //  "com.h2database" % "h2" % "1.4.196",
   //"org.postgresql" % "postgresql" % "9.3-1102-jdbc41"

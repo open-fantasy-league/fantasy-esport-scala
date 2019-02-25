@@ -1,6 +1,6 @@
 package v1.league
 
-import java.sql.Timestamp
+import java.sql.{Timestamp, Connection}
 
 import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
@@ -11,6 +11,8 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
+
+import play.api.db._
 import utils.IdParser
 import utils.TryHelper._
 import auth._
@@ -54,7 +56,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                                  )
 
 class LeagueController @Inject()(
-                                  cc: ControllerComponents, leagueRepo: LeagueRepo,
+                                  db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo,
                                   leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
                                   auther: Auther
                                 )(implicit ec: ExecutionContext) extends AbstractController(cc)
@@ -180,15 +182,22 @@ class LeagueController @Inject()(
   }
 
   def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(leagueId)).async { implicit request =>
+    import anorm._
+
+    db.withConnection { implicit c =>
+      val result: Boolean = SQL("Select 1").execute()
+    }
     Future {
       inTransaction {
-        (for {
-          statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          includeTeam = request.getQueryString("team")
-          rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined)
-          out = Ok(Json.toJson(rankings))
-        } yield out).fold(identity, identity)
+        db.withConnection { implicit c =>
+          (for {
+            statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
+            period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+            includeTeam = request.getQueryString("team")
+            rankings = leagueUserRepo.getRankings(c, request.league, statField, period, includeTeam.isDefined)
+            out = Ok(Json.toJson(rankings))
+          } yield out).fold(identity, identity)
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 package v1.leagueuser
 
-import java.sql.Timestamp
+import java.sql.{Timestamp, Connection}
 
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
@@ -8,6 +8,8 @@ import org.squeryl.{KeyedEntity, Query, Table}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
+import play.api.db._
+import anorm._
 
 import scala.util.Try
 import models.AppDB._
@@ -132,14 +134,14 @@ trait LeagueUserRepo{
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
-  def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
+  def getRankings(c: Connection, league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
   def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
   def leagueUserStatsAndCurrentTeamQuery(leagueId: Long, statFieldId: Long, statsPeriod: Option[Int]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
-  def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
+  def leagueUserStatsAndHistoricTeamQuery(implicit c: Connection, leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
-  def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
+  def getLeagueUserStatsAndTeam(c: Connection, league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])]
   def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
@@ -233,7 +235,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     ).single).toOption
   }
 
-  override def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings = {
+  override def getRankings(c: Connection, league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings = {
     val rankings = includeTeam match{
       case false => {
         val stats = this.getLeagueUserStatsWithUser(league.id, statField.id, period)
@@ -253,7 +255,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        val stats = this.getLeagueUserStatsAndTeam(league, statField.id, period, None).toList.groupByOrdered(_._1).toList
+        val stats = this.getLeagueUserStatsAndTeam(c, league, statField.id, period, None).toList.groupByOrdered(_._1).toList
         var lastScore = Double.MaxValue
         var lastScoreRank = 0
         val tmp = stats.map({case (u, v) => {
@@ -346,8 +348,10 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )
   }
 
-  override def leagueUserStatsAndHistoricTeamQuery(leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
+  override def leagueUserStatsAndHistoricTeamQuery(implicit c: Connection, leagueId: Long, statFieldId: Long, period: Int, timestamp: Timestamp):
   Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
+
+    val result: Boolean = SQL("Select 1").execute()
     println(timestamp)
     join (
       userTable, leagueUserTable, leagueUserStatTable, leagueUserStatDailyTable, teamTable,
@@ -370,7 +374,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     )
   }
 
-  override def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
+  override def getLeagueUserStatsAndTeam(c: Connection, league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
     Query[(User, LeagueUserStat, LeagueUserStatDaily, Option[Pickee])] = {
     // hahaha. rofllwefikl!s
     (period, league.currentPeriod, timestamp) match {
@@ -384,14 +388,14 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           p => where(p.start > t and p.leagueId === league.id and p.end <= t)
             select p
         ).single
-        this.leagueUserStatsAndHistoricTeamQuery(league.id, statFieldId, period.value, t)
+        this.leagueUserStatsAndHistoricTeamQuery(c, league.id, statFieldId, period.value, t)
       }
       case (Some(pVal), _, None) => {
         val endPeriodTstamp = from(periodTable)(
           p => where(p.value === pVal and p.leagueId === league.id)
           select p
         ).single.end
-        this.leagueUserStatsAndHistoricTeamQuery(league.id, statFieldId, pVal, endPeriodTstamp)
+        this.leagueUserStatsAndHistoricTeamQuery(c, league.id, statFieldId, pVal, endPeriodTstamp)
       }
     }
   }

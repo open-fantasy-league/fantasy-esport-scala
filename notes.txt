@@ -74,3 +74,7 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 alter table pickee alter column cost type numeric(3, 1);
 # rollback on error
 # years out by 1
+
+
+
+tstzrange. default tstzrange(now(), null)
