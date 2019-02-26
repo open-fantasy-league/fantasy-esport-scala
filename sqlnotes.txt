@@ -1,0 +1,26 @@
+with res as (select targeted_at_tstamp, pickee_id, value from matchu m join resultu r on (r.match_id = m.id) join points p on (p.result_id = r.id) where p.points_field_id = 1) select lu.id from res join team t1 on (t1.started < targeted_at_tstamp and (select min(ended) from team t2 where t2.ended > targeted_at_tstamp) is NULL or t1.ended = (select min(ended) from team t2 where t2.ended > targeted_at_tstamp)) join team_pickee tp on (tp.team_id = t1.id and tp.pickee_id = res.pickee_id) join league_user lu on (lu.id = t1.league_user_id) join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = 1) join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id) group by lu.id;
+
+join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = 1) join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id)
+
+
+with res as (select targeted_at_tstamp, pickee_id, value from matchu m join resultu r on (r.match_id = m.id) join points p on (p.result_id = r.id) where p.points_field_id = 1), lut as (select lu.id as lu_id, tp.pickee_id, t.started, t.ended from league_user lu join team t on (t.league_user_id = lu.id) join team_pickee tp on (tp.team_id = t.id)) select lut.lu_id, sum(value) from lut join res on (res.pickee_id = lut.pickee_id and lut.started < res.targeted_at_tstamp and lut.ended = (select min(ended) from team t2 where t2.ended > targeted_at_tstamp and t2.league_user_id = lu_id)) group by lu_id;
+
+ lu_id | sval 
+-------+------
+     1 |  178
+     2 |  166
+     3 |  358
+     4 |  230
+     5 |  165
+     6 |  248
+     7 |  123
+     8 |  423
+     9 |  115
+    10 |  243
+    11 |  170
+    12 |  260
+    13 |   69
+    14 |  164
+    15 |  123
+    16 |  170
+
