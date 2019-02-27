@@ -15,7 +15,6 @@ import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 import scala.util.Try
-import models.AppDB._
 import models._
 import org.squeryl.dsl.ast.TrueLogicalBoolean
 import utils.GroupByOrderedImplicit._
@@ -24,34 +23,10 @@ import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 
-case class PickeeOut(pickeeId: Long, name: String, cost: BigDecimal)
-
-object PickeeOut {
-  implicit val implicitWrites = new Writes[PickeeOut] {
-    def writes(x: PickeeOut): JsValue = {
-      Json.obj(
-        "id" -> x.pickeeId,
-        "name" -> x.name,
-        "cost" -> x.cost
-      )
-    }
-  }
-}
-
-case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeOut]])
-
-case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
-
-case class UserHistoricTeamOut(id: Long, externalId: Long, username: String, team: Iterable[Pickee])
-
 case class UserWithLeagueUser(user: User, info: LeagueUser)
 
 case class LeagueWithLeagueUser(league: League, info: LeagueUser)
 
-case class RankingRow(
-                       userId: Long, username: String, value: Double, previousRank: Option[Int], pickeeId: Option[Long],
-                       pickeeName: Option[String], cost: Option[BigDecimal]
-                     )
 object UserWithLeagueUser {
   implicit val implicitWrites = new Writes[UserWithLeagueUser] {
     def writes(x: UserWithLeagueUser): JsValue = {
@@ -69,46 +44,6 @@ object LeagueWithLeagueUser {
       Json.obj(
         "league" -> x.league,
         "userInfo" -> x.info
-      )
-    }
-  }
-}
-
-object UserHistoricTeamOut{
-  implicit val implicitWrites = new Writes[UserHistoricTeamOut] {
-    def writes(ht: UserHistoricTeamOut): JsValue = {
-      Json.obj(
-        "id" -> ht.externalId,
-        "username" -> ht.username,
-        "team" -> ht.team
-      )
-    }
-  }
-}
-// TODO conditional fields
-object Ranking{
-  implicit val implicitWrites = new Writes[Ranking] {
-    def writes(ranking: Ranking): JsValue = {
-      Json.obj(
-        "userId" -> ranking.userId,
-        "username" -> ranking.username,
-        "value" -> ranking.value,
-        "rank" -> ranking.rank,
-        "previousRank" -> ranking.previousRank,
-        "team" -> ranking.team
-      )
-    }
-  }
-}
-
-object LeagueRankings{
-  implicit val implicitWrites = new Writes[LeagueRankings] {
-    def writes(leagueRank: LeagueRankings): JsValue = {
-      Json.obj(
-        "leagueId" -> leagueRank.leagueId,
-        "leagueName" -> leagueRank.leagueName,
-        "rankings" -> leagueRank.rankings,
-        "statField" -> leagueRank.statField,
       )
     }
   }
@@ -297,7 +232,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
 //            case None => q.previousRank
 //            case Some(_) => None
 //          }
-          Ranking(q.userId, q.username, value, rank, q.previousRank, Some(team))
+          Ranking(q.userId, q.username, value, rank, q.previousRank, team)
         }})
       }
     }
@@ -405,22 +340,6 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     leagueUserStatTable.update(newLeagueUserStats)
   }
 
-  override def getHistoricTeams(league: League, period: Int): Iterable[LeagueUserTeamOut] = {
-    val endPeriodTstamp = from(periodTable)(
-      p => where(p.value === period and p.leagueId === league.id)
-        select p
-    ).single.end
-    join(userTable, leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)(
-      (u, lu, t, tp, p) => where(lu.leagueId === league.id and t.map(_.started).map(_ < endPeriodTstamp)
-        and t.map(_.ended).map(_ >= endPeriodTstamp))
-        select ((lu, p))
-      on(lu.userId === u.id, t.map(_.leagueUserId) === lu.id,
-        tp.map(_.teamId) === t.map(_.id), tp.map(_.pickeeId) === p.map(_.id))
-        ).groupBy(_._1).map({case (lu, v) => {
-          LeagueUserTeamOut(lu, v.flatMap(_._2))
-        }})
-  }
-
   override def joinUsers(users: Iterable[User], league: League): Iterable[LeagueUser] = {
     // TODO move to league user repo
     // // can ust pass stat field ids?
@@ -440,25 +359,27 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).nonEmpty
   }
 
-  override def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut] = {
-    join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
-          where(lu.leagueId === leagueId)
-          select((lu, p))
-          on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
-          ).groupBy(_._1).map({case (leagueUser, v) => {
-            LeagueUserTeamOut(leagueUser, v.flatMap(_._2))
-          }})
+  override def getCurrentTeams(leagueId: Long):  = {
+    1
+//    join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
+//          where(lu.leagueId === leagueId)
+//          select((lu, p))
+//          on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
+//          ).groupBy(_._1).map({case (leagueUser, v) => {
+//            LeagueUserTeamOut(leagueUser, v.flatMap(_._2))
+//          }})
   }
 
-  override def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut = {
-    val query = join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
-        where(lu.leagueId === leagueId and lu.userId === userId)
-        select((lu, p))
-        on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
-        )
-    val leagueUser = query.head._1
-    val team = query.flatMap(_._2)
-    LeagueUserTeamOut(leagueUser, team)
+  override def getCurrentTeam(leagueId: Long, userId: Long): int = {
+    1
+//    val query = join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
+//        where(lu.leagueId === leagueId and lu.userId === userId)
+//        select((lu, p))
+//        on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
+//        )
+//    val leagueUser = query.head._1
+//    val team = query.flatMap(_._2)
+//    LeagueUserTeamOut(leagueUser, team)
   }
 }
 
