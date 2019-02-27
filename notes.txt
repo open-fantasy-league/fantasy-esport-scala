@@ -32,48 +32,19 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 
 
 # stuff.......forUpdate on selects -> transfer stuff?  aTable.where(t => t.aField === aValue).forUpdate
-# check all optional wheres (except for unprocessed)
-# ------------------------------historic teams (old period rankings use current team)
 # trailing slash empty req
-# -----------------------------make clear only support 1dp for prices
-#-------------------------- ssl
-# ------------------------------- new recal
-#------------------------- update server
-# ----------------------dont have unfull teams
-# ----------------------- no message for transfer cooldown
-# ----------------------------previous rank calculated wrong (not excluding transferless players)
-# -----------------------------combined uniques (i.e. period value and league)
-# ----------------------------- it will durplicate results (update script to first get results, check id's and latest timestamp)
-# --------------------------------json renderer to print out timestamps as strings
-# ------------------------------ put transfer made time (not just scheduled for)
-# ------------------------------- switch to decimal, not doubles for money
-# ------------------------------- reddit enter script
-# ----------------------------  account type (site type unique) .... how find from db which are steam for set to 1?
-# update servr nginx conf!!!!!!!!!!!!!!!!!!!
 # refactor into queries.scala. query-extractors.scala and the controller
-# -------------------------------------- test can still login through steam
-# test updatd databass
-# ------------------------------------- make time's utc
-# ------------------------------------- check wildcard and rebuy same hero....neeed fix
-# check transfer delay with real value works (check points scoring)
-# ------------------------------------- how the fuck does admin actually work with syntax fuckups?
-# -------------------------------------upgrade srvr pgres
-# add url checker for tournament. only display if been validated
-# --------------------------------------laderboard missing day 1, whn on day 2
-# ------------------- no hero leaderboards/ no pickee rankings (comment out)!!!!!
-# ------------------------ no friends :(  (comment out)!!!!!
-
-# -------------------- rollover periods updates priod end/start values
-# --------------------- option to only giv pre-starts wildcard!!!!!
-# recalibration script
-# sort out cron
-# -----------------------------results target period/team for timestamp!!!!
 # period constraints
 # rankings without team is broken (too many rows)
 
-alter table pickee alter column cost type numeric(3, 1);
 # rollback on error
-# years out by 1
+# unstring uuids
+# tstzrange use
+# fix query with anorm
+# add leagueuser subset ranks (for friends)
+# improve order/sort by of rankings (secondaries)
+# replace cost with price
+# replace id's with table_id
 
 
 
