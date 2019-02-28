@@ -8,12 +8,13 @@ import play.api.libs.json._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
+import play.api.db._
 import auth._
 import v1.league.LeagueRepo
 import v1.transfer.TransferRepo
 
 class AdminController @Inject()(
-                                 cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
+                                 db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
                                  auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
@@ -23,10 +24,12 @@ class AdminController @Inject()(
     Future {
       val currentTime = new Timestamp(System.currentTimeMillis())
       inTransaction {
-        val updates = from(AppDB.leagueUserTable)(lu =>
-              where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-              select(lu)
-            ).map(transferRepo.processLeagueUserTransfer)
+        db.withConnection { implicit c =>
+          val updates = from(AppDB.leagueUserTable)(lu =>
+            where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
+              select (lu)
+          ).map(transferRepo.processLeagueUserTransfer)
+        }
         Ok("Transfer updates processed")
       }
     }

@@ -194,7 +194,7 @@ class LeagueController @Inject()(
             statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
             period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
             includeTeam = request.getQueryString("team")
-            rankings = leagueUserRepo.getRankings(c, request.league, statField, period, includeTeam.isDefined)
+            rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined)
             out = Ok(Json.toJson(rankings))
           } yield out).fold(identity, identity)
         }

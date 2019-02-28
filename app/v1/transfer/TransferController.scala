@@ -1,6 +1,6 @@
 package v1.transfer
 
-import java.sql.Timestamp
+import java.sql.{Connection, Timestamp}
 import javax.inject.Inject
 import java.util.concurrent.TimeUnit
 
@@ -15,6 +15,7 @@ import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
 import models.AppDB._
+import play.api.db._
 import auth._
 import v1.leagueuser.LeagueUserRepo
 import v1.team.TeamRepo
@@ -35,7 +36,7 @@ object TransferSuccess{
 }
 
 class TransferController @Inject()(
-                                    cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
+                                    db: Database, cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
                                     leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -63,8 +64,10 @@ class TransferController @Inject()(
       inTransaction {
         val currentTime = new Timestamp(System.currentTimeMillis())
         // TODO better way? hard with squeryls weird dsl
-        val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-          .map(transferRepo.processLeagueUserTransfer)
+        db.withConnection { implicit c =>
+          val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
+            .map(transferRepo.processLeagueUserTransfer)
+        }
         Ok("Transfer updates processed")
       }
     }
@@ -100,9 +103,9 @@ class TransferController @Inject()(
             newRemaining <- updatedRemainingTransfers(league, leagueUser, sell)
             pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2).map(
-              tp => pickees.find(lp => lp.id == tp.id).get.externalId).toSet
-            ).toOption.toRight(InternalServerError("Missing pickee externalId"))
+            currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(
+              tp => pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet
+            ).toOption.toRight(InternalServerError("Missing pickee externalId"))}}
             _ = println(currentTeamIds)
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
             _ = println(sellOrWildcard)
@@ -224,12 +227,13 @@ class TransferController @Inject()(
       p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
         scheduledUpdateTime.isEmpty, p.cost)
     ))
-    val currentTeamQ = teamRepo.getLeagueUserTeam(leagueUser)
-    if (scheduledUpdateTime.isEmpty) {
-      transferRepo.changeTeam(
-        leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeamQ.flatMap(_._2).map(_.id).toSet,
-        currentTeamQ.headOption.map(_._1), currentTime
-      )
+    db.withConnection { implicit c =>
+      val currentTeamQ = teamRepo.getLeagueUserTeam(leagueUser)
+      if (scheduledUpdateTime.isEmpty) {
+        transferRepo.changeTeam(
+          leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeamQ.map(_.pickeeId).toSet, currentTime
+        )
+      }
     }
     leagueUser.money = newMoney
     leagueUser.remainingTransfers = newRemaining

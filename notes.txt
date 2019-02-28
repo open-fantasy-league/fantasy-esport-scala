@@ -45,6 +45,8 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # improve order/sort by of rankings (secondaries)
 # replace cost with price
 # replace id's with table_id
+# pickeeout is hacked and should also return us limits
+# remove pickee field from pickee list
 
 
 

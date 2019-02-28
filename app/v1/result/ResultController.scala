@@ -1,6 +1,6 @@
 package v1.result
 
-import java.sql.Timestamp
+import java.sql.{Connection, Timestamp}
 
 import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
@@ -13,6 +13,8 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import models._
 import models.AppDB._
+import anorm._
+import play.api.db._
 import utils.TryHelper.tryOrResponse
 import auth._
 
@@ -27,7 +29,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(db: Database, cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -76,7 +78,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
               insertedResults <- newResults(input, league, insertedMatch, internalPickee)
               insertedStats <- newStats(league, insertedMatch.id, internalPickee)
               correctPeriod <- getPeriod(input, league, now)
-              updatedStats <- updateStats(insertedStats, league, correctPeriod)
+              updatedStats <-  {db.withConnection { implicit c =>updateStats(c, insertedStats, league, correctPeriod)}}
               success = "Successfully added results"
             } yield success).fold(l => {
               error = Some(l); throw new Exception("fuck")
@@ -154,7 +156,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
   }
 
-  private def updateStats(newStats: List[(Points, Long)], league: League, period: Int): Either[Result, Any] = {
+  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: League, period: Int): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeStat = pickeeStatTable.where(
@@ -165,18 +167,17 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           psd => psd.pickeeStatId === pickeeStat.id and (psd.period === period or psd.period.isNull)
         )
         pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
-        val leagueUserStats = from(
-          leagueTable, leagueUserTable, teamTable, teamPickeeTable, leagueUserStatTable,
-          leagueUserStatDailyTable, periodTable)((l, lu, t, tp, lus, lusd, p) =>
-          //where(lu.leagueId === league.id and tp.leagueUserId === lu.id and tp.pickeeId === pickeeId and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id)// and p.id === league.currentPeriodId.get)// and (lusd.period.isNull or lusd.period === p.value))
-          where(lu.leagueId === league.id and t.leagueUserId === lu.id and t.ended.isNull and tp.teamId === t.id and tp.pickeeId === pickeeId
-            and lus.leagueUserId === lu.id and lusd.leagueUserStatId === lus.id and lus.statFieldId === s.pointsFieldId
-            and (lusd.period.isNull or lusd.period === period) and
-            from(teamPickeeTable)(tp => where(tp.teamId === t.id) compute(count(tp.id))) === l.teamSize)
-            select(lusd)
-            //group(lu)(where count(tp) == l.teamSize)
-        )
-        leagueUserStatDailyTable.update(leagueUserStats.map(ps => {ps.value += s.value; ps}))
+          val q =
+            s"""update league_user_stat_daily lusd set lusd.value = lusd.value + {newPoints} from useru u
+         join league_user lu on (u.id = lu.user_id)
+         join team t on (t.league_user_id = lu.id and upper(t.timespan) is NULL)
+         left join team_pickee tp on (tp.team_id = t.id)
+         left join pickee p on (p.id = tp.pickee_id)
+         join league_user_stat lus on (lus.league_user_id = lu.id)
+         join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id and period is NULL or period = {period})
+         order by lusd.value desc;
+         """
+          SQL(q).on("newPoints" -> s.value, "period" -> period).executeUpdate()
     }}), InternalServerError("Internal server error updating stats"))
   }
 

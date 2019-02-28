@@ -1,12 +1,14 @@
 package v1.transfer
 
-import java.sql.Timestamp
+import java.sql.{Connection, Timestamp}
 
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import models.AppDB.{leagueUserTable, teamPickeeTable, teamTable, transferTable}
 import play.api.libs.concurrent.CustomExecutionContext
+import anorm._
+import play.api.db._
 import models._
 
 import scala.collection.immutable.List
@@ -16,10 +18,10 @@ class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends Custo
 
 trait TransferRepo{
   def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer]
-  def processLeagueUserTransfer(leagueUser: LeagueUser): Unit
+  def processLeagueUserTransfer(leagueUser: LeagueUser)(implicit c: Connection): Unit
   def changeTeam(leagueUser: LeagueUser, toBuyIds: Set[Long], toSellIds: Set[Long],
-                 oldTeamIds: Set[Long], oldTeam: Option[Team], time: Timestamp
-                )
+                 oldTeamIds: Set[Long], time: Timestamp
+                )(implicit c: Connection)
 }
 
 @Singleton
@@ -31,19 +33,24 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
     ).toList
   }
 
-  override def changeTeam(
-                           leagueUser: LeagueUser, toBuyIds: Set[Long], toSellIds: Set[Long],
-                           oldTeamIds: Set[Long], oldTeam: Option[Team], time: Timestamp
-                         ) = {
-    val newTeam = teamTable.insert(new Team(leagueUser.id, time))
-    val newPickees: Set[Long] = oldTeamIds -- toSellIds ++ toBuyIds
-    oldTeam.foreach(t => {t.ended = Some(time); teamTable.update(t)})
+  override def changeTeam(leagueUser: LeagueUser, toBuyIds: Set[Long], toSellIds: Set[Long],
+                           oldTeamIds: Set[Long], time: Timestamp
+                         )(implicit c: Connection) = {
+      val newTeamId = SQL(
+        "insert into team(league_user_id, timespan) values ({leagueUserId}, range({now}));"
+      ).on("leagueUserId" -> leagueUser.id, "now" -> time).executeInsert()
+      val newPickees: Set[Long] = oldTeamIds ++ (toBuyIds -- toSellIds)
+      val q =
+        """update team t set timespan = range(lower(timespan), now())
+    where t.league_user_id = {leagueUserId} and upper(t.timespan is NULL);
+    """
+      SQL(q).on("leagueUserId" -> leagueUser.id).executeUpdate()
     leagueUser.changeTstamp = None
     leagueUserTable.update(leagueUser)
-    newPickees.map(t => teamPickeeTable.insert(new TeamPickee(t, newTeam.id)))
+    newPickees.map(t => teamPickeeTable.insert(new TeamPickee(t, newTeamId.get)))
   }
 
-  override def processLeagueUserTransfer(leagueUser: LeagueUser) = {
+  override def processLeagueUserTransfer(leagueUser: LeagueUser)(implicit c: Connection)  = {
     val now = new Timestamp(System.currentTimeMillis())
     // TODO need to lock here?
     // TODO map and filter together
@@ -51,14 +58,12 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
     // TODO single iteration
     val toSellIds = transfers.filter(!_.isBuy).map(_.pickeeId).toSet
     val toBuyIds = transfers.filter(_.isBuy).map(_.pickeeId).toSet
-    val oldTeamQ: Iterable[(Team, Option[Long])] = join(teamTable, teamPickeeTable.leftOuter)((t, tp) =>
-      where(t.leagueUserId === leagueUser.id and t.ended.isNull)
-        select (t, tp.map(_.pickeeId))
-        on(tp.map(_.teamId) === t.id)
-    )
-    val oldTeamIds = oldTeamQ.flatMap(_._2).toSet
-    val oldTeam = oldTeamQ.headOption.map(_._1)
-    changeTeam(leagueUser, toBuyIds, toSellIds, oldTeamIds, oldTeam, now)
+      val q =
+        """select pickee_id from team t join team_pickee tp on (tp.team_id = t.id)
+                  where t.league_user_id = {leagueUserId} and upper(t.timespan is NULL);
+              """
+      val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUser.id).as(SqlParser.scalar[Long] *).toSet
+      changeTeam(leagueUser, toBuyIds, toSellIds, oldTeamIds, now)
     transferTable.update(transfers.map(t => {
       t.processed = true; t
     }))
