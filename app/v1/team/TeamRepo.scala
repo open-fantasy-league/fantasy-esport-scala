@@ -23,8 +23,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
   override def getLeagueUserTeam(leagueUser: LeagueUser)(implicit c: Connection): List[PickeeRow] = {
     val pickeeParser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
     val q =
-      """select p.id, p.name, p.cost from team t join team_pickee tp on (tp.team_id = t.id) join pickee p on (tp.pickee_id = p.id)
-    where t.league_user_id = {leagueUserId} and upper(t.timespan is NULL);
+      """select p.id as pickee_id, p.name, p.cost from team t join team_pickee tp on (tp.team_id = t.id) join pickee p on (tp.pickee_id = p.id)
+    where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
     SQL(q).on("leagueUserId" -> leagueUser.id).as(pickeeParser.*).toList
   }

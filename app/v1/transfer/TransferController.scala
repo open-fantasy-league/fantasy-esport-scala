@@ -111,7 +111,7 @@ class TransferController @Inject()(
             _ = println(sellOrWildcard)
             // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
             _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
-            newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
+            newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateLimitLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)

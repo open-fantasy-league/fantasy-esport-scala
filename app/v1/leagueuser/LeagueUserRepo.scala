@@ -155,7 +155,9 @@ trait LeagueUserRepo{
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
-  def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean)(implicit c: Connection): LeagueRankings
+  def getRankings(
+                   league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean, userIds: Option[Array[Long]]
+                 )(implicit c: Connection): LeagueRankings
   def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
   def leagueUserStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int],
@@ -257,9 +259,13 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     ).single).toOption
   }
 
-  override def getRankings(league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean)(implicit c: Connection): LeagueRankings = {
+  override def getRankings(
+                            league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean,
+                            userIds: Option[Array[Long]]
+                          )(implicit c: Connection): LeagueRankings = {
     val rankings = includeTeam match{
       case false => {
+        // TODO I HAVE NEGLECTED THE FUCK OUT OF THID BRANCH
         val stats = this.getLeagueUserStatsWithUser(league.id, statField.id, period)
         var lastScore = Double.MaxValue
         var lastScoreRank = 0
@@ -277,7 +283,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        val stats = this.getLeagueUserStatsAndTeam(league, statField.id, period, None).toList.groupByOrdered(_.userId).toList
+        println("cunt")
+        println(userIds.get.toList.mkString(","))
+        val qResult = this.getLeagueUserStatsAndTeam(league, statField.id, period, None).toList
+        val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.userId)) else qResult
+        val stats = filteredByUsers.groupByOrdered(_.userId).toList
         var lastScore = Double.MaxValue
         var lastScoreRank = 0
         val tmp = stats.map({case (u, v) => {

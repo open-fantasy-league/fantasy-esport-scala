@@ -183,18 +183,15 @@ class LeagueController @Inject()(
 
   def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(leagueId)).async { implicit request =>
     import anorm._
-
-    db.withConnection { implicit c =>
-      val result: Boolean = SQL("Select 1").execute()
-    }
     Future {
       inTransaction {
         db.withConnection { implicit c =>
+          val users = request.getQueryString("users").map(_.split(",").map(_.toLong))
           (for {
             statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
             period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
             includeTeam = request.getQueryString("team")
-            rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined)
+            rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined, users)
             out = Ok(Json.toJson(rankings))
           } yield out).fold(identity, identity)
         }

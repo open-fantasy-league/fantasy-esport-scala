@@ -39,10 +39,10 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
       val newTeamId = SQL(
         "insert into team(league_user_id, timespan) values ({leagueUserId}, range({now}));"
       ).on("leagueUserId" -> leagueUser.id, "now" -> time).executeInsert()
-      val newPickees: Set[Long] = oldTeamIds ++ (toBuyIds -- toSellIds)
+      val newPickees: Set[Long] = (oldTeamIds -- toSellIds) ++ toBuyIds
       val q =
         """update team t set timespan = range(lower(timespan), now())
-    where t.league_user_id = {leagueUserId} and upper(t.timespan is NULL);
+    where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
       SQL(q).on("leagueUserId" -> leagueUser.id).executeUpdate()
     leagueUser.changeTstamp = None
@@ -60,7 +60,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
     val toBuyIds = transfers.filter(_.isBuy).map(_.pickeeId).toSet
       val q =
         """select pickee_id from team t join team_pickee tp on (tp.team_id = t.id)
-                  where t.league_user_id = {leagueUserId} and upper(t.timespan is NULL);
+                  where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
               """
       val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUser.id).as(SqlParser.scalar[Long] *).toSet
       changeTeam(leagueUser, toBuyIds, toSellIds, oldTeamIds, now)
