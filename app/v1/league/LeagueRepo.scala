@@ -110,6 +110,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league.transferOpen = input.transferOpen.getOrElse(league.transferOpen)
     league.transferBlockedDuringPeriod = input.transferBlockedDuringPeriod.getOrElse(league.transferBlockedDuringPeriod)
     league.transferDelayMinutes = input.transferDelayMinutes.getOrElse(league.transferDelayMinutes)
+    println(league.transferDelayMinutes)
     league.periodDescription = input.periodDescription.getOrElse(league.periodDescription)
     league.pickeeDescription = input.pickeeDescription.getOrElse(league.pickeeDescription)
     league.transferLimit = if (input.transferLimit.nonEmpty) input.transferLimit else league.transferLimit

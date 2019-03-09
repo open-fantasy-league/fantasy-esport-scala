@@ -32,21 +32,24 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
     select t
     ).toList
   }
-
+  // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
   override def changeTeam(leagueUser: LeagueUser, toBuyIds: Set[Long], toSellIds: Set[Long],
                            oldTeamIds: Set[Long], time: Timestamp
                          )(implicit c: Connection) = {
-      val newTeamId = SQL(
-        "insert into team(league_user_id, timespan) values ({leagueUserId}, range({now}));"
-      ).on("leagueUserId" -> leagueUser.id, "now" -> time).executeInsert()
       val newPickees: Set[Long] = (oldTeamIds -- toSellIds) ++ toBuyIds
       val q =
-        """update team t set timespan = range(lower(timespan), now())
+        """update team t set timespan = tstzrange(lower(timespan), now())
     where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
       SQL(q).on("leagueUserId" -> leagueUser.id).executeUpdate()
+    println("Ended current team")
+    val newTeamId = SQL(
+      "insert into team(league_user_id, timespan) values ({leagueUserId}, tstzrange({now}, null));"
+    ).on("leagueUserId" -> leagueUser.id, "now" -> time).executeInsert()
+    println("Inserted new team")
     leagueUser.changeTstamp = None
     leagueUserTable.update(leagueUser)
+    print(newPickees.mkString(", "))
     newPickees.map(t => teamPickeeTable.insert(new TeamPickee(t, newTeamId.get)))
   }
 

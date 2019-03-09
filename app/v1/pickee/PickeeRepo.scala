@@ -129,7 +129,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
           p.leagueId === leagueId and s.period === period
       )
         select (p, ps, s, lsf, ft, f)
-        orderBy (p.name)
+        orderBy (p.cost desc)
         on (ps.pickeeId === p.id, s.pickeeStatId === ps.id, ps.statFieldId === lsf.id, 
           pf.map(_.pickeeId) === p.id, pf.map(_.limitId) === f.map(_.id), f.map(_.limitTypeId) === ft.map(_.id)
           )
@@ -141,7 +141,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => x._1.name -> x._2.value)
       val limits = v.filter(x => x._5.isDefined).map(x => x._5.get.name -> x._6.get.name).toMap
       PickeeStatsOutput(p.externalId, p.name, stats, limits, p.cost, p.active)
-  }}).toSeq.sortBy(_.name)
+  }}).toSeq.sortBy(- _.cost)
   out
 }
 

@@ -17,6 +17,7 @@ import utils.IdParser
 import utils.TryHelper._
 import auth._
 import models.AppDB._
+import anorm._
 import models.{League, LimitType, Limit,
   PickeeLimit
 }
@@ -182,16 +183,16 @@ class LeagueController @Inject()(
   }
 
   def getRankingsReq(leagueId: String, statFieldName: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    import anorm._
     Future {
       inTransaction {
         db.withConnection { implicit c =>
           val users = request.getQueryString("users").map(_.split(",").map(_.toLong))
+          val secondaryOrdering = request.getQueryString("secondary").map(_.split(",").toList.map(s => leagueUserRepo.getStatField(request.league.id, s).get.id))
           (for {
             statField <- leagueUserRepo.getStatField(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
             period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
             includeTeam = request.getQueryString("team")
-            rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined, users)
+            rankings = leagueUserRepo.getRankings(request.league, statField, period, includeTeam.isDefined, users, secondaryOrdering)
             out = Ok(Json.toJson(rankings))
           } yield out).fold(identity, identity)
         }

@@ -103,8 +103,7 @@ class TransferController @Inject()(
             newRemaining <- updatedRemainingTransfers(league, leagueUser, sell)
             pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(
-              tp => pickees.find(lp => lp.id == tp.pickeeId).get.externalId).toSet
+            currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
             ).toOption.toRight(InternalServerError("Missing pickee externalId"))}}
             _ = println(currentTeamIds)
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
