@@ -105,12 +105,13 @@ class TransferController @Inject()(
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
             currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
             ).toOption.toRight(InternalServerError("Missing pickee externalId"))}}
-            _ = println(currentTeamIds)
+            _ = println(s"currentTeamIds: ${currentTeamIds,mkString(",")}")
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
-            _ = println(sellOrWildcard)
+            _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
             // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
             _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
             newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+            _ <- println(s"newTeamIds: ${newTeamIds.mkString(",")}")
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateLimitLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
@@ -227,10 +228,10 @@ class TransferController @Inject()(
         scheduledUpdateTime.isEmpty, p.cost)
     ))
     db.withConnection { implicit c =>
-      val currentTeamQ = teamRepo.getLeagueUserTeam(leagueUser)
+      val currentTeam = teamRepo.getLeagueUserTeam(leagueUser).map(cp => pickees.find(_.externalId == cp.pickeeId).get).toSet
       if (scheduledUpdateTime.isEmpty) {
         transferRepo.changeTeam(
-          leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeamQ.map(_.pickeeId).toSet, currentTime
+          leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
         )
       }
     }
