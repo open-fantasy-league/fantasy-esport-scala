@@ -11,3 +11,5 @@ target
 /.vscode
 *secure.conf
 /conf/application.conf
+*.sql
+nohup.out
