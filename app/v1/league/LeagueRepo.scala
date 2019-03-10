@@ -222,7 +222,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
       league.transferOpen = false
     }
     leagueTable.update(league)
-    updateHistoricRanks(league)
+    if (period.value > 1) updateHistoricRanks(league)
   }
 
   override def endPeriods(currentTime: Timestamp) = {

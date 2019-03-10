@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat
 import scala.util.Try
 import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
+import java.io._
 
 object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {
@@ -23,7 +24,13 @@ object TryHelper {
       Right(block())
     }
     catch {
-      case e: Exception => print(e); Left(errorResponse)
+      case e: Exception => {
+        // https://alvinalexander.com/scala/how-convert-stack-trace-exception-string-print-logger-logging-log4j-slf4j
+        val sw = new StringWriter
+        e.printStackTrace(new PrintWriter(sw))
+        println(sw.toString)
+        Left(errorResponse)
+      }
     }
   }
 }

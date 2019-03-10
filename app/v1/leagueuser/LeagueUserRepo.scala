@@ -284,8 +284,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        println("cunt")
-        println(userIds.get.toList.mkString(","))
+        println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
         val qResult = this.getLeagueUserStatsAndTeam(league, statField.id, period, None, secondaryOrdering).toList
         val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.userId)) else qResult
         val stats = filteredByUsers.groupByOrdered(_.userId).toList

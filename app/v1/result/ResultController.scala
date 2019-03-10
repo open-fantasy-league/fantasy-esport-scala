@@ -69,20 +69,22 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       Future {
         var error: Option[Result] = None
         try {
-          inTransaction {
-            (for {
-              validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
-              internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
-              now = new Timestamp(System.currentTimeMillis())
-              insertedMatch <- newMatch(input, league, now)
-              insertedResults <- newResults(input, league, insertedMatch, internalPickee)
-              insertedStats <- newStats(league, insertedMatch.id, internalPickee)
-              correctPeriod <- getPeriod(input, league, now)
-              updatedStats <-  {db.withConnection { implicit c =>updateStats(c, insertedStats, league, correctPeriod)}}
-              success = "Successfully added results"
-            } yield success).fold(l => {
-              error = Some(l); throw new Exception("fuck")
-            }, Created(_))
+          db.withConnection { implicit c =>
+            inTransaction {
+              (for {
+                validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
+                internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
+                now = new Timestamp(System.currentTimeMillis())
+                insertedMatch <- newMatch(input, league, now)
+                insertedResults <- newResults(input, league, insertedMatch, internalPickee)
+                insertedStats <- newStats(league, insertedMatch.id, internalPickee)
+                correctPeriod <- getPeriod(input, league, now)
+                updatedStats <- updateStats(c, insertedStats, league, correctPeriod)
+                success = "Successfully added results"
+              } yield success).fold(l => {
+                error = Some(l); c.rollback(); throw new Exception("fuck")
+              }, Created(_))
+            }
           }
         } catch {
           case _: Throwable => error.get
@@ -105,14 +107,14 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     println(input.targetAtTstamp)
     println(now)
     println(input.startTstamp)
+
     val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
       case (_, true) => input.startTstamp
       case _ => now
     }
-    return Right(2)
     tryOrResponse(() => {from(periodTable)(
-      p => where(p.start > targetedAtTstamp and p.leagueId === league.id and p.end <= targetedAtTstamp)
+      p => where(targetedAtTstamp > p.start and p.leagueId === league.id and targetedAtTstamp <= p.end)
         select p
     ).single.value}, InternalServerError("Cannot add result outside of period"))
   }
@@ -168,16 +170,17 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
         )
         pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
           val q =
-            s"""update league_user_stat_daily lusd set lusd.value = lusd.value + {newPoints} from useru u
+            s"""update league_user_stat_daily lusd set value = value + {newPoints} from useru u
          join league_user lu on (u.id = lu.user_id)
+         join league l on (l.id = lu.league_id)
          join team t on (t.league_user_id = lu.id and upper(t.timespan) is NULL)
-         left join team_pickee tp on (tp.team_id = t.id)
-         left join pickee p on (p.id = tp.pickee_id)
-         join league_user_stat lus on (lus.league_user_id = lu.id)
-         join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id and period is NULL or period = {period})
-         order by lusd.value desc;
+         join team_pickee tp on (tp.team_id = t.id)
+         join pickee p on (p.id = tp.pickee_id and p.id = {pickeeId})
+         join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = {statFieldId})
+         where (period is NULL or period = {period}) and lus.id = lusd.league_user_stat_id and
+          (select count(*) from team_pickee where team_pickee.team_id = t.id) = l.team_size;
          """
-          SQL(q).on("newPoints" -> s.value, "period" -> period).executeUpdate()
+          SQL(q).on("newPoints" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.pointsFieldId).executeUpdate()
     }}), InternalServerError("Internal server error updating stats"))
   }
 
