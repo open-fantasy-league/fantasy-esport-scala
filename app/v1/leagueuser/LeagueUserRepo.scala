@@ -23,28 +23,6 @@ import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 
-case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
-
-object PickeeRow {
-  implicit val implicitWrites = new Writes[PickeeRow] {
-    def writes(x: PickeeRow): JsValue = {
-      Json.obj(
-        "id" -> x.pickeeId,
-        "name" -> x.name,
-        "cost" -> x.cost
-      )
-    }
-  }
-}
-
-case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]])
-
-case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
-
-case class UserWithLeagueUser(user: User, info: LeagueUser)
-
-case class LeagueWithLeagueUser(league: League, info: LeagueUser)
-
 object UserWithLeagueUser {
   implicit val implicitWrites = new Writes[UserWithLeagueUser] {
     def writes(x: UserWithLeagueUser): JsValue = {
