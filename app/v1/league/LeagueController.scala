@@ -3,7 +3,6 @@ package v1.league
 import java.sql.{Timestamp, Connection}
 
 import javax.inject.Inject
-import entry.SquerylEntrypointForMyApp._
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._

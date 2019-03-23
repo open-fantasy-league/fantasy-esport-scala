@@ -1,18 +1,8 @@
 package v1.league
 
-import java.sql.Timestamp
-import javax.inject.{Inject, Singleton}
-import entry.SquerylEntrypointForMyApp._
-import akka.actor.ActorSystem
-import play.api.mvc.Result
-import play.api.mvc.Results.{BadRequest, InternalServerError}
-import play.api.libs.concurrent.CustomExecutionContext
-import play.api.libs.json._
+import java.sql.{Connection, Timestamp}
 
-import models.AppDB._
-import models._
-import v1.leagueuser.LeagueUserRepo
-import v1.pickee.PickeeRepo
+import javax.inject.{Inject, Singleton}
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -56,7 +46,7 @@ case class LeagueFullQuery(league: League, period: Option[Period], limitType: Op
 
 
 trait LeagueRepo{
-  def get(id: Long): Option[League]
+  def get(id: Long)(implicit c: Connection): Option[League]
   def getWithRelated(id: Long): LeagueFull
   def insert(formInput: LeagueFormInput): League
   def update(league: League, input: UpdateLeagueFormInput): League
@@ -76,7 +66,7 @@ trait LeagueRepo{
 
 @Singleton
 class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo)(implicit ec: LeagueExecutionContext) extends LeagueRepo{
-  override def get(id: Long): Option[League] = {
+  override def get(id: Long)(implicit c: Connection): Option[League] = {
     leagueTable.lookup(id)
   }
 

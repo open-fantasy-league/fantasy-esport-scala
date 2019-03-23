@@ -3,6 +3,7 @@ package auth
 import play.api.mvc._
 import play.api.mvc.Result
 import play.api.mvc.Results._
+import play.api.db._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
 import javax.inject.Inject
@@ -38,16 +39,16 @@ class AuthLeagueUserRequest[A](val u: User, val lu: LeagueUser, request: AuthLea
   def apiKey = request.apiKey
 }
 
-class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
+class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, parser: BodyParser[AnyContent], db: Database) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
   def executionContext = ec
   override def refine[A](input: Request[A]) = Future.successful {
-    inTransaction(
+    db.withConnection { implicit c =>
       (for {
         leagueIdLong <- IdParser.parseLongId(leagueId, "league")
-        league <- AppDB.leagueTable.lookup(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
+        league <- leagueRepo.get(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
         out <- Right(new LeagueRequest(league, input))
       } yield out)
-    )
+    }
   }
 }
 
