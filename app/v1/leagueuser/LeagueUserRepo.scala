@@ -23,6 +23,24 @@ import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 
+case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
+
+object PickeeRow {
+  implicit val implicitWrites = new Writes[PickeeRow] {
+    def writes(x: PickeeRow): JsValue = {
+      Json.obj(
+        "id" -> x.pickeeId,
+        "name" -> x.name,
+        "cost" -> x.cost
+      )
+    }
+  }
+}
+
+case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]])
+
+case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
+
 case class UserWithLeagueUser(user: User, info: LeagueUser)
 
 case class LeagueWithLeagueUser(league: League, info: LeagueUser)
@@ -62,7 +80,7 @@ object LeagueUserTeamOut{
 }
 
 
-case class DetailedLeagueUser(user: User, leagueUser: LeagueUser, team: Option[List[Pickee]], scheduledTransfers: Option[List[Transfer]], stats: Option[Map[String, Double]])
+case class DetailedLeagueUser(user: User, leagueUser: LeagueUser, team: Option[List[PickeeRow]], scheduledTransfers: Option[List[Transfer]], stats: Option[Map[String, Double]])
 
 object DetailedLeagueUser{
   implicit val implicitWrites = new Writes[DetailedLeagueUser] {
@@ -90,14 +108,16 @@ trait LeagueUserRepo{
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
-  def getRankings(c: Connection, league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings
+  def getRankings(
+                   league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean, userIds: Option[Array[Long]],
+                   secondaryOrdering: Option[List[Long]]
+                 )(implicit c: Connection): LeagueRankings
   def getLeagueUserStats(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(LeagueUserStat, LeagueUserStatDaily)]
   def getLeagueUserStatsWithUser(leagueId: Long, statFieldId: Long, period: Option[Int]): Query[(User, LeagueUserStat, LeagueUserStatDaily)]
-  def leagueUserStatsAndTeamQuery(
-                                   implicit c: Connection, leagueId: Long, statFieldId: Long, period: Option[Int],
-                                   timestamp: Option[Timestamp]):
+  def leagueUserStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int],
+                                   timestamp: Option[Timestamp], secondaryOrdering: Option[List[Long]])(implicit c: Connection):
     Iterable[RankingRow]
-  def getLeagueUserStatsAndTeam(c: Connection, league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
+  def getLeagueUserStatsAndTeam(league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp], secondaryOrdering: Option[List[Long]])(implicit c: Connection):
   Iterable[RankingRow]
   def getSingleLeagueUserAllStat(leagueUser: LeagueUser, period: Option[Int]): Iterable[(LeagueStatField, LeagueUserStatDaily)]
   def updateLeagueUserStatDaily(newLeagueUserStatsDaily: Iterable[LeagueUserStatDaily])
@@ -112,7 +132,7 @@ trait LeagueUserRepo{
 }
 
 @Singleton
-class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
+class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
 
   override def getUserWithLeagueUser(leagueId: Long, userId: Long, externalId: Boolean): UserWithLeagueUser = {
     // helpful for way squeryl deals with optional filters
@@ -133,7 +153,9 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     val team = showTeam match{
       case false => None
       case true => {
-        Some(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2))
+        db.withConnection { implicit c =>
+          Some(teamRepo.getLeagueUserTeam(leagueUser))
+        }
       }
     }
     // todo boolean to option?
@@ -191,9 +213,13 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
     ).single).toOption
   }
 
-  override def getRankings(c: Connection, league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean): LeagueRankings = {
+  override def getRankings(
+                            league: League, statField: LeagueStatField, period: Option[Int], includeTeam: Boolean,
+                            userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]]
+                          )(implicit c: Connection): LeagueRankings = {
     val rankings = includeTeam match{
       case false => {
+        // TODO I HAVE NEGLECTED THE FUCK OUT OF THID BRANCH
         val stats = this.getLeagueUserStatsWithUser(league.id, statField.id, period)
         var lastScore = Double.MaxValue
         var lastScoreRank = 0
@@ -211,11 +237,14 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           Ranking(q._1.id, q._1.username, value, rank, previousRank, None)
         }})}
       case true => {
-        val stats = this.getLeagueUserStatsAndTeam(c, league, statField.id, period, None).toList.groupByOrdered(_.userId).toList
+        println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
+        val qResult = this.getLeagueUserStatsAndTeam(league, statField.id, period, None, secondaryOrdering).toList
+        val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.userId)) else qResult
+        val stats = filteredByUsers.groupByOrdered(_.userId).toList
         var lastScore = Double.MaxValue
         var lastScoreRank = 0
         val tmp = stats.map({case (u, v) => {
-          val team = v.withFilter(_.pickeeId.isDefined).map(v2 => PickeeOut(v2.pickeeId.get, v2.pickeeName.get, v2.cost.get))
+          val team = v.withFilter(_.pickeeId.isDefined).map(v2 => PickeeRow(v2.pickeeId.get, v2.pickeeName.get, v2.cost.get))
           (v.head, team)}
         })
         tmp.zipWithIndex.map({case ((q, team), i) => {
@@ -286,40 +315,64 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
       )
   }
 
-  override def leagueUserStatsAndTeamQuery(implicit c: Connection, leagueId: Long, statFieldId: Long, period: Option[Int],
-                                                   timestamp: Option[Timestamp]): Iterable[RankingRow] = {
+  override def leagueUserStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int],
+                                                   timestamp: Option[Timestamp], secondaryOrdering: Option[List[Long]])(implicit c: Connection): Iterable[RankingRow] = {
     val rankingParser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
     println(timestamp)
     println(period)
     val timestampFilter = if (timestamp.isDefined) "t.timespan @> {timestamp}::timestamptz" else "upper(t.timespan) is NULL"
     val periodFilter = if (period.isDefined) "lusd.period = {period}" else "lusd.period is NULL"
-    val q = s"""select u.external_id as user_id, u.username, lusd.value, lus.previous_rank, tp.pickee_id, p.name as pickee_name, p.cost from useru u
-         join league_user lu on (u.id = lu.user_id)
-         join team t on (t.league_user_id = lu.id and $timestampFilter)
-         left join team_pickee tp on (tp.team_id = t.id)
-         left join pickee p on (p.id = tp.pickee_id)
-         join league_user_stat lus on (lus.league_user_id = lu.id)
-         join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id and $periodFilter)
-         order by lusd.value desc;
-         """
-    SQL(q).on ("timestamp" -> timestamp, "period" -> period).as (rankingParser.*)
+    // TODO nice injection
+    val q = secondaryOrdering match {
+      case None => s"""select u.external_id as user_id, u.username, lusd.value, lus.previous_rank, tp.pickee_id, p.name as pickee_name, p.cost from useru u
+           join league_user lu on (u.id = lu.user_id)
+           join team t on (t.league_user_id = lu.id and $timestampFilter)
+           left join team_pickee tp on (tp.team_id = t.id)
+           left join pickee p on (p.id = tp.pickee_id)
+           join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = {statFieldId})
+           join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id and $periodFilter)
+           order by lusd.value desc;
+           """
+      case Some(secondary) => {
+        val extraJoins = secondary.map (s =>
+        s"""join league_user_stat lus$s on (lus$s.league_user_id = lu.id and lus$s.stat_field_id = $s)
+            join league_user_stat_daily lusd$s on (lusd$s.league_user_stat_id = lus$s.id and $periodFilter)
+            """).mkString(" ")
+        val extraOrder = secondary.map (s => s"lusd$s.value desc").mkString(" ")
+        s"""select u.external_id as user_id, u.username, lusd.value, lus.previous_rank, tp.pickee_id, p.name as pickee_name, p.cost from useru u
+             join league_user lu on (u.id = lu.user_id)
+             join team t on (t.league_user_id = lu.id and $timestampFilter)
+             left join team_pickee tp on (tp.team_id = t.id)
+             left join pickee p on (p.id = tp.pickee_id)
+             join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = {statFieldId})
+             join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.id and $periodFilter)
+             $extraJoins
+             order by lusd.value desc $extraOrder;
+             """
+      }
+    }
+    println(q)
+    SQL(q).on ("timestamp" -> timestamp, "period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
   }
 
-  override def getLeagueUserStatsAndTeam(c: Connection, league: League, statFieldId: Long, period: Option[Int], timestamp: Option[Timestamp]):
+  override def getLeagueUserStatsAndTeam(
+                                          league: League, statFieldId: Long, period: Option[Int],
+                                          timestamp: Option[Timestamp], secondaryOrdering: Option[List[Long]]
+                                        )(implicit c: Connection):
     Iterable[RankingRow] = {
     // hahaha. rofllwefikl!s
     (period, league.currentPeriod, timestamp) match {
-      case (None, _, None) => this.leagueUserStatsAndTeamQuery(c, league.id, statFieldId, None, None)
-      case (_, None, _) => this.leagueUserStatsAndTeamQuery(c, league.id, statFieldId, None, None)
+      case (None, _, None) => this.leagueUserStatsAndTeamQuery(league.id, statFieldId, None, None, secondaryOrdering)
+      case (_, None, _) => this.leagueUserStatsAndTeamQuery(league.id, statFieldId, None, None, secondaryOrdering)
       case (Some(periodVal), Some(currentPeriod), None) if periodVal == currentPeriod.value =>
-        this.leagueUserStatsAndTeamQuery(c, league.id, statFieldId, Some(periodVal), None)
+        this.leagueUserStatsAndTeamQuery(league.id, statFieldId, Some(periodVal), None,secondaryOrdering)
       case (Some(_), _, Some(_)) => throw new Exception("Specify period, or timestamp. not both")
       case (None, _, Some(t)) => {
         val period = from(periodTable)(
           p => where(p.start > t and p.leagueId === league.id and p.end <= t)
             select p
         ).single
-        this.leagueUserStatsAndTeamQuery(c, league.id, statFieldId, Some(period.value), Some(t))
+        this.leagueUserStatsAndTeamQuery(league.id, statFieldId, Some(period.value), Some(t), secondaryOrdering)
       }
       case (Some(pVal), _, None) => {
         println("cat")
@@ -327,7 +380,7 @@ class LeagueUserRepoImpl @Inject()(transferRepo: TransferRepo, teamRepo: TeamRep
           p => where(p.value === pVal and p.leagueId === league.id)
           select p
         ).single.end
-        this.leagueUserStatsAndTeamQuery(c, league.id, statFieldId, Some(pVal), Some(endPeriodTstamp))
+        this.leagueUserStatsAndTeamQuery(league.id, statFieldId, Some(pVal), Some(endPeriodTstamp), secondaryOrdering)
       }
     }
   }

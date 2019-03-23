@@ -1,6 +1,6 @@
 package v1.transfer
 
-import java.sql.Timestamp
+import java.sql.{Connection, Timestamp}
 import javax.inject.Inject
 import java.util.concurrent.TimeUnit
 
@@ -15,6 +15,7 @@ import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
 import models.AppDB._
+import play.api.db._
 import auth._
 import v1.leagueuser.LeagueUserRepo
 import v1.team.TeamRepo
@@ -35,7 +36,7 @@ object TransferSuccess{
 }
 
 class TransferController @Inject()(
-                                    cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
+                                    db: Database, cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
                                     leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -63,8 +64,10 @@ class TransferController @Inject()(
       inTransaction {
         val currentTime = new Timestamp(System.currentTimeMillis())
         // TODO better way? hard with squeryls weird dsl
-        val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-          .map(transferRepo.processLeagueUserTransfer)
+        db.withConnection { implicit c =>
+          val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
+            .map(transferRepo.processLeagueUserTransfer)
+        }
         Ok("Transfer updates processed")
       }
     }
@@ -100,15 +103,15 @@ class TransferController @Inject()(
             newRemaining <- updatedRemainingTransfers(league, leagueUser, sell)
             pickees = from(league.pickees)(select(_)).toList
             newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).flatMap(_._2).map(
-              tp => pickees.find(lp => lp.id == tp.id).get.externalId).toSet
-            ).toOption.toRight(InternalServerError("Missing pickee externalId"))
-            _ = println(currentTeamIds)
+            currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
+            ).toOption.toRight(InternalServerError("Missing pickee externalId"))}}
+            _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
-            _ = println(sellOrWildcard)
+            _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
             // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
             _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
-            newTeamIds = currentTeamIds ++ buy -- sellOrWildcard
+            newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+            _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
             _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
             _ <- validateLimitLimit(newTeamIds, league)
             transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
@@ -224,12 +227,13 @@ class TransferController @Inject()(
       p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
         scheduledUpdateTime.isEmpty, p.cost)
     ))
-    val currentTeamQ = teamRepo.getLeagueUserTeam(leagueUser)
-    if (scheduledUpdateTime.isEmpty) {
-      transferRepo.changeTeam(
-        leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeamQ.flatMap(_._2).map(_.id).toSet,
-        currentTeamQ.headOption.map(_._1), currentTime
-      )
+    db.withConnection { implicit c =>
+      val currentTeam = teamRepo.getLeagueUserTeam(leagueUser).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
+      if (scheduledUpdateTime.isEmpty) {
+        transferRepo.changeTeam(
+          leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
+        )
+      }
     }
     leagueUser.money = newMoney
     leagueUser.remainingTransfers = newRemaining

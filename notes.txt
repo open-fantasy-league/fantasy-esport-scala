@@ -40,11 +40,19 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # rollback on error
 # unstring uuids
 # tstzrange use
-# fix query with anorm
-# add leagueuser subset ranks (for friends)
+# --------------------------- fix query with anorm
+# --------------------------- add leagueuser subset ranks (for friends)
 # improve order/sort by of rankings (secondaries)
 # replace cost with price
 # replace id's with table_id
+# pickeeout is hacked and should also return us limits
+# ----------------------------------- remove pickee field from pickee list
+# custom exec contexts for all db repos
+# wildcard used to wildcard available
+
+for dl:
+# revert a match
+# secondary ranking ordering/filtering
 
 
 

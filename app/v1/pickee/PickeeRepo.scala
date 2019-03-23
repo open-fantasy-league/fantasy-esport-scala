@@ -23,14 +23,19 @@ case class PickeeOut(pickee: Pickee, limits: Map[String, String])
 
 case class PickeeStatsOutput(
                               externalId: Long, name: String, stats: Map[String, Double], limits: Map[String, String],
-                              cost: BigDecimal
+                              cost: BigDecimal, active: Boolean
                             )
 
 object PickeeOut{
   implicit val implicitWrites = new Writes[PickeeOut] {
     def writes(p: PickeeOut): JsValue = {
+      // TODO how to unduplicate this between Pickee and PickeeOut jsonifiers?
+      // need check play api json docs, see what fancy stuff can do with concat json objs
       Json.obj(
-        "pickee" -> p.pickee,
+        "id" -> p.pickee.externalId,
+        "name" -> p.pickee.name,
+        "cost" -> p.pickee.cost,
+        "active" -> p.pickee.active,
         "limits" -> p.limits
       )
     }
@@ -45,7 +50,8 @@ object PickeeStatsOutput{
         "name" -> p.name,
         "stats" -> p.stats,
         "limits" -> p.limits,
-        "cost" -> p.cost
+        "cost" -> p.cost,
+        "active" -> p.active
       )
     }
   }
@@ -103,6 +109,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getPickeesWithLimits(leagueId: Long): Iterable[PickeeOut] = {
   val query = join(leagueTable, pickeeTable, pickeeLimitTable.leftOuter, limitTable.leftOuter, limitTypeTable.leftOuter)(
     (l, p, pf, f, ft) =>
+      where(p.leagueId === leagueId)
       select((p, ft, f))
         on(
         p.leagueId === l.id, pf.map(_.pickeeId) === p.id, pf.map(_.limitId) === f.map(_.id),
@@ -123,7 +130,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
           p.leagueId === leagueId and s.period === period
       )
         select (p, ps, s, lsf, ft, f)
-        orderBy (p.name)
+        orderBy (p.cost desc)
         on (ps.pickeeId === p.id, s.pickeeStatId === ps.id, ps.statFieldId === lsf.id, 
           pf.map(_.pickeeId) === p.id, pf.map(_.limitId) === f.map(_.id), f.map(_.limitTypeId) === ft.map(_.id)
           )
@@ -134,8 +141,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     val out: Iterable[PickeeStatsOutput] = groupByPickee.map({case (p, v) => {
       val stats = v.groupBy(_._4).mapValues(_.head._3).map(x => x._1.name -> x._2.value)
       val limits = v.filter(x => x._5.isDefined).map(x => x._5.get.name -> x._6.get.name).toMap
-      PickeeStatsOutput(p.externalId, p.name, stats, limits, p.cost)
-  }}).toSeq.sortBy(_.name)
+      PickeeStatsOutput(p.externalId, p.name, stats, limits, p.cost, p.active)
+  }}).toSeq.sortBy(- _.cost)
   out
 }
 
