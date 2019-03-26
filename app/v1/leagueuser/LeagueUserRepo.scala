@@ -23,6 +23,7 @@ import utils.GroupByOrderedImplicit._
 import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
+import v1.league.LeagueRepo
 
 case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
 
@@ -151,7 +152,7 @@ trait LeagueUserRepo{
   def detailedLeagueUser(user: User, leagueUser: LeagueUser, showTeam: Boolean, showScheduledTransfers: Boolean, stats: Boolean): DetailedLeagueUser
   def getAllLeaguesForUser(userId: Long): Iterable[LeagueWithLeagueUser]
   def getAllUsersForLeague(leagueId: Long): Iterable[UserWithLeagueUser]
-  def insertLeagueUser(league: League, userId: Long): LeagueUser
+  def insertLeagueUser(league: LeagueRow, userId: Long): LeagueUser
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long): LeagueUserStat
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): LeagueUserStatDaily
   def getStatField(leagueId: Long, statFieldName: String): Option[LeagueStatField]
@@ -171,6 +172,7 @@ trait LeagueUserRepo{
   def updateLeagueUserStat(newLeagueUserStats: Iterable[LeagueUserStat])
   def getHistoricTeams(league: League, period: Int): Iterable[LeagueUserTeamOut]
   def joinUsers(users: Iterable[User], league: League): Iterable[LeagueUser]
+  def joinUsers2(users: Iterable[User], league: LeagueRow): Iterable[LeagueUser]
   def userInLeague(userId: Long, leagueId: Long): Boolean
   def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
   def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
@@ -179,7 +181,7 @@ trait LeagueUserRepo{
 }
 
 @Singleton
-class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
+class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, leagueRepo: LeagueRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
 
   override def getUserWithLeagueUser(leagueId: Long, userId: Long, externalId: Boolean): UserWithLeagueUser = {
     // helpful for way squeryl deals with optional filters
@@ -234,11 +236,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
           ).map(q => UserWithLeagueUser(q._1, q._2))
   }
 
-  override def insertLeagueUser(league: League, userId: Long): LeagueUser = {
+  override def insertLeagueUser(league: LeagueRow, userId: Long): LeagueUser = {
     // dont give wildcard to people who join league late
     leagueUserTable.insert(new LeagueUser(
       league.id, userId, league.startingMoney, new Timestamp(System.currentTimeMillis()), league.transferLimit,
-      !league.transferWildcard || (league.started && league.noWildcardForLateRegister)
+      !league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister)
     ))
   }
 
@@ -460,7 +462,22 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     // TODO move to league user repo
     // // can ust pass stat field ids?
     val newLeagueUsers = users.map(u => insertLeagueUser(league, u.id))
-    val newLeagueUserStats = league.statFields.flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.id, nlu.id)))
+    val newLeagueUserStats = league.getStatFields.flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.id, nlu.id)))
+
+    newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, None))
+
+    leagueRepo.getPeriods(league).foreach(p =>
+      newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, Some(p.value)))
+    )
+
+    newLeagueUsers
+  }
+
+  override def joinUsers2(users: Iterable[User], league: LeagueRow): Iterable[LeagueUser] = {
+    // TODO move to league user repo
+    // // can ust pass stat field ids?
+    val newLeagueUsers = users.map(u => insertLeagueUser(league, u.id))
+    val newLeagueUserStats = leagueRepo.getStatFields(league).flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.id, nlu.id)))
 
     newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.id, None))
 

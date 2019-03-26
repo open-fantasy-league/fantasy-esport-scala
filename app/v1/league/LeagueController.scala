@@ -57,10 +57,10 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                                  )
 
 class LeagueController @Inject()(
-                                  db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo,
+                                  db: Database, cc: ControllerComponents,
                                   leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
                                   auther: Auther
-                                )(implicit ec: ExecutionContext) extends AbstractController(cc)
+                                )(implicit ec: ExecutionContext, leagueRepo: LeagueRepo) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[LeagueFormInput] = {
@@ -148,6 +148,7 @@ class LeagueController @Inject()(
   }
 
   implicit val parser = parse.default
+  implicit val db_impl = db
 
   def get(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(Ok(Json.toJson(request.league)))
@@ -319,13 +320,13 @@ class LeagueController @Inject()(
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def processJsonUpdateLeague[A](league: League)(implicit request: Request[A]): Future[Result] = {
+  private def processJsonUpdateLeague[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[UpdateLeagueFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
     def success(input: UpdateLeagueFormInput) = Future(
-      if (league.started && (input.transferLimit.isDefined || input.transferWildcard.isDefined)){
+      if (leagueRepo.isStarted(league) && (input.transferLimit.isDefined || input.transferWildcard.isDefined)){
         BadRequest("Cannot update transfer limits or wildcard after league has started")
       } else{
         inTransaction(Ok(Json.toJson(leagueRepo.update(league, input))))

@@ -9,6 +9,8 @@ import javax.inject.Inject
 import utils.{IdParser, TryHelper}
 import entry.SquerylEntrypointForMyApp._
 import com.typesafe.config.ConfigFactory
+import v1.league.LeagueRepo
+import play.api.db._
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 
@@ -19,10 +21,10 @@ class AuthAction()(implicit val executionContext: ExecutionContext, val parser:B
   }
 }
 
-class LeagueRequest[A](val league: League, request: Request[A]) extends WrappedRequest[A](request)
+class LeagueRequest[A](val league: LeagueRow, request: Request[A]) extends WrappedRequest[A](request)
 class PeriodRequest[A](val period: Option[Int], request: Request[A]) extends WrappedRequest[A](request)
 
-class AuthLeagueRequest[A](val l: League, request: AuthRequest[A]) extends LeagueRequest[A](l, request) {
+class AuthLeagueRequest[A](val l: LeagueRow, request: AuthRequest[A]) extends LeagueRequest[A](l, request) {
   def apiKey = request.apiKey
 }
 
@@ -38,16 +40,16 @@ class AuthLeagueUserRequest[A](val u: User, val lu: LeagueUser, request: AuthLea
   def apiKey = request.apiKey
 }
 
-class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
+class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, parser: BodyParser[AnyContent], db: Database, leagueRepo: LeagueRepo) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
   def executionContext = ec
   override def refine[A](input: Request[A]) = Future.successful {
-    inTransaction(
+    db.withConnection { implicit c =>
       (for {
         leagueIdLong <- IdParser.parseLongId(leagueId, "league")
-        league <- AppDB.leagueTable.lookup(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
+        league <- leagueRepo.get2(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
         out <- Right(new LeagueRequest(league, input))
       } yield out)
-    )
+    }
   }
 }
 
@@ -73,7 +75,7 @@ class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[A
 }
 
 class LeagueUserAction(val userId: String){
-  def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
+  def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], LeagueRow) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
       println(userId)
       inTransaction(
         (for {
@@ -95,14 +97,14 @@ class LeagueUserAction(val userId: String){
       )
     }
 
-  def apply(insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
+  def apply(insertOnMissing: Option[(Iterable[User], LeagueRow) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
     def executionContext = ec
     def refine[A](input: LeagueRequest[A]) = Future.successful{
       refineGeneric[LeagueRequest[A], A](input, insertOnMissing).map(q => new LeagueUserRequest(q._1, q._2, input))
     }
   }
 
-  def auth(insertOnMissing: Option[(Iterable[User], League) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
+  def auth(insertOnMissing: Option[(Iterable[User], LeagueRow) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
     def executionContext = ec
     def refine[A](input: AuthLeagueRequest[A]) = Future.successful {
       refineGeneric[AuthLeagueRequest[A], A](input, insertOnMissing).map(q => new AuthLeagueUserRequest(q._1, q._2, input))
@@ -111,7 +113,7 @@ class LeagueUserAction(val userId: String){
 }
 
 
-class Auther @Inject(){
+class Auther @Inject()(leagueRepo: LeagueRepo){
   val conf = ConfigFactory.load()
   lazy val adminKey = conf.getString("adminKey")
   lazy val adminHost = conf.getString("adminHost")
@@ -122,7 +124,7 @@ class Auther @Inject(){
       inTransaction(
         (for {
           leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- AppDB.leagueTable.lookup(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+          league <- leagueRepo.get2(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
           out <- Right(new AuthLeagueRequest(league, input))
         } yield out)
       )

@@ -9,6 +9,9 @@ import play.api.mvc.Results.{BadRequest, InternalServerError}
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
 
+import anorm._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+
 import models.AppDB._
 import models._
 import v1.leagueuser.LeagueUserRepo
@@ -57,13 +60,17 @@ case class LeagueFullQuery(league: League, period: Option[Period], limitType: Op
 
 trait LeagueRepo{
   def get(id: Long): Option[League]
+  def get2(id: Long): Option[LeagueRow]
   def getWithRelated(id: Long): LeagueFull
   def insert(formInput: LeagueFormInput): League
-  def update(league: League, input: UpdateLeagueFormInput): League
+  def update(league: LeagueRow, input: UpdateLeagueFormInput): League
+  def getStatFields(league: LeagueRow): Iterable[LeagueStatFieldRow]
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
+  def isStarted(league: LeagueRow): Boolean
   def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
   def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
+  def getPeriods(league: LeagueRow): Iterable[PeriodRow]
   def getNextPeriod(league: League): Either[Result, Period]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
   def updatePeriod(leagueId: Long, periodValue: Int, start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double]): Period
@@ -80,6 +87,11 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     leagueTable.lookup(id)
   }
 
+  override def get2(id: Long)(implicit c: Connection): Option[LeagueRow] = {
+    val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
+    SQL("select * from league where id = {id}").on("id" -> id).as(leagueParser.*)
+  }
+
   override def getWithRelated(id: Long): LeagueFull = {
     val queryResult = join(leagueTable, periodTable.leftOuter, limitTypeTable.leftOuter, limitTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) =>
         where(l.id === id)
@@ -89,6 +101,12 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     leagueFullQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return
+  }
+
+  override def getStatFields(league: LeagueRow): Iterable[LeagueStatFieldRow] = {
+    val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
+    val q = "select * from league_stat_field where league_id = {leagueId};"
+    SQL(q).on("leagueId" -> league.id).as(lsfParser.*)
   }
 
   override def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String] = {
@@ -104,7 +122,8 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     ))
   }
 
-  override def update(league: League, input: UpdateLeagueFormInput): League = {
+  override def update(league: LeagueRow, input: UpdateLeagueFormInput): League = {
+    // TODO update update!!! hehe
     league.name = input.name.getOrElse(league.name)
     league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
     league.transferOpen = input.transferOpen.getOrElse(league.transferOpen)
@@ -125,6 +144,8 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     league
   }
 
+  override def isStarted(league: LeagueRow): Boolean = league.currentPeriodId.nonEmpty
+
   override def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize = {
     leaguePrizeTable.insert(new LeaguePrize(leagueId, description, email))
   }
@@ -135,6 +156,12 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
 
   override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period = {
     periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier, nextPeriodId))
+  }
+
+  override def getPeriods(league: LeagueRow): Iterable[PeriodRow] = {
+    val periodParser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
+    val q = "select * from period where league_id = {leagueId};"
+    SQL(q).on("leagueId" -> league.id).as(periodParser.*)
   }
 
   override def getNextPeriod(league: League): Either[Result, Period] = {

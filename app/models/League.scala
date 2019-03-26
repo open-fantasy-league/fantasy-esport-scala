@@ -8,6 +8,28 @@ import play.api.libs.json._
 import entry.SquerylEntrypointForMyApp._
 import utils.Formatter.timestampFormatFactory
 
+case class LeagueRow(id: Long,
+                      name: String,
+                     apiKey: String, // the api user/platform that created the league
+                     gameId: Option[Long],
+                     isPrivate: Boolean,
+                     tournamentId: Long,
+                     pickeeDescription: String,
+                     periodDescription: String,
+                     transferLimit: Option[Int],
+                     transferWildcard: Boolean,
+                     startingMoney: BigDecimal,
+                     teamSize: Int,
+                     transferDelayMinutes: Int = 0, // Only applies for when period 1 has started
+                     transferOpen: Boolean = false,
+                     transferBlockedDuringPeriod: Boolean = false,
+                     url: String = "",
+                     urlVerified: Boolean = false,
+                     currentPeriodId: Option[Long] = None,
+                     applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
+                     noWildcardForLateRegister: Boolean = false // late defined as after league has startd
+)
+
 class League(
               var name: String,
               var apiKey: String, // the api user/platform that created the league
@@ -56,6 +78,8 @@ class LeagueStatField(
   val id: Long = 0
 }
 
+case class LeagueStatFieldRow(id: Long, leagueId: Long, name: String)
+
 class LeaguePrize(
                    val leagueId: Long,
                    var description: String,
@@ -99,6 +123,16 @@ class Period(
     0, 0, new Timestamp(System.currentTimeMillis()), new Timestamp(System.currentTimeMillis())
   )
 }
+
+case class PeriodRow(id: Long,
+                     leagueId: Long,
+                     value: Int,
+                     start: Timestamp,
+                     end: Timestamp,
+                     multiplier: Double = 1.0,
+                     nextPeriodId: Option[Long] = None,
+                     ended: Boolean = false,
+                    )
 
 
 object Limit{
@@ -159,6 +193,34 @@ object LimitType{
       )
     }
   }
+}
+
+object LeagueRow{
+  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  implicit val implicitWrites = new Writes[League] {
+    def writes(league: League): JsValue = {
+      Json.obj(
+        "id" -> league.id,
+        "name" -> league.name,
+        "gameId" -> league.gameId,
+        "tournamentId" -> league.tournamentId,
+        "isPrivate" -> league.isPrivate,
+        "pickeeDescription" -> league.pickeeDescription,
+        "periodDescription" -> league.periodDescription,
+        "teamSize" -> league.teamSize,
+        "transferLimit" -> league.transferLimit,
+        "transferWildcard" -> league.transferWildcard,
+        "startingMoney" -> league.startingMoney,
+        "transferOpen" -> league.transferOpen,
+        "transferDelayMinutes" -> league.transferDelayMinutes,
+        "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
+        "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
+        "url" -> {if (league.urlVerified) league.url else ""},
+        "noWildcardForLateRegister" -> league.noWildcardForLateRegister
+      )
+    }
+  }
+
 }
 
 object League{
