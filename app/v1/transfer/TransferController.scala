@@ -86,7 +86,7 @@ class TransferController @Inject()(
     }
   }
 
-  private def scheduleTransfer[A](league: League, leagueUser: LeagueUser)(implicit request: Request[A]): Future[Result] = {
+  private def scheduleTransfer[A](league: LeagueRow, leagueUser: LeagueUser)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -100,30 +100,33 @@ class TransferController @Inject()(
 
       Future {
         inTransaction {
-          (for {
-            _ <- validateDuplicates(input.sell, sell, input.buy, buy)
-            validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
-            applyWildcard <- shouldApplyWildcard(input.wildcard, league, leagueUser, sell)
-            newRemaining <- updatedRemainingTransfers(league, leagueUser, sell)
-            pickees = from(league.pickees)(select(_)).toList
-            newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeamIds <- {db.withConnection{ implicit c => Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
-            ).toOption.toRight(InternalServerError("Missing pickee externalId"))}}
-            _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
-            sellOrWildcard = if (applyWildcard) currentTeamIds else sell
-            _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
-            // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
-            _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
-            newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
-            _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
-            _ <- updatedTeamSize(newTeamIds, league, input.isCheck)
-            _ <- validateLimitLimit(newTeamIds, league)
-            transferDelay = if (!league.started) None else Some(league.transferDelayMinutes)
-            out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
-              updateDBScheduleTransfer(
-                sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney,
-                newRemaining, transferDelay, applyWildcard)
-          } yield out).fold(identity, identity)
+          db.withConnection { implicit c =>
+            (for {
+              _ <- validateDuplicates(input.sell, sell, input.buy, buy)
+              leagueStarted = leagueRepo.isStarted(league)
+              validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
+              applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, leagueUser, sell)
+              newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser, sell)
+              pickees = from(league.pickees)(select(_)).toList
+              newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
+              currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
+              ).toOption.toRight(InternalServerError("Missing pickee externalId"))
+              _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
+              sellOrWildcard = if (applyWildcard) currentTeamIds else sell
+              _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
+              // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
+              _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
+              newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+              _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
+              _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck)
+              _ <- validateLimits(newTeamIds, league)
+              transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
+              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
+                updateDBScheduleTransfer(
+                  sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney,
+                  newRemaining, transferDelay, applyWildcard)
+            } yield out).fold(identity, identity)
+          }
         }
       }
     }
@@ -137,8 +140,8 @@ class TransferController @Inject()(
     Right(true)
   }
 
-  private def updatedRemainingTransfers(league: League, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
-    if (!league.started){
+  private def updatedRemainingTransfers(leagueStarted: Boolean, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
+    if (!leagueStarted){
       return Right(leagueUser.remainingTransfers)
     }
     val newRemaining = leagueUser.remainingTransfers.map(_ - toSell.size)
@@ -187,19 +190,23 @@ class TransferController @Inject()(
     }
   }
 
-  private def updatedTeamSize(newTeamIds: Set[Long], league: League, isCheck: Boolean): Either[Result, Int] = {
+  private def updatedTeamSize(newTeamIds: Set[Long], leagueTeamSize: Int, isCheck: Boolean): Either[Result, Int] = {
     newTeamIds.size match {
-      case x if x <= league.teamSize => Right(x)
+      case x if x <= leagueTeamSize => Right(x)
       //case x if x < league.teamSize && !isCheck => Left(BadRequest(f"Cannot confirm transfers as team unfilled (require ${league.teamSize})"))
       case x => Left(BadRequest(
-        f"Exceeds maximum team size of ${league.teamSize}"
+        f"Exceeds maximum team size of ${leagueTeamSize}"
       ))
     }
   }
 
-  private def validateLimitLimit(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
+  private def validateLimits(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
     //Right("cat")
     // TODO errrm this is a bit messy
+    leagueRepo.getLimitTypes(leagueId).forall(limitType => {
+      leagueRepo.getPickeesWithLimits(leagueId).filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
+        .forall({case (k, v) => v.size <= v.head.max})
+    })
     league.limitTypes.forall(limitType => {
       league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
         .forall({case (k, v) => v.size <= v.head.max})
@@ -247,10 +254,10 @@ class TransferController @Inject()(
     Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining))))
   }
 
-  private def shouldApplyWildcard(attemptingWildcard: Boolean, league: League, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Boolean] = {
+  private def shouldApplyWildcard(attemptingWildcard: Boolean, leagueHasWildcard: Boolean, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Boolean] = {
     if (!toSell.isEmpty && attemptingWildcard) return Left(BadRequest("Cannot sell heroes AND use wildcard at same time"))
     if (!attemptingWildcard) return Right(false)
-    league.transferWildcard match {
+    leagueHasWildcard match {
       case true => leagueUser.usedWildcard match {
         case true => Left(BadRequest("User already used up wildcard"))
         case _ => Right(true)

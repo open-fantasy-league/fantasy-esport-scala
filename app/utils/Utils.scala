@@ -53,10 +53,12 @@ object GroupByOrderedImplicit {
 
 object Formatter {
   import play.api.libs.json._
-  def timestampFormatFactory(formatStr: String): Format[LocalDateTime] = new Format[LocalDateTime] {
-    val format = new SimpleDateFormat(formatStr)
 
-    def reads(json: JsValue): JsResult[LocalDateTime] = JsSuccess(LocalDateTime.parse(format.parse(json.as[String])))
+  import play.api.data.format.Formats.localDateTimeFormat
+  def timestampFormatFactory(formatStr: String): Format[LocalDateTime] = new Format[LocalDateTime] {
+    val format = new localDateTimeFormat(formatStr)
+
+    def reads(json: JsValue): JsResult[LocalDateTime] = JsSuccess(format.parse(json.as[String]))
 
     def writes(ts: LocalDateTime) = JsString(format.format(ts))
   }

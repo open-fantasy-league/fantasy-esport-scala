@@ -317,7 +317,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
       """select l.id as leagueId, p.id as periodId from league l join period p on (
         |p.leagueId = l.id and (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
         |p.ended = false and p.start <= {currentTime});""".stripMargin
-    val out = SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).unzip.map(t => postStartPeriodHook(t._1, t._2, currentTime))
+    val out = SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).toList.unzip.map(t => postStartPeriodHook(t._1, t._2, currentTime))
   }
 }
 

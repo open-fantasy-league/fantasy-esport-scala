@@ -156,11 +156,11 @@ class LeagueController @Inject()(
   }
 
   def getWithRelatedReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(leagueRepo.getWithRelated(request.league.id)))))
+    Future(inTransaction( db.withConnection { implicit c => Ok(Json.toJson(leagueRepo.getWithRelated(request.league.id)))}))
   }
 
   def update(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
-    processJsonUpdateLeague(request.league)
+    db.withConnection { implicit c => processJsonUpdateLeague(request.league)}
   }
 
   def add = Action.async(parse.json){implicit request => processJsonLeague()}
@@ -168,8 +168,10 @@ class LeagueController @Inject()(
   def getAllUsersReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       inTransaction {
-        val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.id)
-        Ok(Json.toJson(leagueUsers))
+        db.withConnection { implicit c =>
+          val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.id)
+          Ok(Json.toJson(leagueUsers))
+        }
       }
     }
   }
@@ -246,10 +248,12 @@ class LeagueController @Inject()(
   def updatePeriodReq(leagueId: String, periodValue: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
-        (for {
-          periodValueInt <- IdParser.parseIntId(periodValue, "period value")
-          out = handleUpdatePeriodForm(request.league.id, periodValueInt)
-        } yield out).fold(identity, identity)
+        db.withConnection { implicit c =>
+          (for {
+            periodValueInt <- IdParser.parseIntId(periodValue, "period value")
+            out = handleUpdatePeriodForm(request.league.id, periodValueInt)
+          } yield out).fold(identity, identity)
+        }
       }
     }
   }

@@ -15,9 +15,11 @@ import play.api.data.format.Formats._
 import models._
 import models.AppDB._
 import anorm._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import play.api.db._
 import utils.TryHelper.tryOrResponse
 import auth._
+import v1.league.LeagueRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -30,7 +32,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(db: Database, cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(db: Database, cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -74,9 +76,9 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
           db.withConnection { implicit c =>
             inTransaction {
               (for {
-                validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
+                validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
                 internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
-                now = LocalDateTime.now()
+                now: LocalDateTime = LocalDateTime.now
                 insertedMatch <- newMatch(input, league, now)
                 insertedResults <- newResults(input, league, insertedMatch, internalPickee)
                 insertedStats <- newStats(league, insertedMatch.id, internalPickee)
@@ -97,14 +99,14 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: League): List[InternalPickee] = {
+  private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: LeagueRow): List[InternalPickee] = {
     pickees.map(ip => {
       val internalId = pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.id).single.id
       InternalPickee(internalId, ip.isTeamOne, ip.stats)
     })
   }
 
-  private def getPeriod(input: ResultFormInput, league: League, now: LocalDateTime): Either[Result, Int] = {
+  private def getPeriod(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): Either[Result, Int] = {
     println(league.applyPointsAtStartTime)
     println(input.targetAtTstamp)
     println(now)
@@ -115,10 +117,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       case (_, true) => input.startTstamp
       case _ => now
     }
-    tryOrResponse(() => {from(periodTable)(
-      p => where(targetedAtTstamp > p.start and p.leagueId === league.id and targetedAtTstamp <= p.end)
-        select p
-    ).single.value}, InternalServerError("Cannot add result outside of period"))
+    tryOrResponse(() => {leagueRepo.getPeriodBetween(p.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
   }
 
   private def newMatch(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): Either[Result, Matchu] = {
@@ -129,7 +128,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       case _ => now
     }
     tryOrResponse[Matchu](() => matchTable.insert(new Matchu(
-      league.id, input.matchId, league.currentPeriod.getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
+      league.id, input.matchId, leagueRepo.getCurrentPeriod(league).getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
       input.teamOneVictory, input.startTstamp, now, targetedAtTstamp
     )), InternalServerError("Internal server error adding match"))
   }
@@ -153,7 +152,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       val result = resultTable.where(
         r => r.matchId === matchId and r.pickeeId === ip.id
         ).single
-      val points = if (s.field == "points") s.value * league.currentPeriod.get.multiplier else s.value
+      val points = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
       (new Points(result.id, leagueStatFieldTable.where(pf => pf.leagueId === league.id and pf.name === s.field).single.id, points),
         ip.id)
     }))
