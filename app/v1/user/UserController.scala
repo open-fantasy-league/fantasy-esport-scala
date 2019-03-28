@@ -9,6 +9,7 @@ import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
+import play.api.db._
 import models._
 import play.api.data.format.Formats._
 import utils.IdParser.parseLongId
@@ -20,7 +21,7 @@ case class UserFormInput(username: String, userId: Long)
 
 case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
 
-class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, leagueRepo: LeagueRepo, db: Database)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[UserFormInput] = {
@@ -47,14 +48,16 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   def joinLeague(userId: String, leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction {
-        (for {
-          userId <- parseLongId(userId, "User")
-          user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
-          //todo tis hacky
-          validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.id)) Left(BadRequest("User already in this league")) else Right(true)
-          added <- Try(leagueUserRepo.joinUsers(List(user), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
-          success = "Successfully added user to league"
-        } yield success).fold(identity, Ok(_))
+        db.withConnection { implicit c =>
+          (for {
+            userId <- parseLongId(userId, "User")
+            user <- AppDB.userTable.lookup(userId).toRight(BadRequest("User does not exist"))
+            //todo tis hacky
+            validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.id)) Left(BadRequest("User already in this league")) else Right(true)
+            added <- Try(leagueUserRepo.joinUsers2(List(user), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+            success = "Successfully added user to league"
+          } yield success).fold(identity, Ok(_))
+        }
       }
     }
   }

@@ -1,6 +1,7 @@
 package v1.transfer
 
-import java.sql.{Connection, Timestamp}
+import java.sql.Connection
+import java.time.LocalDateTime
 import javax.inject.Inject
 import java.util.concurrent.TimeUnit
 
@@ -55,14 +56,17 @@ class TransferController @Inject()(
   implicit val parser = parse.default
 
   // todo add a transfer check call
-  def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers))).async { implicit request =>
+  def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    db.withConnection { implicit c =>
+    new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers2))}).async { implicit request =>
     scheduleTransfer(request.league, request.leagueUser)
   }
 
   def processTransfersReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {
-        val currentTime = new Timestamp(System.currentTimeMillis())
+        val currentTime = LocalDateTime.now()
         // TODO better way? hard with squeryls weird dsl
         db.withConnection { implicit c =>
           val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
@@ -212,9 +216,9 @@ class TransferController @Inject()(
                                 period: Int, newMoney: BigDecimal, newRemaining: Option[Int], transferDelay: Option[Int],
                                 applyWildcard: Boolean
                               ): Either[Result, Result] = {
-    val currentEpochTime = System.currentTimeMillis()
-    val currentTime = new Timestamp(currentEpochTime)
-    val scheduledUpdateTime = transferDelay.map(td => new Timestamp(currentEpochTime + TimeUnit.MINUTES.toMillis(td)))
+    // TODO timedeltas
+    val currentTime = LocalDateTime.now()
+    val scheduledUpdateTime = transferDelay.map(td => currentTime + TimeUnit.MINUTES.toMillis(td))
     val toSellPickees = toSell.map(ts => pickees.find(_.externalId == ts).get)
     transferTable.insert(toSellPickees.map(
       p => new Transfer(

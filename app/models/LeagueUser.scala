@@ -1,7 +1,7 @@
 package models
 
 import org.squeryl.KeyedEntity
-import java.sql.Timestamp
+import java.time.LocalDateTime
 
 import play.api.libs.json._
 import utils.Formatter.timestampFormatFactory
@@ -10,10 +10,10 @@ class LeagueUser(
                   val leagueId: Long,
                   val userId: Long,
                   var money: BigDecimal,
-                  var entered: Timestamp,
+                  var entered: LocalDateTime,
                   var remainingTransfers: Option[Int],
                   var usedWildcard: Boolean,
-                  var changeTstamp: Option[Timestamp] = None
+                  var changeTstamp: Option[LocalDateTime] = None
                 ) extends KeyedEntity[Long] {
   val id: Long = 0
   //lazy val team = AppDB.leagueUserToTeam.left(this)
@@ -41,8 +41,8 @@ object LeagueUser{
 
 class Team(
           val leagueUserId: Long,
-          val started: Timestamp,
-          var ended: Option[Timestamp] = None,
+          val started: LocalDateTime,
+          var ended: Option[LocalDateTime] = None,
           ) extends KeyedEntity[Long] {
   val id: Long = 0
 }

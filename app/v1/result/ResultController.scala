@@ -1,6 +1,7 @@
 package v1.result
 
-import java.sql.{Connection, Timestamp}
+import java.sql.Connection
+import java.time.LocalDateTime
 
 import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
@@ -8,7 +9,7 @@ import entry.SquerylEntrypointForMyApp._
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._
 import play.api.data.Form
-import play.api.data.Forms.{sqlTimestamp, _}
+import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
 import models._
@@ -20,7 +21,7 @@ import auth._
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
-                            startTstamp: Timestamp, targetAtTstamp: Option[Timestamp], pickees: List[PickeeFormInput]
+                            startTstamp: LocalDateTime, targetAtTstamp: Option[LocalDateTime], pickees: List[PickeeFormInput]
                           )
 
 case class PickeeFormInput(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
@@ -41,8 +42,8 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
         "teamOne" -> nonEmptyText,
         "teamTwo" -> nonEmptyText,
         "teamOneVictory" -> boolean,
-        "startTstamp" -> sqlTimestamp("yyyy-MM-dd HH:mm:ss"),
-        "targetAtTstamp" -> optional(sqlTimestamp("yyyy-MM-dd HH:mm:ss")),
+        "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss")),
+        "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
           "isTeamOne" -> boolean,
@@ -55,12 +56,13 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     )
   }
   implicit val parser = parse.default
+  implicit val db_impl = db
 
-  def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.                          PermissionCheckAction).async{ implicit request =>
+  def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
     processJsonResult(request.league)
   }
 
-  private def processJsonResult[A](league: League)(implicit request: Request[A]): Future[Result] = {
+  private def processJsonResult[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[ResultFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -74,7 +76,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
               (for {
                 validateStarted <- if (league.started) Right(true) else Left(BadRequest("Cannot add results before league started"))
                 internalPickee = convertExternalToInternalPickeeId(input.pickees, league)
-                now = new Timestamp(System.currentTimeMillis())
+                now = LocalDateTime.now()
                 insertedMatch <- newMatch(input, league, now)
                 insertedResults <- newResults(input, league, insertedMatch, internalPickee)
                 insertedStats <- newStats(league, insertedMatch.id, internalPickee)
@@ -102,7 +104,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     })
   }
 
-  private def getPeriod(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Int] = {
+  private def getPeriod(input: ResultFormInput, league: League, now: LocalDateTime): Either[Result, Int] = {
     println(league.applyPointsAtStartTime)
     println(input.targetAtTstamp)
     println(now)
@@ -119,7 +121,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     ).single.value}, InternalServerError("Cannot add result outside of period"))
   }
 
-  private def newMatch(input: ResultFormInput, league: League, now: Timestamp): Either[Result, Matchu] = {
+  private def newMatch(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): Either[Result, Matchu] = {
       // targetedAt overrides applyAtStart
     val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
@@ -132,7 +134,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     )), InternalServerError("Internal server error adding match"))
   }
 
-  private def newResults(input: ResultFormInput, league: League, matchu: Matchu, pickees: List[InternalPickee]): Either[Result, List[Resultu]] = {
+  private def newResults(input: ResultFormInput, league: LeagueRow, matchu: Matchu, pickees: List[InternalPickee]): Either[Result, List[Resultu]] = {
     // TODO log/get original stack trace
     val newRes = pickees.map(p => new Resultu(
       matchu.id, p.id, p.isTeamOne
@@ -140,7 +142,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     tryOrResponse(() => {resultTable.insert(newRes); newRes}, InternalServerError("Internal server error adding result"))
   }
 
-  private def newStats(league: League, matchId: Long, pickees: List[InternalPickee]): Either[Result, List[(Points, Long)]] = {
+  private def newStats(league: LeagueRow, matchId: Long, pickees: List[InternalPickee]): Either[Result, List[(Points, Long)]] = {
     // doing add results, add points to pickee, and to league user all at once
     // (was not like this in python)
     // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
@@ -158,7 +160,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
   }
 
-  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: League, period: Int, targetedAtTstamp: Timestamp): Either[Result, Any] = {
+  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeStat = pickeeStatTable.where(
@@ -187,7 +189,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     }}), InternalServerError("Internal server error updating stats"))
   }
 
-  def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
+  def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction {
         (for {

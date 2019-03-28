@@ -1,6 +1,7 @@
 package v1.league
 
-import java.sql.{Timestamp, Connection}
+import java.sql.Connection
+import java.time.LocalDateTime
 
 import javax.inject.Inject
 import entry.SquerylEntrypointForMyApp._
@@ -18,14 +19,14 @@ import utils.TryHelper._
 import auth._
 import models.AppDB._
 import anorm._
-import models.{League, LimitType, Limit,
+import models.{League, LimitType, Limit, LeagueRow,
   PickeeLimit
 }
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
-case class PeriodInput(start: Timestamp, end: Timestamp, multiplier: Double)
-case class UpdatePeriodInput(start: Option[Timestamp], end: Option[Timestamp], multiplier: Option[Double])
+case class PeriodInput(start: LocalDateTime, end: LocalDateTime, multiplier: Double)
+case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double])
 
 case class LimitInput(name: String, max: Option[Int])
 
@@ -73,8 +74,8 @@ class LeagueController @Inject()(
         "tournamentId" -> of(longFormat),
         "periodDescription" -> nonEmptyText,
         "periods" -> list(mapping(
-          "start" -> of(sqlTimestampFormat("yyyy-MM-dd HH:mm")),
-          "end" -> of(sqlTimestampFormat("yyyy-MM-dd HH:mm")),
+          "start" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),
+          "end" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),
           "multiplier" -> default(of(doubleFormat), 1.0)
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
@@ -140,8 +141,8 @@ class LeagueController @Inject()(
   private val updatePeriodForm: Form[UpdatePeriodInput] = {
     Form(
       mapping(
-        "start" -> optional(of(sqlTimestampFormat("yyyy-MM-dd HH:mm"))),
-        "end" -> optional(of(sqlTimestampFormat("yyyy-MM-dd HH:mm"))),
+        "start" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
+        "end" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
         "multiplier" -> optional(of(doubleFormat)),
       )(UpdatePeriodInput.apply)(UpdatePeriodInput.unapply)
     )
@@ -173,7 +174,8 @@ class LeagueController @Inject()(
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply(Some(leagueUserRepo.joinUsers))).async { implicit request =>
+  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)
+    andThen db.withConnection { implicit c => new LeagueUserAction(userId).apply(Some(leagueUserRepo.joinUsers2))}).async { implicit request =>
     Future{
       inTransaction{
       val showTeam = !request.getQueryString("team").isEmpty
@@ -204,12 +206,14 @@ class LeagueController @Inject()(
   def endPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
       inTransaction {
-        request.league.currentPeriod match {
-          case Some(p) if !p.ended => {
-            leagueRepo.postEndPeriodHook(request.league, p, new Timestamp(System.currentTimeMillis()))
-            Ok("Successfully ended day")
+        db.withConnection { implicit c =>
+          leagueRepo.getCurrentPeriod(request.league) match {
+            case Some(p) if !p.ended => {
+              leagueRepo.postEndPeriodHook(List(p.id), List(request.league.id), LocalDateTime.now())
+              Ok("Successfully ended day")
+            }
+            case _ => BadRequest("Period already ended (Must start next period first)")
           }
-          case _ => BadRequest("Period already ended (Must start next period first)")
         }
       }
     }
@@ -218,20 +222,22 @@ class LeagueController @Inject()(
   def startPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
       inTransaction {
-        (for {
-          newPeriod <- leagueRepo.getNextPeriod(request.league)
-          _ = leagueRepo.postStartPeriodHook(request.league, newPeriod, new Timestamp(System.currentTimeMillis()))
-          out = Ok(f"Successfully started period $newPeriod")
-        } yield out).fold(identity, identity)
+        db.withConnection { implicit c =>
+          (for {
+            newPeriod <- leagueRepo.getNextPeriod(request.league)
+            _ = leagueRepo.postStartPeriodHook(request.league, newPeriod, LocalDateTime.now())
+            out = Ok(f"Successfully started period $newPeriod")
+          } yield out).fold(identity, identity)
+        }
       }
     }
   }
 
-  def getHistoricTeamsReq(leagueId: String, period: String) = 
-  {
-    (new LeagueAction(leagueId) andThen new PeriodAction().league()).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, request.p.get)))))
-  }}
+//  def getHistoricTeamsReq(leagueId: String, period: String) =
+//  {
+//    (new LeagueAction(leagueId) andThen new PeriodAction().league()).async { implicit request =>
+//    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, request.p.get)))))
+//  }}
 
   def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeams(request.league.id)))))
@@ -270,50 +276,54 @@ class LeagueController @Inject()(
     def success(input: LeagueFormInput): Future[Result] = {
       Future{
       inTransaction {
-        val newLeague = leagueRepo.insert(input)
-        (input.prizeDescription, input.prizeEmail) match {
-          case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.id, d, e)
-          case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
-          case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
-          case _ => ;
-        }
+        db.withConnection { implicit c =>
+          val newLeague = leagueRepo.insert(input)
+          (input.prizeDescription, input.prizeEmail) match {
+            case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.id, d, e)
+            case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
+            case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
+            case _ => ;
+          }
 
-        val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
-        val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
+          val pointsField = leagueRepo.insertLeagueStatField(newLeague.id, "points")
+          val statFields = List(pointsField.id) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es).id)
 
-        val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _).id)
-        val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
-        val newPickeeStats = statFields.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
-        val newLeagueUserStats = statFields.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.id)))
+          val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _).id)
+          val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
+          val newPickeeStats = statFields.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
+          val newLeagueUserStats = statFields.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.id)))
 
-        newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
-        newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
-        var nextPeriodId: Option[Long] = None
-        // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
-        input.periods.zipWithIndex.reverse.foreach({case (p, i) => {
-          val newPeriod = leagueRepo.insertPeriod(newLeague.id, p, i+1, nextPeriodId)
-          nextPeriodId = Some(newPeriod.id)
-          newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i+1)))
-          newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i+1)))
-        }})
-        val limitNamesToIds =  collection.mutable.Map[String, Long]()
-
-        input.limits.foreach(ft => {
-          val newLimitType = limitTypeTable.insert(
-            new LimitType(newLeague.id, ft.name, ft.description.getOrElse(ft.name), ft.max)
-          )
-          ft.types.foreach(f => {
-            val newLimit = limitTable.insert(new Limit(newLimitType.id, f.name, ft.max.getOrElse(f.max.get)))
-            limitNamesToIds(newLimit.name) = newLimit.id.toLong
+          newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, None))
+          newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, None))
+          var nextPeriodId: Option[Long] = None
+          // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
+          input.periods.zipWithIndex.reverse.foreach({ case (p, i) => {
+            val newPeriod = leagueRepo.insertPeriod(newLeague.id, p, i + 1, nextPeriodId)
+            nextPeriodId = Some(newPeriod.id)
+            newPickeeStats.foreach(np => pickeeRepo.insertPickeeStatDaily(np.id, Some(i + 1)))
+            newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.id, Some(i + 1)))
+          }
           })
-        })
-        input.pickees.zipWithIndex.foreach({case (p, i) => p.limits.foreach({
-          // Try except key error
-          f => pickeeLimitTable.insert(new PickeeLimit(newPickeeIds(i), limitNamesToIds(f)))
-        })})
+          val limitNamesToIds = collection.mutable.Map[String, Long]()
+
+          input.limits.foreach(ft => {
+            val newLimitType = limitTypeTable.insert(
+              new LimitType(newLeague.id, ft.name, ft.description.getOrElse(ft.name), ft.max)
+            )
+            ft.types.foreach(f => {
+              val newLimit = limitTable.insert(new Limit(newLimitType.id, f.name, ft.max.getOrElse(f.max.get)))
+              limitNamesToIds(newLimit.name) = newLimit.id.toLong
+            })
+          })
+          input.pickees.zipWithIndex.foreach({ case (p, i) => p.limits.foreach({
+            // Try except key error
+            f => pickeeLimitTable.insert(new PickeeLimit(newPickeeIds(i), limitNamesToIds(f)))
+          })
+          })
 
           Created(Json.toJson(newLeague))
         }
+      }
       }
     }
 

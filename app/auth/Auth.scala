@@ -113,7 +113,7 @@ class LeagueUserAction(val userId: String){
 }
 
 
-class Auther @Inject()(leagueRepo: LeagueRepo){
+class Auther @Inject()(leagueRepo: LeagueRepo, db: Database){
   val conf = ConfigFactory.load()
   lazy val adminKey = conf.getString("adminKey")
   lazy val adminHost = conf.getString("adminHost")
@@ -122,11 +122,13 @@ class Auther @Inject()(leagueRepo: LeagueRepo){
     def executionContext = ec
     def refine[A](input: AuthRequest[A]) = Future.successful {
       inTransaction(
-        (for {
-          leagueId <- IdParser.parseLongId(leagueId, "league")
-          league <- leagueRepo.get2(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
-          out <- Right(new AuthLeagueRequest(league, input))
-        } yield out)
+        db.withConnection { implicit c =>
+          (for {
+            leagueId <- IdParser.parseLongId(leagueId, "league")
+            league <- leagueRepo.get2(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+            out <- Right(new AuthLeagueRequest(league, input))
+          } yield out)
+        }
       )
     }
   }

@@ -1,6 +1,6 @@
 package v1.admin
 
-import java.sql.Timestamp
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 import entry.SquerylEntrypointForMyApp._
@@ -9,6 +9,8 @@ import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import models._
 import play.api.db._
+import anorm._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import auth._
 import v1.league.LeagueRepo
 import v1.transfer.TransferRepo
@@ -22,13 +24,12 @@ class AdminController @Inject()(
 
   def allProcessTransfersReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
-      val currentTime = new Timestamp(System.currentTimeMillis())
+      val currentTime = LocalDateTime.now()
       inTransaction {
         db.withConnection { implicit c =>
-          val updates = from(AppDB.leagueUserTable)(lu =>
-            where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-              select (lu)
-          ).map(transferRepo.processLeagueUserTransfer)
+          val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
+          val q = "select id from league_user where change_tstamp is not null and change_tstamp <= now();"
+          SQL(q).on().as(SqlParser.long("id").*).map(transferRepo.processLeagueUserTransfer)
         }
         Ok("Transfer updates processed")
       }
@@ -39,7 +40,7 @@ class AdminController @Inject()(
     // // TODO test add leagues, sleep before end transaction, and see how id's turn out
     // Thread.sleep(2000)
     Future {
-      val currentTime = new Timestamp(System.currentTimeMillis())
+      val currentTime = LocalDateTime.now()
       inTransaction {
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)

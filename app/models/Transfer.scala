@@ -1,6 +1,6 @@
 package models
 
-import java.sql.Timestamp
+import java.time.LocalDateTime
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
@@ -10,8 +10,8 @@ class Transfer(
                 val leagueUserId: Long,
                 val pickeeId: Long,
                 val isBuy: Boolean,
-                val timeMade: Timestamp,
-                val scheduledFor: Timestamp,
+                val timeMade: LocalDateTime,
+                val scheduledFor: LocalDateTime,
                 var processed: Boolean,
                 val cost: BigDecimal,
                 val wasWildcard: Boolean = false

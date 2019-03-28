@@ -1,6 +1,6 @@
 package models
 
-import java.sql.Timestamp
+import java.time.LocalDateTime
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
@@ -111,8 +111,8 @@ class Limit(
 class Period(
             val leagueId: Long,
             val value: Int,
-            var start: Timestamp,
-            var end: Timestamp,
+            var start: LocalDateTime,
+            var end: LocalDateTime,
             var multiplier: Double = 1.0,
             val nextPeriodId: Option[Long] = None,
             var ended: Boolean = false,
@@ -120,15 +120,15 @@ class Period(
   val id: Long = 0
 
   def this() = this(
-    0, 0, new Timestamp(System.currentTimeMillis()), new Timestamp(System.currentTimeMillis())
+    0, 0, LocalDateTime.now(), LocalDateTime.now()
   )
 }
 
 case class PeriodRow(id: Long,
                      leagueId: Long,
                      value: Int,
-                     start: Timestamp,
-                     end: Timestamp,
+                     start: LocalDateTime,
+                     end: LocalDateTime,
                      multiplier: Double = 1.0,
                      nextPeriodId: Option[Long] = None,
                      ended: Boolean = false,
@@ -197,8 +197,8 @@ object LimitType{
 
 object LeagueRow{
   implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
-  implicit val implicitWrites = new Writes[League] {
-    def writes(league: League): JsValue = {
+  implicit val implicitWrites = new Writes[LeagueRow] {
+    def writes(league: LeagueRow): JsValue = {
       Json.obj(
         "id" -> league.id,
         "name" -> league.name,

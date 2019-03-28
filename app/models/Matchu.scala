@@ -1,6 +1,6 @@
 package models
 
-import java.sql.Timestamp
+import java.time.LocalDateTime
 import java.text.SimpleDateFormat
 
 import org.squeryl.KeyedEntity
@@ -16,20 +16,20 @@ class Matchu( // because match is an sql keyword
               var teamOne: String,
               var teamTwo: String,
               var teamOneVictory: Boolean,
-              val startTstamp: Timestamp,
-              val addedDBTstamp: Timestamp,
-              val targetedAtTstamp: Timestamp // what timestamp do we look up teams for
+              val startTstamp: LocalDateTime,
+              val addedDBTstamp: LocalDateTime,
+              val targetedAtTstamp: LocalDateTime // what timestamp do we look up teams for
             )
   extends KeyedEntity[Long] {
   val id: Long = 0
 }
 
 object Matchu{
-//  implicit val timestampFormat = new Format[Timestamp]{
+//  implicit val timestampFormat = new Format[LocalDateTime]{
 //    val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 //    // how just super reads?
-//    def reads(json: JsValue): JsResult[Timestamp] = JsSuccess(new Timestamp(format.parse(json.as[String]).getTime))
-//    def writes(ts: Timestamp) = JsString(format.format(ts))
+//    def reads(json: JsValue): JsResult[LocalDateTime] = JsSuccess(new LocalDateTime(format.parse(json.as[String]).getTime))
+//    def writes(ts: LocalDateTime) = JsString(format.format(ts))
 //  }
   implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
 
