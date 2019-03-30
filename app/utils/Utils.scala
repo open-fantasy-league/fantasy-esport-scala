@@ -54,7 +54,7 @@ object GroupByOrderedImplicit {
 object Formatter {
   import play.api.libs.json._
 
-  import play.api.data.format.Formats.localDateTimeFormat
+  import play.api.data.format.Formats._
   def timestampFormatFactory(formatStr: String): Format[LocalDateTime] = new Format[LocalDateTime] {
     val format = new localDateTimeFormat(formatStr)
 

@@ -20,6 +20,8 @@ import play.api.db._
 import auth._
 import v1.leagueuser.LeagueUserRepo
 import v1.team.TeamRepo
+import v1.league.LeagueRepo
+import v1.pickee.PickeeRepo
 
 case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
 
@@ -38,7 +40,8 @@ object TransferSuccess{
 
 class TransferController @Inject()(
                                     db: Database, cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
-                                    leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+                                    leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo, leagueRepo: LeagueRepo, pickeeRepo: PickeeRepo)
+                                  (implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -54,6 +57,7 @@ class TransferController @Inject()(
     )
   }
   implicit val parser = parse.default
+  implicit val db_ = db
 
   // todo add a transfer check call
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
@@ -69,8 +73,7 @@ class TransferController @Inject()(
         val currentTime = LocalDateTime.now()
         // TODO better way? hard with squeryls weird dsl
         db.withConnection { implicit c =>
-          val updates = request.league.users.associations.where(lu => lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime)
-            .map(transferRepo.processLeagueUserTransfer)
+          val updates = leagueUserRepo.getShouldProcessTransfer(request.league.id).map(transferRepo.processLeagueUserTransfer)
         }
         Ok("Transfer updates processed")
       }
@@ -107,7 +110,7 @@ class TransferController @Inject()(
               validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
               applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, leagueUser, sell)
               newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser, sell)
-              pickees = from(league.pickees)(select(_)).toList
+              pickees = pickeeRepo.getPickees(league.id).toList
               newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
               currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
               ).toOption.toRight(InternalServerError("Missing pickee externalId"))
@@ -123,7 +126,7 @@ class TransferController @Inject()(
               transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
                 updateDBScheduleTransfer(
-                  sellOrWildcard, buy, pickees, leagueUser, league.currentPeriod.getOrElse(new Period()).value, newMoney,
+                  sellOrWildcard, buy, pickees, leagueUser, leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
                   newRemaining, transferDelay, applyWildcard)
             } yield out).fold(identity, identity)
           }
@@ -204,13 +207,14 @@ class TransferController @Inject()(
     //Right("cat")
     // TODO errrm this is a bit messy
     leagueRepo.getLimitTypes(leagueId).forall(limitType => {
-      leagueRepo.getPickeesWithLimits(leagueId).filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
-        .forall({case (k, v) => v.size <= v.head.max})
-    })
-    league.limitTypes.forall(limitType => {
-      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
+      // case class PickeeQuery(pickee: Pickee, limitType: Option[LimitType], limit: Option[Limit])
+      pickeeRep.getPickeesWithLimits(leagueId).filter(lp => newTeamIds.contains(lp.pickee.id)).flatMap(_.limit).groupBy(_.limitTypeId)
         .forall({case (k, v) => v.size <= v.head.max})
     }) match {
+//    league.limitTypes.forall(limitType => {
+//      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
+//        .forall({case (k, v) => v.size <= v.head.max})
+//    }) match {
         case true => Right(true)
         case false => Left(BadRequest(
           f"Exceeds limit limit"
@@ -223,9 +227,8 @@ class TransferController @Inject()(
                                 period: Int, newMoney: BigDecimal, newRemaining: Option[Int], transferDelay: Option[Int],
                                 applyWildcard: Boolean
                               ): Either[Result, Result] = {
-    // TODO timedeltas
     val currentTime = LocalDateTime.now()
-    val scheduledUpdateTime = transferDelay.map(td => currentTime + TimeUnit.MINUTES.toMillis(td))
+    val scheduledUpdateTime = transferDelay.map(td => currentTime.plusMinutes(td))
     val toSellPickees = toSell.map(ts => pickees.find(_.externalId == ts).get)
     transferTable.insert(toSellPickees.map(
       p => new Transfer(
@@ -242,7 +245,7 @@ class TransferController @Inject()(
       val currentTeam = teamRepo.getLeagueUserTeam(leagueUser).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
       if (scheduledUpdateTime.isEmpty) {
         transferRepo.changeTeam(
-          leagueUser, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
+          leagueUser.id, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
         )
       }
     }

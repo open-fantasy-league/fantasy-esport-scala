@@ -11,6 +11,7 @@ import play.api.libs.concurrent.CustomExecutionContext
 import anorm._
 import play.api.db._
 import models._
+import v1.league.LeagueRepo
 
 import scala.collection.immutable.List
 
@@ -26,7 +27,7 @@ trait TransferRepo{
 }
 
 @Singleton
-class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extends TransferRepo{
+class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
   override def getLeagueUserTransfer(leagueUser: LeagueUser, unprocessed: Option[Boolean]): List[Transfer] = {
   from(AppDB.transferTable)(t =>
     where(t.leagueUserId === leagueUser.id and (t.processed === unprocessed.map(!_).?))
@@ -42,11 +43,11 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext) extend
         """update team t set timespan = tstzrange(lower(timespan), now())
     where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
-      SQL(q).on("leagueUserId" -> leagueUser.id).executeUpdate()
+      SQL(q).on("leagueUserId" -> leagueUserId).executeUpdate()
     println("Ended current team")
     val newTeamId = SQL(
       "insert into team(league_user_id, timespan) values ({leagueUserId}, tstzrange({now}, null));"
-    ).on("leagueUserId" -> leagueUser.id, "now" -> time).executeInsert()
+    ).on("leagueUserId" -> leagueUserId, "now" -> time).executeInsert()
     println("Inserted new team")
     SQL("update league_user set change_tstamp = null where id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
     print(newPickees.mkString(", "))

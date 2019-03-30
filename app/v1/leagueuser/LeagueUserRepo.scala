@@ -176,6 +176,7 @@ trait LeagueUserRepo{
   def userInLeague(userId: Long, leagueId: Long): Boolean
   def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
   def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
+  def getShouldProcessTransfer(leagueId: Long): Iterable[Long]
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
@@ -508,6 +509,12 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     val leagueUser = query.head._1
     val team = query.flatMap(_._2)
     LeagueUserTeamOut(leagueUser, team)
+  }
+
+  override def getShouldProcessTransfer(leagueId: Long): Iterable[Long] = {
+    from(leagueUserTable)(lu => where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime and lu.leagueId === leagueId)
+      select lu.id
+    )
   }
 }
 

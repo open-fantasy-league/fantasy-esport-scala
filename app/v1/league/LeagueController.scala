@@ -343,7 +343,9 @@ class LeagueController @Inject()(
       if (leagueRepo.isStarted(league) && (input.transferLimit.isDefined || input.transferWildcard.isDefined)){
         BadRequest("Cannot update transfer limits or wildcard after league has started")
       } else{
-        inTransaction(Ok(Json.toJson(leagueRepo.update(league, input))))
+        db.withConnection { implicit c =>
+          inTransaction(Ok(Json.toJson(leagueRepo.update(league, input))))
+        }
       }
     )
 

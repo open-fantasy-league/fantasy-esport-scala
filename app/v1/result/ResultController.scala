@@ -32,7 +32,8 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(db: Database, cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther, leagueRepo: LeagueRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)
+                                (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val form: Form[ResultFormInput] = {
@@ -58,10 +59,11 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     )
   }
   implicit val parser = parse.default
-  implicit val db_impl = db
+  //implicit val db_impl = db
+  //implicit val lr = leagueRepo //TODO can this just go in 2nd constructor args
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
-    processJsonResult(request.league)
+    db.withConnection { implicit c =>processJsonResult(request.league)}
   }
 
   private def processJsonResult[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
@@ -83,7 +85,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
                 insertedResults <- newResults(input, league, insertedMatch, internalPickee)
                 insertedStats <- newStats(league, insertedMatch.id, internalPickee)
                 correctPeriod <- getPeriod(input, league, insertedMatch.targetedAtTstamp)
-                updatedStats <- updateStats(c, insertedStats, league, correctPeriod, insertedMatch.targetedAtTstamp)
+                updatedStats <- updateStats(insertedStats, league, correctPeriod, insertedMatch.targetedAtTstamp)
                 success = "Successfully added results"
               } yield success).fold(l => {
                 error = Some(l); c.rollback(); throw new Exception("fuck")
@@ -99,14 +101,14 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: LeagueRow): List[InternalPickee] = {
+  private def convertExternalToInternalPickeeId(pickees: List[PickeeFormInput], league: LeagueRow)(implicit c: Connection): List[InternalPickee] = {
     pickees.map(ip => {
       val internalId = pickeeTable.where(p => p.leagueId === league.id and p.externalId === ip.id).single.id
       InternalPickee(internalId, ip.isTeamOne, ip.stats)
     })
   }
 
-  private def getPeriod(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): Either[Result, Int] = {
+  private def getPeriod(input: ResultFormInput, league: LeagueRow, now: LocalDateTime)(implicit c: Connection): Either[Result, Int] = {
     println(league.applyPointsAtStartTime)
     println(input.targetAtTstamp)
     println(now)
@@ -117,10 +119,10 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       case (_, true) => input.startTstamp
       case _ => now
     }
-    tryOrResponse(() => {leagueRepo.getPeriodBetween(p.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
+    tryOrResponse(() => {leagueRepo.getPeriodBetween(league.id, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
   }
 
-  private def newMatch(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): Either[Result, Matchu] = {
+  private def newMatch(input: ResultFormInput, league: LeagueRow, now: LocalDateTime)(implicit c: Connection): Either[Result, Matchu] = {
       // targetedAt overrides applyAtStart
     val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
@@ -128,12 +130,12 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
       case _ => now
     }
     tryOrResponse[Matchu](() => matchTable.insert(new Matchu(
-      league.id, input.matchId, leagueRepo.getCurrentPeriod(league).getOrElse(new Period()).value, input.tournamentId, input.teamOne, input.teamTwo,
+      league.id, input.matchId, leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), input.tournamentId, input.teamOne, input.teamTwo,
       input.teamOneVictory, input.startTstamp, now, targetedAtTstamp
     )), InternalServerError("Internal server error adding match"))
   }
 
-  private def newResults(input: ResultFormInput, league: LeagueRow, matchu: Matchu, pickees: List[InternalPickee]): Either[Result, List[Resultu]] = {
+  private def newResults(input: ResultFormInput, league: LeagueRow, matchu: Matchu, pickees: List[InternalPickee])(implicit c: Connection): Either[Result, List[Resultu]] = {
     // TODO log/get original stack trace
     val newRes = pickees.map(p => new Resultu(
       matchu.id, p.id, p.isTeamOne
@@ -141,7 +143,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     tryOrResponse(() => {resultTable.insert(newRes); newRes}, InternalServerError("Internal server error adding result"))
   }
 
-  private def newStats(league: LeagueRow, matchId: Long, pickees: List[InternalPickee]): Either[Result, List[(Points, Long)]] = {
+  private def newStats(league: LeagueRow, matchId: Long, pickees: List[InternalPickee])(implicit c: Connection): Either[Result, List[(Points, Long)]] = {
     // doing add results, add points to pickee, and to league user all at once
     // (was not like this in python)
     // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
@@ -159,7 +161,7 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
   }
 
-  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime): Either[Result, Any] = {
+  private def updateStats(newStats: List[(Points, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime)(implicit c: Connection): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeStat = pickeeStatTable.where(
@@ -191,11 +193,13 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
   def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       inTransaction {
-        (for {
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          results = resultRepo.get(period).toList
-          success = Ok(Json.toJson(results))
-        } yield success).fold(identity, identity)
+        db.withConnection { implicit c =>
+          (for {
+            period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+            results = resultRepo.get(period).toList
+            success = Ok(Json.toJson(results))
+          } yield success).fold(identity, identity)
+        }
       }
     }
   }

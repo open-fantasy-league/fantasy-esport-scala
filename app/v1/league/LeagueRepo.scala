@@ -11,6 +11,7 @@ import play.api.libs.json._
 import java.time.LocalDateTime
 
 import anorm._
+import anorm.SqlParser.long
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 import models.AppDB._
@@ -85,6 +86,7 @@ trait LeagueRepo{
   def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)
   def startPeriods(currentTime: LocalDateTime)
   def endPeriods(currentTime: LocalDateTime)
+  def getLimitTypes(leagueId: Long): Iterable[FactionType]
 }
 
 @Singleton
@@ -310,14 +312,20 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     val q =
       """select l.id as leagueId, p.id as periodId from league l join period p on (
         |l.current_period_id = p.id and p.ended = false and p.end <= {currentTime} and p.next_period_id is not null);""".stripMargin
-    SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).unzip.map(t => postEndPeriodHook(t._1, t._2, currentTime))
+    SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).toList.unzip.map(t => postEndPeriodHook(t._1, t._2, currentTime))
   }
   override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     val q =
       """select l.id as leagueId, p.id as periodId from league l join period p on (
         |p.leagueId = l.id and (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
         |p.ended = false and p.start <= {currentTime});""".stripMargin
-    val out = SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).toList.unzip.map(t => postStartPeriodHook(t._1, t._2, currentTime))
+    val out = SQL(q).on("currentTime" -> currentTime).as((long("leagueId") ~ long("periodId")).*).toList.unzip.map(t => postStartPeriodHook(t._1, t._2, currentTime))
+  }
+
+  override def getLimitTypes(leagueId: Long): Iterable[FactionType] = {
+    from(factionTypeTable)(ft => where(ft.leagueId === leagueId)
+      select ft
+    )
   }
 }
 
