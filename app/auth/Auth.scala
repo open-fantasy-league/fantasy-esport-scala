@@ -40,7 +40,8 @@ class AuthLeagueUserRequest[A](val u: User, val lu: LeagueUser, request: AuthLea
   def apiKey = request.apiKey
 }
 
-class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, parser: BodyParser[AnyContent], db: Database, leagueRepo: LeagueRepo) extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
+class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo, val parser: BodyParser[AnyContent])
+  extends ActionBuilder[LeagueRequest, AnyContent] with ActionRefiner[Request, LeagueRequest]{
   def executionContext = ec
   override def refine[A](input: Request[A]) = Future.successful {
     db.withConnection { implicit c =>

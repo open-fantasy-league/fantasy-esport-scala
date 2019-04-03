@@ -24,6 +24,7 @@ trait TransferRepo{
   def changeTeam(leagueUserId: Long, toBuyIds: Set[Long], toSellIds: Set[Long],
                  oldTeamIds: Set[Long], time: LocalDateTime
                 )(implicit c: Connection)
+  def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean
 }
 
 @Singleton
@@ -71,6 +72,17 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     transferTable.update(transfers.map(t => {
       t.processed = true; t
     }))
+  }
+
+  override def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean = {
+    // TODO need to check this againbst something. doesnt work right now
+    val q =
+      """select not exists (select 1 from pickee p
+        | join limit_type lt on (lt.league_id = p.league_id)
+        | join "limit" l on (l.limit_type_id = lt.id)
+        | where p.league_id = {leagueId} and p.id in {newTeamIds} group by (lt.max, l.id) having count(*) > lt.max);
+      """
+    SQL(q).on("leagueId" -> leagueId, "newTeamIds" -> newTeamIds).as(SqlParser.scalar[Boolean].single)
   }
 }
 

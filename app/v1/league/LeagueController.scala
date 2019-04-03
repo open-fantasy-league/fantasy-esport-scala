@@ -264,10 +264,12 @@ class LeagueController @Inject()(
     }
 
     def success(input: UpdatePeriodInput) = {
-      (for {
-        updatedPeriod <- tryOrResponse(() => leagueRepo.updatePeriod(leagueId, periodValue, input.start, input.end, input.multiplier), BadRequest("Invalid leagueId or period value"))
-        out = Ok(Json.toJson(updatedPeriod))
-      } yield out).fold(identity, identity)
+      db.withConnection { implicit c =>
+        (for {
+          updatedPeriod <- tryOrResponse(() => leagueRepo.updatePeriod(leagueId, periodValue, input.start, input.end, input.multiplier), BadRequest("Invalid leagueId or period value"))
+          out = Ok(Json.toJson(updatedPeriod))
+        } yield out).fold(identity, identity)
+      }
     }
     updatePeriodForm.bindFromRequest().fold(failure, success)
   }

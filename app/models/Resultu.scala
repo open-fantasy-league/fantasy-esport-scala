@@ -2,6 +2,9 @@ package models
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+
+case class ResultRow(id: Long, matchId: Long, pickeeId: Long, isTeamOne: Boolean)
 
 class Resultu(  // Result is play/scala keyword. renaming makes things simpler/more obvious
               val matchId: Long,
@@ -24,4 +27,6 @@ object Resultu{
       )
     }
   }
+
+  val parser: RowParser[ResultRow] = Macro.namedParser[ResultRow](ColumnNaming.SnakeCase)
 }

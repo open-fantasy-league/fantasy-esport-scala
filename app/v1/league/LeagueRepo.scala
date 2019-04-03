@@ -78,27 +78,29 @@ trait LeagueRepo{
   def getPeriods(league: LeagueRow)(implicit c: Connection): Iterable[PeriodRow]
   def getPeriodBetween(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow]
   def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow]
-  def getNextPeriod(league: LeagueRow): Either[Result, PeriodRow]
+  def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow]
   def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
-  def updatePeriod(leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double]): Period
+  def updatePeriod(
+                    leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
+                    multiplier: Option[Double])(implicit c: Connection): Period
   def updateHistoricRanks(league: League)
-  def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)
-  def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)
-  def startPeriods(currentTime: LocalDateTime)
-  def endPeriods(currentTime: LocalDateTime)
-  def getLimitTypes(leagueId: Long): Iterable[FactionType]
+  def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection)
+  def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
+  def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
+  def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
+  def getLimitTypes(leagueId: Long)(implicit c: Connection): Iterable[LimitType]
 }
 
 @Singleton
 class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo)(implicit ec: LeagueExecutionContext) extends LeagueRepo{
 
   private val periodParser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
+  private val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
   override def get(id: Long): Option[League] = {
     leagueTable.lookup(id)
   }
 
   override def get2(id: Long)(implicit c: Connection): Option[LeagueRow] = {
-    val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
     SQL("select * from league where id = {id}").on("id" -> id).as(leagueParser.singleOpt)
   }
 
@@ -237,7 +239,9 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     LeagueFull(league, limitsOut, periods, currentPeriod, statFields)
   }
 
-  override def updatePeriod(leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double]): Period = {
+  override def updatePeriod(
+                             leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
+                             multiplier: Option[Double])(implicit c: Connection): Period = {
     val period = from(periodTable)(p => 
         where(p.leagueId === leagueId and p.value === periodValue)
         select(p)
@@ -296,7 +300,7 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
 //    leagueTable.update(league)
   }
 
-  override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime) = {
+  override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection) = {
     println("tmp")
 //    period.start = timestamp
 //    periodTable.update(period)
@@ -312,18 +316,20 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     val q =
       """select l.id as leagueId, p.id as periodId from league l join period p on (
         |l.current_period_id = p.id and p.ended = false and p.end <= {currentTime} and p.next_period_id is not null);""".stripMargin
-    SQL(q).on("currentTime" -> currentTime).as(Macro.namedParser[PeriodAndLeagueRow].*).toList.unzip.map(t => postEndPeriodHook(t._1, t._2, currentTime))
+    val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as((long("leagueId") ~ long("periodId")).*).map(x => (x._1, x._2)).toList.unzip
+    postEndPeriodHook(leagueIds, periodIds, currentTime)
   }
   override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     val q =
-      """select l.id as leagueId, p.id as periodId from league l join period p on (
+      """select * from league l join period p on (
         |p.leagueId = l.id and (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
         |p.ended = false and p.start <= {currentTime});""".stripMargin
-    val out = SQL(q).on("currentTime" -> currentTime).as((long("leagueId") ~ long("periodId")).*).toList.unzip.map(t => postStartPeriodHook(t._1, t._2, currentTime))
+    SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ periodParser).*).
+      map(x => postStartPeriodHook(x._1, x._2, currentTime))
   }
 
-  override def getLimitTypes(leagueId: Long): Iterable[FactionType] = {
-    from(factionTypeTable)(ft => where(ft.leagueId === leagueId)
+  override def getLimitTypes(leagueId: Long)(implicit c: Connection): Iterable[LimitType] = {
+    from(limitTypeTable)(ft => where(ft.leagueId === leagueId)
       select ft
     )
   }

@@ -39,9 +39,9 @@ object TransferSuccess{
 }
 
 class TransferController @Inject()(
-                                    db: Database, cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
-                                    leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo, leagueRepo: LeagueRepo, pickeeRepo: PickeeRepo)
-                                  (implicit ec: ExecutionContext) extends AbstractController(cc)
+                                    cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
+                                    leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)
+                                  (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
   private val transferForm: Form[TransferFormInput] = {
@@ -57,7 +57,6 @@ class TransferController @Inject()(
     )
   }
   implicit val parser = parse.default
-  implicit val db_ = db
 
   // todo add a transfer check call
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
@@ -122,7 +121,7 @@ class TransferController @Inject()(
               newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
               _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
               _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck)
-              _ <- validateLimits(newTeamIds, league)
+              _ <- validateLimits(newTeamIds, league.id)
               transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
                 updateDBScheduleTransfer(
@@ -203,21 +202,12 @@ class TransferController @Inject()(
     }
   }
 
-  private def validateLimits(newTeamIds: Set[Long], league: League): Either[Result, Any] = {
-    //Right("cat")
+  private def validateLimits(newTeamIds: Set[Long], leagueId: Long)(implicit c: Connection): Either[Result, Any] = {
     // TODO errrm this is a bit messy
-    leagueRepo.getLimitTypes(leagueId).forall(limitType => {
-      // case class PickeeQuery(pickee: Pickee, limitType: Option[LimitType], limit: Option[Limit])
-      pickeeRep.getPickeesWithLimits(leagueId).filter(lp => newTeamIds.contains(lp.pickee.id)).flatMap(_.limit).groupBy(_.limitTypeId)
-        .forall({case (k, v) => v.size <= v.head.max})
-    }) match {
-//    league.limitTypes.forall(limitType => {
-//      league.pickees.filter(lp => newTeamIds.contains(lp.externalId)).flatMap(_.limits).groupBy(_.limitTypeId)
-//        .forall({case (k, v) => v.size <= v.head.max})
-//    }) match {
+    transferRepo.pickeeLimitsValid(leagueId, newTeamIds) match {
         case true => Right(true)
         case false => Left(BadRequest(
-          f"Exceeds limit limit"
+          f"Exceeds limit limit"  // TODO what limit does it exceed
         ))
       }
   }

@@ -40,11 +40,13 @@ class AdminController @Inject()(
     // // TODO test add leagues, sleep before end transaction, and see how id's turn out
     // Thread.sleep(2000)
     Future {
-      val currentTime = LocalDateTime.now()
-      inTransaction {
-        leagueRepo.startPeriods(currentTime)
-        leagueRepo.endPeriods(currentTime)
-        Ok("Periods rolled over")
+      db.withConnection { implicit c =>
+        val currentTime = LocalDateTime.now()
+        inTransaction {
+          leagueRepo.startPeriods(currentTime)
+          leagueRepo.endPeriods(currentTime)
+          Ok("Periods rolled over")
+        }
       }
     }
   }
@@ -52,7 +54,9 @@ class AdminController @Inject()(
   def addAPIUser() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
       inTransaction {
-        Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email", 1))))
+        db.withConnection { implicit c =>
+          Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email", 1))))
+        }
       }
     }
   }

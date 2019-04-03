@@ -10,11 +10,14 @@ import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
+import play.api.db.Database
 import models.AppDB._
 import utils.TryHelper.tryOrResponse
 import auth.{LeagueAction, AuthAction, Auther}
+import v1.league.LeagueRepo
 
-class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc) with play.api.i18n.I18nSupport{
+class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther)
+                                (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc) with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
   def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>

@@ -1,6 +1,6 @@
 package v1.leagueuser
 
-import java.sql.Connection
+import java.sql.{Connection, Timestamp}
 import java.time.LocalDateTime
 //import java.math.BigDecimal
 
@@ -13,6 +13,7 @@ import play.api.libs.json._
 import play.api.db._
 import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.SqlParser.long
 
 import scala.util.Try
 import models.AppDB._
@@ -24,20 +25,6 @@ import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 import v1.league.LeagueRepo
-
-case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
-
-object PickeeRow {
-  implicit val implicitWrites = new Writes[PickeeRow] {
-    def writes(x: PickeeRow): JsValue = {
-      Json.obj(
-        "id" -> x.pickeeId,
-        "name" -> x.name,
-        "cost" -> x.cost
-      )
-    }
-  }
-}
 
 case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]])
 
@@ -176,7 +163,7 @@ trait LeagueUserRepo{
   def userInLeague(userId: Long, leagueId: Long): Boolean
   def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
   def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
-  def getShouldProcessTransfer(leagueId: Long): Iterable[Long]
+  def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
@@ -511,10 +498,9 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     LeagueUserTeamOut(leagueUser, team)
   }
 
-  override def getShouldProcessTransfer(leagueId: Long): Iterable[Long] = {
-    from(leagueUserTable)(lu => where(lu.changeTstamp.isNotNull and lu.changeTstamp <= currentTime and lu.leagueId === leagueId)
-      select lu.id
-    )
+  override def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
+    val q = "select id from league_user where league_id = {leagueId} and change_tstamp <= now();"
+    SQL(q).on("leagueId" -> leagueId).as(long("id").*)
   }
 }
 

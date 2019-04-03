@@ -51,15 +51,15 @@ object GroupByOrderedImplicit {
   }
 }
 
-object Formatter {
-  import play.api.libs.json._
-
-  import play.api.data.format.Formats._
-  def timestampFormatFactory(formatStr: String): Format[LocalDateTime] = new Format[LocalDateTime] {
-    val format = new localDateTimeFormat(formatStr)
-
-    def reads(json: JsValue): JsResult[LocalDateTime] = JsSuccess(format.parse(json.as[String]))
-
-    def writes(ts: LocalDateTime) = JsString(format.format(ts))
-  }
-}
+//object Formatter {
+//  import play.api.libs.json._
+//
+//  import play.api.data.format.Formats._
+//  def timestampFormatFactory(formatStr: String): Format[LocalDateTime] = new Format[LocalDateTime] {
+//    val format = new localDateTimeFormat(formatStr)
+//
+//    def reads(json: JsValue): JsResult[LocalDateTime] = JsSuccess(format.parse(json.as[String]))
+//
+//    def writes(ts: LocalDateTime) = JsString(format.format(ts))
+//  }
+//}

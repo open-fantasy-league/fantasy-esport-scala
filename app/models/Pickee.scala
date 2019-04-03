@@ -29,6 +29,21 @@ object Pickee{
   }
 }
 
+case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
+
+object PickeeRow {
+  implicit val implicitWrites = new Writes[PickeeRow] {
+    def writes(x: PickeeRow): JsValue = {
+      Json.obj(
+        "id" -> x.pickeeId,
+        "name" -> x.name,
+        "cost" -> x.cost
+      )
+    }
+  }
+}
+
+
 class TeamPickee(
                   var pickeeId: Long,
                   var teamId: Long

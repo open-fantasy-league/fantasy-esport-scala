@@ -6,7 +6,7 @@ import org.squeryl.KeyedEntity
 import play.api.libs.json._
 
 import entry.SquerylEntrypointForMyApp._
-import utils.Formatter.timestampFormatFactory
+//import utils.Formatter.timestampFormatFactory
 
 case class LeagueRow(id: Long,
                       name: String,
@@ -171,7 +171,7 @@ object LeaguePrize{
 }
 
 object Period{
-  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[Period] {
     def writes(p: Period): JsValue = {
       Json.obj(
@@ -196,7 +196,7 @@ object LimitType{
 }
 
 object LeagueRow{
-  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[LeagueRow] {
     def writes(league: LeagueRow): JsValue = {
       Json.obj(
@@ -224,7 +224,7 @@ object LeagueRow{
 }
 
 object League{
-  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[League] {
     def writes(league: League): JsValue = {
       Json.obj(

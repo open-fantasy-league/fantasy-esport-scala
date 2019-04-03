@@ -2,6 +2,9 @@ package models
 
 import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+
+case class PointsRow(id: Long, resultId: Long, pointsFieldId: Long, value: Double)
 
 class Points(
               val resultId: Long,
@@ -21,4 +24,17 @@ object Points{
       )
     }
   }
+}
+
+object PointsRow{
+  implicit val implicitWrites = new Writes[PointsRow] {
+    def writes(p: PointsRow): JsValue = {
+      Json.obj(
+        // TODO fix the fuck
+        "cat" -> p.value
+      )
+    }
+  }
+
+  val parser: RowParser[PointsRow] = Macro.namedParser[PointsRow](ColumnNaming.SnakeCase)
 }

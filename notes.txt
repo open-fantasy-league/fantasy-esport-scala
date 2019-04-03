@@ -50,6 +50,8 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # custom exec contexts for all db repos
 # wildcard used to wildcard available
 
+# when specify points fnc. need diff points per stat for different factions
+
 for dl:
 # revert a match
 # secondary ranking ordering/filtering

@@ -5,7 +5,6 @@ import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
-import v1.leagueuser.PickeeRow
 import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
