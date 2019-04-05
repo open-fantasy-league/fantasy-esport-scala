@@ -4,7 +4,7 @@ import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-case class PointsRow(id: Long, resultId: Long, pointsFieldId: Long, value: Double)
+case class PointsRow(value: Double)
 
 class Points(
               val resultId: Long,

@@ -4,7 +4,7 @@ import org.squeryl.KeyedEntity
 import play.api.libs.json._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-case class ResultRow(id: Long, matchId: Long, pickeeId: Long, isTeamOne: Boolean)
+case class ResultRow(id: Long, matchId: Long, isTeamOne: Boolean)
 
 class Resultu(  // Result is play/scala keyword. renaming makes things simpler/more obvious
               val matchId: Long,
@@ -24,6 +24,20 @@ object Resultu{
       Json.obj(
         "id" -> r.matchId,
         "pickee" -> r.pickee.single
+      )
+    }
+  }
+
+  val parser: RowParser[ResultRow] = Macro.namedParser[ResultRow](ColumnNaming.SnakeCase)
+}
+
+object ResultRow{
+  implicit val implicitWrites = new Writes[ResultRow] {
+    def writes(r: ResultRow): JsValue = {
+      Json.obj(
+        "id" -> r.matchId, // TODO fix
+        "isTeamOne" -> r.isTeamOne,
+        "pickee" -> "cat"//r.pickee.single
       )
     }
   }

@@ -10,27 +10,30 @@ import java.sql.Connection
 import scala.concurrent.{ExecutionContext, Future}
 import auth._
 import v1.leagueuser.LeagueUserRepo
+import v1.league.LeagueRepo
+import play.api.db.Database
 
 case class TeamFormInput(buy: List[Int], sell: List[Int], isCheck: Boolean, delaySeconds: Option[Int])
 
-class TeamController @Inject()(db: Database, cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, teamRepo: TeamRepo)
+                              (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
   implicit val parser = parse.default
 
   def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
     Future(inTransaction(Ok({
-      db.withConnection{ implicit c => Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, request.user.id))}
+      db.withConnection{ implicit c => Json.toJson(teamRepo.getLeagueUserTeam(request.leagueUser.id))}
     })))
   }
 
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     // TODO yo this is so inefficient
     Future {
-      inTransaction {
         db.withConnection { implicit c =>
-          Ok(Json.toJson(request.league.users.associations.map(lu => teamRepo.getLeagueUserTeam(lu))))
+          inTransaction {
+            Ok(Json.toJson(teamRepo.getAllLeagueUserTeam(request.league.id)))
+          }
         }
-      }
     }
   }
 

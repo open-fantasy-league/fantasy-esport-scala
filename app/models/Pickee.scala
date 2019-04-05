@@ -1,7 +1,10 @@
 package models
 
-import org.squeryl.KeyedEntity
+import java.time.LocalDateTime
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import play.api.libs.json._
+
+import org.squeryl.KeyedEntity
 
 class Pickee(
               val leagueId: Long,
@@ -41,6 +44,30 @@ object PickeeRow {
       )
     }
   }
+}
+
+case class TeamRow(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
+                   end: Option[LocalDateTime], isActive: Boolean, externalPickeeId: Long, pickeeName: String,
+                   pickeeCost: BigDecimal)
+
+object TeamRow {
+//  implicit val implicitWrites = new Writes[TeamRow] {
+//    def writes(x: TeamRow): JsValue = {
+//      Json.obj(
+//        "userId" -> x.externalUserId,
+//        "username" -> x.username,
+//        "leagueUserId" -> x.leagueUserId,
+//        "start" -> x.start,
+//        "end" -> x.end,
+//        "isActive" -> x.isActive,
+//        "pickeeId" -> x.externalPickeeId,
+//        "name" -> x.name,
+//        "cost" -> x.cost
+//      )
+//    }
+//  }
+
+  val parser: RowParser[TeamRow] = Macro.namedParser[TeamRow](ColumnNaming.SnakeCase)
 }
 
 

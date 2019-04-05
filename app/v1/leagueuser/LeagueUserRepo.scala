@@ -18,13 +18,12 @@ import anorm.SqlParser.long
 import scala.util.Try
 import models.AppDB._
 import models._
-import org.squeryl.dsl.ast.TrueLogicalBoolean
 import utils.GroupByOrderedImplicit._
 
-import scala.collection.mutable.ArrayBuffer
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 import v1.league.LeagueRepo
+import v1.pickee.PickeeRepo
 
 case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]])
 
@@ -161,15 +160,14 @@ trait LeagueUserRepo{
 //  def joinUsers(users: Iterable[User], league: League): Iterable[LeagueUser]
   def joinUsers2(users: Iterable[User], league: LeagueRow)(implicit c: Connection): Iterable[LeagueUser]
   def userInLeague(userId: Long, leagueId: Long): Boolean
-  def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut]
-  def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut
   def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
+  def updateHistoricRanks(league: League)
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
 
 @Singleton
-class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, leagueRepo: LeagueRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
+class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, leagueRepo: LeagueRepo, pickeeRepo: PickeeRepo)(implicit ec: LeagueExecutionContext) extends LeagueUserRepo{
 
   override def getUserWithLeagueUser(leagueId: Long, userId: Long, externalId: Boolean): UserWithLeagueUser = {
     // helpful for way squeryl deals with optional filters
@@ -191,7 +189,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
       case false => None
       case true => {
         db.withConnection { implicit c =>
-          Some(teamRepo.getLeagueUserTeam(leagueUser))
+          Some(teamRepo.getLeagueUserTeam(leagueUser.id))
         }
       }
     }
@@ -477,30 +475,37 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     from(leagueUserTable)(lu => where(lu.leagueId === leagueId and lu.userId === userId).select(1)).nonEmpty
   }
 
-  override def getCurrentTeams(leagueId: Long): Iterable[LeagueUserTeamOut] = {
-    join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
-          where(lu.leagueId === leagueId)
-          select((lu, p))
-          on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
-          ).groupBy(_._1).map({case (leagueUser, v) => {
-            LeagueUserTeamOut(leagueUser, v.flatMap(_._2))
-          }})
-  }
-
-  override def getCurrentTeam(leagueId: Long, userId: Long): LeagueUserTeamOut = {
-    val query = join(leagueUserTable, teamTable.leftOuter, teamPickeeTable.leftOuter, pickeeTable.leftOuter)((lu, team, tp, p) =>
-        where(lu.leagueId === leagueId and lu.userId === userId)
-        select((lu, p))
-        on(lu.id === team.map(_.leagueUserId), team.map(_.id) === tp.map(_.teamId), tp.map(_.pickeeId) === p.map(_.id))
-        )
-    val leagueUser = query.head._1
-    val team = query.flatMap(_._2)
-    LeagueUserTeamOut(leagueUser, team)
-  }
-
   override def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
     val q = "select id from league_user where league_id = {leagueId} and change_tstamp <= now();"
     SQL(q).on("leagueId" -> leagueId).as(long("id").*)
+  }
+
+  override def updateHistoricRanks(league: League) = {
+    // TODO this needs to group by the stat field.
+    // currently will do weird ranks
+    league.statFields.foreach(sf => {
+      val leagueUserStatsOverall = getLeagueUserStats(league.id, sf.id, None)
+      var lastScore = Double.MaxValue // TODO java max num
+      var lastScoreRank = 0
+      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({
+        case ((lus, s), i) => {
+          val value = s.value
+          val rank = if (value == lastScore) lastScoreRank else i + 1
+          lastScore = value
+          lastScoreRank = rank
+          lus.previousRank = rank
+          lus
+        }
+      })
+      // can do all update in one call if append then update outside loop
+      updateLeagueUserStat(newLeagueUserStat)
+      val pickeeStatsOverall = pickeeRepo.getPickeeStat(league.id, sf.id, None).map(_._1)
+      val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
+        { case (p, i) => p.previousRank = i + 1; p }
+      )
+      // can do all update in one call if append then update outside loop
+      pickeeStatTable.update(newPickeeStat)
+    })
   }
 }
 

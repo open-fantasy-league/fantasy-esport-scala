@@ -196,7 +196,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         db.withConnection { implicit c =>
           (for {
             period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-            results = resultRepo.get(period).toList
+            results = resultRepo.get(request.league.id, period).toList
             success = Ok(Json.toJson(results))
           } yield success).fold(identity, identity)
         }

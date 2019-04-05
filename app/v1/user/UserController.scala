@@ -133,8 +133,4 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
 
     updateForm.bindFromRequest().fold(failure, success)
   }
-
-  def getCurrentTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new LeagueUserAction(userId).apply()).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeam(request.league.id, request.user.id)))))
-  }
 }

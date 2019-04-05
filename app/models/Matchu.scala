@@ -9,8 +9,6 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 //import utils.Formatter.timestampFormatFactory
 
 case class MatchRow( // because match is an sql keyword
-                   id: Long,
-              leagueId: Long,
               externalId: Long, // this is the dota2 match id field
               // we dont want to have 2 different games where they can overlap primary key. so dont use match id as primary key
               period: Int,

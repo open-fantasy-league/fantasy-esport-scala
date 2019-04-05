@@ -241,10 +241,6 @@ class LeagueController @Inject()(
 //    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getHistoricTeams(request.league, request.p.get)))))
 //  }}
 
-  def getCurrentTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(leagueUserRepo.getCurrentTeams(request.league.id)))))
-  }
-
   def updatePeriodReq(leagueId: String, periodValue: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       inTransaction {

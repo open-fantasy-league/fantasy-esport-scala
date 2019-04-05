@@ -17,7 +17,6 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import models.AppDB._
 import models._
 import v1.leagueuser.LeagueUserRepo
-import v1.pickee.PickeeRepo
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -83,7 +82,6 @@ trait LeagueRepo{
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
                     multiplier: Option[Double])(implicit c: Connection): Period
-  def updateHistoricRanks(league: League)
   def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection)
   def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
@@ -92,7 +90,7 @@ trait LeagueRepo{
 }
 
 @Singleton
-class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo)(implicit ec: LeagueExecutionContext) extends LeagueRepo{
+class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
 
   private val periodParser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
   private val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
@@ -251,35 +249,6 @@ class LeagueRepoImpl @Inject()(leagueUserRepo: LeagueUserRepo, pickeeRepo: Picke
     period.multiplier = multiplier.getOrElse(period.multiplier)
     periodTable.update(period)
     period
-  }
-
-  override def updateHistoricRanks(league: League) = {
-    // TODO this needs to group by the stat field.
-    // currently will do weird ranks
-    league.statFields.foreach(sf => {
-      val leagueUserStatsOverall =
-        leagueUserRepo.getLeagueUserStats(league.id, sf.id, None)
-      var lastScore = Double.MaxValue // TODO java max num
-      var lastScoreRank = 0
-      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({
-        case ((lus, s), i) => {
-          val value = s.value
-          val rank = if (value == lastScore) lastScoreRank else i + 1
-          lastScore = value
-          lastScoreRank = rank
-          lus.previousRank = rank
-          lus
-        }
-      })
-      // can do all update in one call if append then update outside loop
-      leagueUserRepo.updateLeagueUserStat(newLeagueUserStat)
-      val pickeeStatsOverall = pickeeRepo.getPickeeStat(league.id, sf.id, None).map(_._1)
-      val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
-        { case (p, i) => p.previousRank = i + 1; p }
-      )
-      // can do all update in one call if append then update outside loop
-      pickeeStatTable.update(newPickeeStat)
-    })
   }
 
   override def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection) = {

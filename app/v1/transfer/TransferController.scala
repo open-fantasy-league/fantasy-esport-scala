@@ -111,7 +111,7 @@ class TransferController @Inject()(
               newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser, sell)
               pickees = pickeeRepo.getPickees(league.id).toList
               newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-              currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser).map(_.pickeeId).toSet
+              currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser.id).map(_.pickeeId).toSet
               ).toOption.toRight(InternalServerError("Missing pickee externalId"))
               _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
               sellOrWildcard = if (applyWildcard) currentTeamIds else sell
@@ -232,7 +232,7 @@ class TransferController @Inject()(
         scheduledUpdateTime.isEmpty, p.cost)
     ))
     db.withConnection { implicit c =>
-      val currentTeam = teamRepo.getLeagueUserTeam(leagueUser).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
+      val currentTeam = teamRepo.getLeagueUserTeam(leagueUser.id).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
       if (scheduledUpdateTime.isEmpty) {
         transferRepo.changeTeam(
           leagueUser.id, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
