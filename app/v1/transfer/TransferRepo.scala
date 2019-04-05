@@ -50,7 +50,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       "insert into team(league_user_id, timespan) values ({leagueUserId}, tstzrange({now}, null));"
     ).on("leagueUserId" -> leagueUserId, "now" -> time).executeInsert()
     println("Inserted new team")
-    SQL("update league_user set change_tstamp = null where id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
+    SQL("update league_user set change_tstamp = null where league_user_id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
     print(newPickees.mkString(", "))
     newPickees.map(t => teamPickeeTable.insert(new TeamPickee(t, newTeamId.get)))
   }
@@ -64,7 +64,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     val toSellIds = transfers.filter(!_.isBuy).map(_.pickeeId).toSet
     val toBuyIds = transfers.filter(_.isBuy).map(_.pickeeId).toSet
       val q =
-        """select pickee_id from team t join team_pickee tp on (tp.team_id = t.id)
+        """select pickee_id from team t join team_pickee tp using(team_id)
                   where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
               """
       val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUserId).as(SqlParser.scalar[Long] *).toSet
@@ -78,9 +78,9 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     // TODO need to check this againbst something. doesnt work right now
     val q =
       """select not exists (select 1 from pickee p
-        | join limit_type lt on (lt.league_id = p.league_id)
-        | join "limit" l on (l.limit_type_id = lt.id)
-        | where p.league_id = {leagueId} and p.id in {newTeamIds} group by (lt.max, l.id) having count(*) > lt.max);
+        | join limit_type lt using(league_id)
+        | join "limit" l using(limit_type_id)
+        | where p.league_id = {leagueId} and p.pickee_id in {newTeamIds} group by (lt.max, l.limit_id) having count(*) > lt.max);
       """
     SQL(q).on("leagueId" -> leagueId, "newTeamIds" -> newTeamIds).as(SqlParser.scalar[Boolean].single)
   }

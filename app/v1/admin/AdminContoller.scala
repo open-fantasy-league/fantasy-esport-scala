@@ -28,8 +28,8 @@ class AdminController @Inject()(
       inTransaction {
         db.withConnection { implicit c =>
           val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-          val q = "select id from league_user where change_tstamp is not null and change_tstamp <= now();"
-          SQL(q).on().as(SqlParser.long("id").*).map(transferRepo.processLeagueUserTransfer)
+          val q = "select league_user_id from league_user where change_tstamp is not null and change_tstamp <= now();"
+          SQL(q).on().as(SqlParser.long("league_user_id").*).map(transferRepo.processLeagueUserTransfer)
         }
         Ok("Transfer updates processed")
       }

@@ -174,14 +174,15 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         pickeeStatDailyTable.update(pickeeStats.map(ps => {ps.value += s.value; ps}))
           val q =
             s"""update league_user_stat_daily lusd set value = value + {newPoints} from useru u
-         join league_user lu on (u.id = lu.user_id)
-         join league l on (l.id = lu.league_id)
-         join team t on (t.league_user_id = lu.id and t.timespan @> {targetedAtTstamp})
-         join team_pickee tp on (tp.team_id = t.id)
-         join pickee p on (p.id = tp.pickee_id and p.id = {pickeeId})
-         join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = {statFieldId})
+         join league_user lu using(user_id)
+         join league l using(league_id)
+         join team t using(league_user_id)
+         join team_pickee tp using(team_id)
+         join pickee p using(pickee_id)
+         join league_user_stat lus using(league_user_id)
          where (period is NULL or period = {period}) and lus.id = lusd.league_user_stat_id and
-          (select count(*) from team_pickee where team_pickee.team_id = t.id) = l.team_size;
+               |t.timespan @> {targetedAtTstamp} and p.id = {pickeeId} and lus.stat_field_id = {statFieldId} and
+          (select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;
          """
           SQL(q).on(
             "newPoints" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.pointsFieldId,

@@ -67,12 +67,12 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     val q =
       """
         | select m.external_id as external_match_id, m.team_one, m.team_two, m.team_one_victory, m.tournament_id, m.start_time, m.added_time,
-        | m.targeted_at_time, m.period, r.id as result_id, r.is_team_one, p.value as points_value, lsf.name as stat_field_name, pck.external_id as external_pickee_id,
+        | m.targeted_at_time, m.period, result_id, r.is_team_one, p.value as points_value, lsf.name as stat_field_name, pck.external_id as external_pickee_id,
         |  pck.name as pickee_name, pck.cost as pickee_cost
-        |  from matchu m join resultu r on (m.id = r.matchId)
-        | join points p on (p.resultId = r.id)
-        | join league_stat_field lsf on (lsf.id = p.pointsFieldId)
-        | join pickee pck on (r.pickeeId = pck.id)
+        |  from matchu m join resultu r using(match_id)
+        | join points p using(result_id)
+        | join league_stat_field lsf on (lsf.league_stat_field_id = p.pointsFieldId)
+        | join pickee pck using(pickee_id)
         | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
         | order by m.targeted_at_tstamp desc, p.value;
       """.stripMargin

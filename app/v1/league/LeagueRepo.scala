@@ -99,7 +99,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def get2(id: Long)(implicit c: Connection): Option[LeagueRow] = {
-    SQL("select * from league where id = {id}").on("id" -> id).as(leagueParser.singleOpt)
+    SQL("select * from league where league_id = {id}").on("id" -> id).as(leagueParser.singleOpt)
   }
 
   override def getWithRelated(id: Long): LeagueFull = {
@@ -189,7 +189,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow] = {
-    val q = "select * from period where id = {periodId};"
+    val q = "select * from period where period_id = {periodId};"
     SQL(q).on("periodId" -> periodId).as(periodParser.singleOpt)
   }
 
@@ -204,7 +204,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow] = {
-    val q = "select * from period where id = {periodId};"
+    val q = "select * from period where period_id = {periodId};"
     SQL(q).on("periodId" -> league.currentPeriodId).as(periodParser.singleOpt)
   }
 
@@ -257,7 +257,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     periodIds.foreach(periodId => {
       val q =
         """update period set ended = true and "end" = {timestamp}
-    where id = {periodId};
+    where period_id = {periodId};
     """
       SQL(q).on("periodId" -> periodId).executeUpdate()
     })
@@ -283,16 +283,16 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def endPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     val q =
-      """select l.id as leagueId, p.id as periodId from league l join period p on (
-        |l.current_period_id = p.id and p.ended = false and p.end <= {currentTime} and p.next_period_id is not null);""".stripMargin
-    val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as((long("leagueId") ~ long("periodId")).*).map(x => (x._1, x._2)).toList.unzip
+      """select league_id, period_id from league l join period p on (
+        |l.current_period_id = p.period_id and p.ended = false and p.end <= {currentTime} and p.next_period_id is not null);""".stripMargin
+    val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as((long("league_id") ~ long("period_id")).*).map(x => (x._1, x._2)).toList.unzip
     postEndPeriodHook(leagueIds, periodIds, currentTime)
   }
   override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     val q =
-      """select * from league l join period p on (
-        |p.leagueId = l.id and (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
-        |p.ended = false and p.start <= {currentTime});""".stripMargin
+      """select * from league l join period p using(league_id)
+        |where (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
+        |p.ended = false and p.start <= {currentTime};""".stripMargin
     SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ periodParser).*).
       map(x => postStartPeriodHook(x._1, x._2, currentTime))
   }

@@ -476,8 +476,8 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
   }
 
   override def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
-    val q = "select id from league_user where league_id = {leagueId} and change_tstamp <= now();"
-    SQL(q).on("leagueId" -> leagueId).as(long("id").*)
+    val q = "select league_user_id from league_user where league_id = {leagueId} and change_tstamp <= now();"
+    SQL(q).on("leagueId" -> leagueId).as(long("league_user_id").*)
   }
 
   override def updateHistoricRanks(league: League) = {
