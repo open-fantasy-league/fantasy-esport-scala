@@ -1,5 +1,6 @@
 package v1.pickee
 
+import java.sql.Connection
 import javax.inject.{Inject, Singleton}
 import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
@@ -7,6 +8,7 @@ import play.api.libs.concurrent.CustomExecutionContext
 
 import models.AppDB._
 import models._
+import anorm._
 import play.api.libs.json._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -65,6 +67,9 @@ trait PickeeRepo{
   def insertPickee(leagueId: Long, pickee: PickeeFormInput): Pickee
   def insertPickeeStat(statFieldId: Long, pickeeId: Long): PickeeStat
   def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int]): PickeeStatDaily
+  def insertPickeeLimits(
+                          pickees: Iterable[PickeeFormInput], newPickeeIds: Seq[Long], limitNamesToIds: Map[String, Long]
+                        )(implicit c: Connection)
   def getPickeeStats(leagueId: Long, period: Option[Int]): Iterable[PickeeStatsOutput]
   def getPickees(leagueId: Long): Iterable[Pickee]
   def getPickeesWithLimits(leagueId: Long): Iterable[PickeeOut]
@@ -96,6 +101,17 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     pickeeStatDailyTable.insert(new PickeeStatDaily(
       pickeeStatId, period
     ))
+  }
+
+  override def insertPickeeLimits(
+                                   pickees: Iterable[PickeeFormInput], newPickeeIds: Seq[Long], limitNamesToIds: Map[String, Long]
+                                 )(implicit c: Connection): Unit = {
+
+    pickees.zipWithIndex.foreach({ case (p, i) => p.limits.foreach({
+        // Try except key error
+        f => SQL("insert into pickee_limit(limit_id, pickee_id) values ({}, {})").onParams(limitNamesToIds(f), newPickeeIds(i)).executeInsert()
+      })
+    })
   }
 
   override def getPickees(leagueId: Long): Iterable[Pickee] = {

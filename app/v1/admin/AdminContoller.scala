@@ -3,7 +3,6 @@ package v1.admin
 import java.time.LocalDateTime
 import javax.inject.Inject
 
-import entry.SquerylEntrypointForMyApp._
 import play.api.libs.json._
 import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
@@ -17,22 +16,20 @@ import v1.transfer.TransferRepo
 
 class AdminController @Inject()(
                                  db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
-                                 auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc)
+                                 auther: Auther, adminRepo: AdminRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
 
   def allProcessTransfersReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
-      val currentTime = LocalDateTime.now()
-      inTransaction {
-        db.withConnection { implicit c =>
-          val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-          val q = "select league_user_id from league_user where change_tstamp is not null and change_tstamp <= now();"
-          SQL(q).on().as(SqlParser.long("league_user_id").*).map(transferRepo.processLeagueUserTransfer)
-        }
-        Ok("Transfer updates processed")
+    val currentTime = LocalDateTime.now()
+      db.withConnection { implicit c =>
+        val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
+        val q = "select league_user_id from league_user where change_tstamp is not null and change_tstamp <= now();"
+        SQL(q).on().as(SqlParser.long("league_user_id").*).map(transferRepo.processLeagueUserTransfer)
       }
+      Ok("Transfer updates processed")
     }
   }
 
@@ -42,21 +39,17 @@ class AdminController @Inject()(
     Future {
       db.withConnection { implicit c =>
         val currentTime = LocalDateTime.now()
-        inTransaction {
-          leagueRepo.startPeriods(currentTime)
-          leagueRepo.endPeriods(currentTime)
-          Ok("Periods rolled over")
-        }
+        leagueRepo.startPeriods(currentTime)
+        leagueRepo.endPeriods(currentTime)
+        Ok("Periods rolled over")
       }
     }
   }
 
-  def addAPIUser() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
+  def addAPIUser(name: String, email: String) = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
-      inTransaction {
-        db.withConnection { implicit c =>
-          Created(Json.toJson(AppDB.apiUserTable.insert(new APIUser("Testname", "test email", 1))))
-        }
+      db.withConnection { implicit c =>
+        Created(Json.toJson(adminRepo.insertApiUser(name, email, 1)))
       }
     }
   }

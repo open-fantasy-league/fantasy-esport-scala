@@ -16,6 +16,6 @@ class AdminRouter @Inject()(controller: AdminController) extends SimpleRouter {
       controller.allProcessTransfersReq
 
     case POST(p"/rolloverPeriods") => controller.allRolloverPeriodReq
-    case POST(p"/addAPIUser") => controller.addAPIUser
+    case POST(p"/addAPIUser") => controller.addAPIUser("Testname", "test email")
   }
 }

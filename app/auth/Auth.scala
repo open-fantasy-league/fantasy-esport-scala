@@ -47,7 +47,7 @@ class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, db: Data
     db.withConnection { implicit c =>
       (for {
         leagueIdLong <- IdParser.parseLongId(leagueId, "league")
-        league <- leagueRepo.get2(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
+        league <- leagueRepo.get(leagueIdLong).toRight(NotFound(f"League id $leagueId does not exist"))
         out <- Right(new LeagueRequest(league, input))
       } yield out)
     }
@@ -126,7 +126,7 @@ class Auther @Inject()(leagueRepo: LeagueRepo, db: Database){
         db.withConnection { implicit c =>
           (for {
             leagueId <- IdParser.parseLongId(leagueId, "league")
-            league <- leagueRepo.get2(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
+            league <- leagueRepo.get(leagueId).toRight(NotFound(f"League id $leagueId does not exist"))
             out <- Right(new AuthLeagueRequest(league, input))
           } yield out)
         }

@@ -9,7 +9,6 @@ import play.api.data.Form
 import play.api.data.Forms._
 import models._
 import auth._
-import entry.SquerylEntrypointForMyApp._
 import utils.IdParser.parseLongId
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -32,7 +31,7 @@ class GameController @Inject()(cc: ControllerComponents, auther: Auther)(implici
 
   def list = Action.async { implicit request =>
     //logger.trace("index: ")
-      Future(inTransaction(Ok(Json.toJson(from(AppDB.gameTable)(select(_)).toList))))
+      Future(Ok(Json.toJson("from(AppDB.gameTable)(select(_)).toList")))
   }
 
   def process = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
@@ -41,12 +40,12 @@ class GameController @Inject()(cc: ControllerComponents, auther: Auther)(implici
   }
 
   def show(id: String) = Action.async { implicit request =>
-    Future(inTransaction{
+    Future(
       (for {
         gameId <- parseLongId(id, "Game")
-        out = Ok(Json.toJson(AppDB.gameTable.lookup(gameId)))
+        out = Ok(Json.toJson("AppDB.gameTable.lookup(gameId)"))
       } yield out).fold(identity, identity)
-    })
+    )
   }
 
   private def processJsonGame[A]()(implicit request: Request[A]): Future[Result] = {
@@ -55,7 +54,10 @@ class GameController @Inject()(cc: ControllerComponents, auther: Auther)(implici
     }
 
     def success(input: GameFormInput) = {
-      Future(inTransaction(Created(Json.toJson(AppDB.gameTable.insert(new Game(input.name, input.code, input.variant, input.description))))))
+      // TODO insert
+      Future(Created(Json.toJson(
+        "AppDB.gameTable.insert(new Game(input.name, input.code, input.variant, input.description))"
+      )))
     }
 
     form.bindFromRequest().fold(failure, success)

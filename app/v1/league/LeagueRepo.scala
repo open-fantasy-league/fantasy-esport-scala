@@ -2,7 +2,6 @@ package v1.league
 
 import java.sql.Connection
 import javax.inject.{Inject, Singleton}
-import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.mvc.Result
 import play.api.mvc.Results.{BadRequest, InternalServerError}
@@ -14,27 +13,23 @@ import anorm._
 import anorm.SqlParser.long
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-import models.AppDB._
 import models._
 import v1.leagueuser.LeagueUserRepo
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class LeagueFull(league: League, limits: Iterable[LimitTypeOut], periods: Iterable[Period], currentPeriod: Option[Period], statFields: Iterable[LeagueStatField])
-
-case class PeriodAndLeagueRow(leagueId: Long, periodId: Long)
+case class LeagueFull(league: PublicLeagueRow, limits: Map[String, Iterable[LimitRow]], periods: Iterable[PeriodRow], currentPeriod: Option[PeriodRow], statFields: Iterable[String])
 
 object LeagueFull{
   implicit val implicitWrites = new Writes[LeagueFull] {
     def writes(league: LeagueFull): JsValue = {
       Json.obj(
-        "id" -> league.league.id,
+        "id" -> league.league.leagueId,
         "name" -> league.league.name,
         "gameId" -> league.league.gameId,
         "tournamentId" -> league.league.tournamentId,
         "isPrivate" -> league.league.isPrivate,
         "tournamentId" -> league.league.tournamentId,
-        "pickee" -> league.league.pickeeDescription,
         "teamSize" -> league.league.teamSize,
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
         "transferWildcard" -> league.league.transferWildcard,
@@ -42,7 +37,7 @@ object LeagueFull{
         "transferDelayMinutes" -> league.league.transferDelayMinutes,
         "transferBlockedDuringPeriod" -> league.league.transferBlockedDuringPeriod,
         "startingMoney" -> league.league.startingMoney,
-        "statFields" -> league.statFields.map(_.name),
+        "statFields" -> league.statFields,
         "limitTypes" -> league.limits,
         "periods" -> league.periods,
         "currentPeriod" -> league.currentPeriod,
@@ -58,27 +53,24 @@ object LeagueFull{
   }
 }
 
-case class LeagueFullQuery(league: League, period: Option[Period], limitType: Option[LimitType], limit: Option[Limit], statField: Option[LeagueStatField])
-
 
 trait LeagueRepo{
-  def get(id: Long): Option[League]
-  def get2(id: Long)(implicit c: Connection): Option[LeagueRow]
-  def getWithRelated(id: Long): LeagueFull
+  def get(id: Long)(implicit c: Connection): Option[LeagueRow]
+  def getWithRelated(id: Long)(implicit c: Connection): LeagueFull
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
   def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
   def getStatFields(league: LeagueRow)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
   def isStarted(league: LeagueRow): Boolean
-  def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField
-  def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize
-  def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period
+  def insertLeagueStatField(leagueId: Long, name: String)(implicit c: Connection): Long
+  def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
+  def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long
   def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow]
   def getPeriods(league: LeagueRow)(implicit c: Connection): Iterable[PeriodRow]
   def getPeriodBetween(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow]
   def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow]
   def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow]
-  def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull
+  def detailedLeagueQueryExtractor(rows: Iterable[PublicLeagueRow]): LeagueFull // TODO private
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
                     multiplier: Option[Double])(implicit c: Connection): Period
@@ -86,7 +78,7 @@ trait LeagueRepo{
   def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
-  def getLimitTypes(leagueId: Long)(implicit c: Connection): Iterable[LimitType]
+  def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
 }
 
 @Singleton
@@ -94,21 +86,25 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   private val periodParser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
   private val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
-  override def get(id: Long): Option[League] = {
-    leagueTable.lookup(id)
+  private val detailedLeagueParser: RowParser[DetailedLeagueRow] = Macro.namedParser[DetailedLeagueRow](ColumnNaming.SnakeCase)
+
+  override def get(id: Long)(implicit c: Connection): Option[LeagueRow] = {
+    SQL("select * from league where league_id = {id};").on("id" -> id).as(leagueParser.singleOpt)
   }
 
-  override def get2(id: Long)(implicit c: Connection): Option[LeagueRow] = {
-    SQL("select * from league where league_id = {id}").on("id" -> id).as(leagueParser.singleOpt)
-  }
 
-  override def getWithRelated(id: Long): LeagueFull = {
-    val queryResult = join(leagueTable, periodTable.leftOuter, limitTypeTable.leftOuter, limitTable.leftOuter, leagueStatFieldTable.leftOuter)((l, p, ft, f, s) =>
-        where(l.id === id)
-        select((l, p, ft, f, s))
-        on(l.id === p.map(_.leagueId), l.id === ft.map(_.leagueId), f.map(_.limitTypeId) === ft.map(_.id), s.map(_.leagueId) === l.id)
-        ).map(LeagueFullQuery.tupled(_))
-    leagueFullQueryExtractor(queryResult)
+  override def getWithRelated(id: Long)(implicit c: Connection): LeagueFull = {
+    val queryResult = SQL("""select league_id, l.name as league_name, game_id, is_private , tournament_id, pickee_description, period_description,
+          transfer_limit, transfer_wildcard, starting_money, team_size, transferDelayMinutes, transfer_open, transfer_blocked_during_period,
+          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register,
+           (cp is null) as started, (cp is not null and cp.end < now()) as ended,
+           p.value as period_value, start, "end", multiplier, (p.id = l.current_period_id) as current, sf.name as stat_field_name,
+           lt.name as limit_type_name, lt.description, l.name as limit_name, l."max" as limit_max
+ | from league l join period p using(league_id) left join limit_type lt using(league_id)
+ | left join current_period cp on (cp.league_id = l.league_id and cp.period_id = l.current_period_id)
+           left join "limit" lim using(limit_type_id) join league_stat_field sf using(league_id)
+        where league_id = {id} order by p.value, pck.external_id;""").on("id" -> id).as(detailedLeagueParser.*)
+    detailedLeagueQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return
   }
@@ -176,16 +172,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def isStarted(league: LeagueRow): Boolean = league.currentPeriodId.nonEmpty
 
-  override def insertLeaguePrize(leagueId: Long, description: String, email: String): LeaguePrize = {
-    leaguePrizeTable.insert(new LeaguePrize(leagueId, description, email))
+  override def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long = {
+    val q = "insert into league_prize(league_id, description, email) values ({leagueId}, {description}, {email});"
+    SQL(q).onParams(leagueId, description, email).executeInsert().get
   }
 
-  override def insertLeagueStatField(leagueId: Long, name: String): LeagueStatField = {
-    leagueStatFieldTable.insert(new LeagueStatField(leagueId, name))
+  override def insertLeagueStatField(leagueId: Long, name: String)(implicit c: Connection): Long = {
+    val q = "insert into stat_field(league_id, name) values ({leagueId}, {name});"
+    SQL(q).onParams(leagueId, name).executeInsert().get
   }
 
-  override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long]): Period = {
-    periodTable.insert(new Period(leagueId, period, input.start, input.end, input.multiplier, nextPeriodId))
+  override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long = {
+    val q =
+      """insert into period(league_id, value, start, "end", multiplier, next_period_id) values (
+        |{leagueId}, {value}, {start}, {end}, {multiplier},{nextPeriodId}
+        |);""".stripMargin
+    SQL(q).onParams(leagueId, period, input.start, input.end, input.multiplier, nextPeriodId).executeInsert().get
   }
 
   override def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow] = {
@@ -225,16 +227,25 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }
   }
 
-  override def leagueFullQueryExtractor(q: Iterable[LeagueFullQuery]): LeagueFull = {
-    val league = q.toList.head.league
-    val periods = q.flatMap(_.period).toSet
-    println(periods)
-    val currentPeriod = periods.find(p => league.currentPeriodId.contains(p.id))
-    val statFields = q.flatMap(_.statField).toSet
-    val limits = q.map(f => (f.limitType, f.limit)).filter(_._2.isDefined).map(f => (f._1.get, f._2.get)).groupBy(_._1).mapValues(_.map(_._2).toSet)
-    // keep limits as well
-    val limitsOut = limits.map({case (k, v) => LimitTypeOut(k.name, k.description, v)})
-    LeagueFull(league, limitsOut, periods, currentPeriod, statFields)
+  override def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow]): LeagueFull = {
+    val head = rows.head
+    val league = PublicLeagueRow(
+      head.leagueId, head.leagueName, head.gameId, head.isPrivate, head.tournamentId, head.pickeeDescription, head.periodDescription,
+      head.transferLimit, head.transferWildcard, head.startingMoney, head.teamSize, head.transferDelayMinutes,
+      head.transferOpen, head.transferBlockedDuringPeriod, head.url, head.urlVerified, head.applyPointsAtStartTime,
+      head.noWildcardForLateRegister, head.started, head.ended
+    )
+    val statFields = rows.flatMap(_.statFieldName)
+    // TODO add current
+    val periods = rows.map(
+      r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier)
+    )
+    val currentPeriod = rows.withFilter(_.current).map(r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier)).headOption
+    // TODO think this filter before group by inefficient
+    val limits: Map[String, Iterable[LimitRow]] = rows.filter(_.limitTypeName.isDefined).groupBy(_.limitTypeName.get).mapValues(
+      v => v.map(x => LimitRow(x.limitName.get, x.limitMax.get))
+    )
+    LeagueFull(league, limits, periods, currentPeriod, statFields)
   }
 
   override def updatePeriod(
@@ -297,10 +308,21 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       map(x => postStartPeriodHook(x._1, x._2, currentTime))
   }
 
-  override def getLimitTypes(leagueId: Long)(implicit c: Connection): Iterable[LimitType] = {
-    from(limitTypeTable)(ft => where(ft.leagueId === leagueId)
-      select ft
-    )
+  override def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long] = {
+    // TODO bulk insert
+    limits.toList.map(ft => {
+      // = leagueRepo.insertLimits
+      val newLimitTypeId: Long = SQL(
+        """insert into limit_type(league_id, name, description, "max") values({leagueId}, {name}, {description}, {max});""").on(
+        "leagueId" -> leagueId, "name" -> ft.name, "description" -> ft.description.getOrElse(ft.name), "max" -> ft.max
+      ).executeInsert().get
+      ft.types.iterator.map(f => {
+        val newLimitId = SQL("""insert into "limit"(faction_type_id, name, "max") values({factionTypeId}, {name}, {max});""").on(
+          "factionTypeId" -> newLimitTypeId, "name" -> f.name, "max" -> ft.max.getOrElse(f.max.get)
+        ).executeInsert().get
+        f.name -> newLimitId
+      }).toMap
+    }).reduce(_ ++ _)
   }
 }
 

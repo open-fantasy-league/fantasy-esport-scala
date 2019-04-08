@@ -51,10 +51,9 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 # wildcard used to wildcard available
 
 # when specify points fnc. need diff points per stat for different factions
+# revert match
+# external_id to external_<what>_id
 
-for dl:
-# revert a match
-# secondary ranking ordering/filtering
 
 
 
