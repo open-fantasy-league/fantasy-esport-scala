@@ -5,17 +5,14 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 import java.util.concurrent.TimeUnit
 
-import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.data.format.Formats._
 import play.api.libs.json._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.collection.immutable.{List, Set}
 import scala.util.Try
 import models._
-import models.AppDB._
 import play.api.db._
 import auth._
 import v1.leagueuser.LeagueUserRepo
@@ -62,33 +59,30 @@ class TransferController @Inject()(
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     db.withConnection { implicit c =>
-    new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers2))}).async { implicit request =>
+    new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers))}).async { implicit request =>
     scheduleTransfer(request.league, request.leagueUser)
   }
 
   def processTransfersReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
     Future {
-      inTransaction {
-        val currentTime = LocalDateTime.now()
-        // TODO better way? hard with squeryls weird dsl
-        db.withConnection { implicit c =>
-          val updates = leagueUserRepo.getShouldProcessTransfer(request.league.id).map(transferRepo.processLeagueUserTransfer)
-        }
-        Ok("Transfer updates processed")
+      val currentTime = LocalDateTime.now()
+      db.withConnection { implicit c =>
+        val updates = leagueUserRepo.getShouldProcessTransfer(request.league.id).map(transferRepo.processLeagueUserTransfer)
       }
+      Ok("Transfer updates processed")
     }
   }
 
   def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
     Future{
-      inTransaction{
-        val unprocessed = request.getQueryString("unprocessed").map(s => false)
-        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, unprocessed)))
+      db.withConnection { implicit c =>
+        val processed = request.getQueryString("processed").map(_ (0) == 't')
+        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, processed)))
       }
     }
   }
 
-  private def scheduleTransfer[A](league: LeagueRow, leagueUser: LeagueUser)(implicit request: Request[A]): Future[Result] = {
+  private def scheduleTransfer[A](league: LeagueRow, leagueUser: LeagueUserRow)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -101,34 +95,32 @@ class TransferController @Inject()(
       }
 
       Future {
-        inTransaction {
-          db.withConnection { implicit c =>
-            (for {
-              _ <- validateDuplicates(input.sell, sell, input.buy, buy)
-              leagueStarted = leagueRepo.isStarted(league)
-              validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
-              applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, leagueUser, sell)
-              newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser, sell)
-              pickees = pickeeRepo.getPickees(league.id).toList
-              newMoney <- updatedMoney(leagueUser, pickees, sell, buy, applyWildcard, league.startingMoney)
-              currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser.id).map(_.pickeeId).toSet
-              ).toOption.toRight(InternalServerError("Missing pickee externalId"))
-              _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
-              sellOrWildcard = if (applyWildcard) currentTeamIds else sell
-              _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
-              // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
-              _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
-              newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
-              _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
-              _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck)
-              _ <- validateLimits(newTeamIds, league.id)
-              transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
-              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
-                updateDBScheduleTransfer(
-                  sellOrWildcard, buy, pickees, leagueUser, leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
-                  newRemaining, transferDelay, applyWildcard)
-            } yield out).fold(identity, identity)
-          }
+        db.withConnection { implicit c =>
+          (for {
+            _ <- validateDuplicates(input.sell, sell, input.buy, buy)
+            leagueStarted = leagueRepo.isStarted(league)
+            validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
+            applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, leagueUser.usedWildcard, sell)
+            newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser.remainingTransfers, sell)
+            pickees = pickeeRepo.getPickees(league.id).toList
+            newMoney <- updatedMoney(leagueUser.money, pickees, sell, buy, applyWildcard, league.startingMoney)
+            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser.id).map(_.pickeeId).toSet
+            ).toOption.toRight(InternalServerError("Missing pickee externalId"))
+            _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
+            sellOrWildcard = if (applyWildcard) currentTeamIds else sell
+            _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
+            // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
+            _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
+            newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+            _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
+            _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck)
+            _ <- validateLimits(newTeamIds, league.id)
+            transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
+            out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
+              updateDBScheduleTransfer(
+                sellOrWildcard, buy, pickees, leagueUser, leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
+                newRemaining, transferDelay, applyWildcard)
+          } yield out).fold(identity, identity)
         }
       }
     }
@@ -142,14 +134,14 @@ class TransferController @Inject()(
     Right(true)
   }
 
-  private def updatedRemainingTransfers(leagueStarted: Boolean, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Option[Int]] = {
+  private def updatedRemainingTransfers(leagueStarted: Boolean, remainingTransfers: Option[Int], toSell: Set[Long]): Either[Result, Option[Int]] = {
     if (!leagueStarted){
-      return Right(leagueUser.remainingTransfers)
+      return Right(remainingTransfers)
     }
-    val newRemaining = leagueUser.remainingTransfers.map(_ - toSell.size)
+    val newRemaining = remainingTransfers.map(_ - toSell.size)
     newRemaining match{
       case Some(x) if x < 0 => Left(BadRequest(
-        f"Insufficient remaining transfers: $leagueUser.remainingTransfers"
+        f"Insufficient remaining transfers: $remainingTransfers"
       ))
       case Some(x) => Right(Some(x))
       case None => Right(None)
@@ -175,13 +167,13 @@ class TransferController @Inject()(
   }
 
   private def updatedMoney(
-                            leagueUser: LeagueUser, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long],
+                            money: BigDecimal, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long],
                             wildcardApplied: Boolean, startingMoney: BigDecimal): Either[Result, BigDecimal] = {
     val spent = pickees.filter(p => toBuy.contains(p.externalId)).map(_.cost).sum
     println(spent)
     println(toBuy)
     val updated = wildcardApplied match {
-      case false => leagueUser.money + pickees.filter(p => toSell.contains(p.externalId)).map(_.cost).sum - spent
+      case false => money + pickees.filter(p => toSell.contains(p.externalId)).map(_.cost).sum - spent
       case true => startingMoney - spent
     }
     updated match {
@@ -213,45 +205,40 @@ class TransferController @Inject()(
   }
 
   private def updateDBScheduleTransfer(
-                                toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[Pickee], leagueUser: LeagueUser,
+                                toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[PickeeRow], leagueUser: LeagueUserRow,
                                 period: Int, newMoney: BigDecimal, newRemaining: Option[Int], transferDelay: Option[Int],
                                 applyWildcard: Boolean
-                              ): Either[Result, Result] = {
+                              )(implicit c: Connection): Either[Result, Result] = {
     val currentTime = LocalDateTime.now()
     val scheduledUpdateTime = transferDelay.map(td => currentTime.plusMinutes(td))
     val toSellPickees = toSell.map(ts => pickees.find(_.externalId == ts).get)
-    transferTable.insert(toSellPickees.map(
-      p => new Transfer(
-        leagueUser.id, p.id, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-          scheduledUpdateTime.isEmpty, p.cost, applyWildcard
-        )
-    ))
+    toSellPickees.map(
+      p => transferRepo.insert(
+        leagueUser.id, p.id, false, currentTime, scheduledUpdateTime, p.cost, applyWildcard
+      )
+    )
     val toBuyPickees = toBuy.map(tb => pickees.find(_.externalId == tb).get)
-    transferTable.insert(toBuyPickees.map(
-      p => new Transfer(leagueUser.id, p.id, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-        scheduledUpdateTime.isEmpty, p.cost)
+    toBuyPickees.map(
+      p => transferRepo.insert(
+      leagueUser.id, p.id, true, currentTime, scheduledUpdateTime, p.cost, applyWildcard
     ))
-    db.withConnection { implicit c =>
-      val currentTeam = teamRepo.getLeagueUserTeam(leagueUser.id).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
-      if (scheduledUpdateTime.isEmpty) {
-        transferRepo.changeTeam(
-          leagueUser.id, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
-        )
-      }
+    val currentTeam = teamRepo.getLeagueUserTeam(leagueUser.id).map(cp => pickees.find(_.externalId == cp.pickeeId).get.id).toSet
+    if (scheduledUpdateTime.isEmpty) {
+      transferRepo.changeTeam(
+        leagueUser.id, toBuyPickees.map(_.id), toSellPickees.map(_.id), currentTeam, currentTime
+      )
     }
-    leagueUser.money = newMoney
-    leagueUser.remainingTransfers = newRemaining
-    leagueUser.changeTstamp = scheduledUpdateTime
-    if (applyWildcard) leagueUser.usedWildcard = true
-    leagueUserTable.update(leagueUser)
+    leagueUserRepo.update(
+      leagueUser.id, newMoney, newRemaining, scheduledUpdateTime, applyWildcard
+    )
     Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining))))
   }
 
-  private def shouldApplyWildcard(attemptingWildcard: Boolean, leagueHasWildcard: Boolean, leagueUser: LeagueUser, toSell: Set[Long]): Either[Result, Boolean] = {
+  private def shouldApplyWildcard(attemptingWildcard: Boolean, leagueHasWildcard: Boolean, usedWildcard: Boolean, toSell: Set[Long]): Either[Result, Boolean] = {
     if (!toSell.isEmpty && attemptingWildcard) return Left(BadRequest("Cannot sell heroes AND use wildcard at same time"))
     if (!attemptingWildcard) return Right(false)
     leagueHasWildcard match {
-      case true => leagueUser.usedWildcard match {
+      case true => usedWildcard match {
         case true => Left(BadRequest("User already used up wildcard"))
         case _ => Right(true)
       }

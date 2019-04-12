@@ -1,20 +1,11 @@
 package v1.league
 
 import java.sql.Connection
+
 import javax.inject.{Inject, Singleton}
-import akka.actor.ActorSystem
-import play.api.mvc.Result
-import play.api.mvc.Results.{BadRequest, InternalServerError}
-import play.api.libs.concurrent.CustomExecutionContext
-import play.api.libs.json._
 import java.time.LocalDateTime
 
-import anorm._
-import anorm.SqlParser.long
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
-
-import models._
-import v1.leagueuser.LeagueUserRepo
+import scala.util.Try
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -67,18 +58,20 @@ trait LeagueRepo{
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long
   def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow]
   def getPeriods(league: LeagueRow)(implicit c: Connection): Iterable[PeriodRow]
+  def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow
   def getPeriodBetween(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow]
   def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow]
   def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow]
   def detailedLeagueQueryExtractor(rows: Iterable[PublicLeagueRow]): LeagueFull // TODO private
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
-                    multiplier: Option[Double])(implicit c: Connection): Period
+                    multiplier: Option[Double])(implicit c: Connection): Int
   def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection)
   def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
+  def getStatField(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
 }
 
 @Singleton
@@ -200,6 +193,11 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).on("leagueId" -> league.id).as(periodParser.*)
   }
 
+  override def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow = {
+    val q = "select * from period where league_id = {leagueId} and value = {value};"
+    SQL(q).on("leagueId" -> league.id, "value" -> value).as(periodParser.single)
+  }
+
   override def getPeriodBetween(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow] = {
     val q = """select * from period where league_id = {leagueId} and start <= {time} and "end" > {time};"""
     SQL(q).on("time" -> time).as(periodParser.singleOpt)
@@ -250,16 +248,37 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def updatePeriod(
                              leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
-                             multiplier: Option[Double])(implicit c: Connection): Period = {
-    val period = from(periodTable)(p => 
-        where(p.leagueId === leagueId and p.value === periodValue)
-        select(p)
-      ).single
-    period.start = start.getOrElse(period.start)
-    period.end = end.getOrElse(period.end)
-    period.multiplier = multiplier.getOrElse(period.multiplier)
-    periodTable.update(period)
-    period
+                             multiplier: Option[Double])(implicit c: Connection): Int = {
+    var setString: String = ""
+    var params: collection.mutable.Seq[NamedParameter] =
+      collection.mutable.Seq(
+        NamedParameter("value", toParameterValue(periodValue)),
+        NamedParameter("league_id", toParameterValue(leagueId)))
+
+    if (start.isDefined) {
+      setString += ", [start] = {start}"
+      params = params :+ NamedParameter("start", toParameterValue(start.get))
+    }
+    if (end.isDefined) {
+      setString += ", [end] = {end}"
+      params = params :+ NamedParameter("end", toParameterValue(end.get))
+    }
+    if (multiplier.isDefined) {
+      setString += ", [multiplier] = {multiplier}"
+      params = params :+ NamedParameter("multiplier", toParameterValue(multiplier.get))
+    }
+    SQL(
+      "update period set " + setString + " WHERE [value] = {value} and [league_id] = {league_id}"
+    ).on(params:_*).executeUpdate()
+//    val period = from(periodTable)(p =>
+//        where(p.leagueId === leagueId and p.value === periodValue)
+//        select(p)
+//      ).single
+//    period.start = start.getOrElse(period.start)
+//    period.end = end.getOrElse(period.end)
+//    period.multiplier = multiplier.getOrElse(period.multiplier)
+//    periodTable.update(period)
+//    period
   }
 
   override def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection) = {
@@ -323,6 +342,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         f.name -> newLimitId
       }).toMap
     }).reduce(_ ++ _)
+  }
+
+  override def getStatField(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long] = {
+    SQL(
+      "select stat_field_id from stat_field where league_id = $leagueId and name = $statFieldName"
+    ).as(long('stat_field_id').singleOpt)
   }
 }
 

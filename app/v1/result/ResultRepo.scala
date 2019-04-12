@@ -2,12 +2,10 @@ package v1.result
 
 import java.sql.Connection
 import java.time.LocalDateTime
-import entry.SquerylEntrypointForMyApp._
 import akka.actor.ActorSystem
 import play.api.libs.json._
 import play.api.libs.concurrent.CustomExecutionContext
 
-import models.AppDB._
 import models._
 import utils.GroupByOrderedImplicit._
 import anorm._
@@ -50,18 +48,19 @@ object ResultsOut{
 
 
 trait ResultRepo{
-  def show(id: Long): Option[Resultu]
   def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut]
   def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut]
+  def insertMatch(
+                   leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
+                 )(implicit c: Connection)
+  def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
+  def insertPoints(resultId: Long, statFieldId: Long, points: Double, pickeeId: Long)(implicit c: Connection): Long
 }
 
 @Singleton
 class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepo{
   val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
   val fullResultParser: RowParser[FullResultRow] = Macro.namedParser[FullResultRow](ColumnNaming.SnakeCase)
-  override def show(id: Long): Option[Resultu] = {
-    resultTable.lookup(id)
-  }
 
   override def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut] = {
     val q =
@@ -103,6 +102,31 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
       ResultsOut(MatchRow(externalMatchId, v.head.period, v.head.tournamentId, v.head.teamOne, v.head.teamTwo, v.head.teamOneVictory,
         v.head.startTstamp, v.head.addedDBTstamp, v.head.targetedAtTstamp), results)
     })
+  }
+
+  override def insertMatch(
+                            leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
+                          )(implicit c: Connection) = {
+    SQL(
+      """
+        |insert into matchu(league_id, external_id, period, tournament_id, team_one, team_two, team_one_victory,
+        |start_tstamp, added_tstamp, targeted_at_tstamp) VALUES({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+      """.stripMargin).onParams(
+      leagueId, input.matchId, period, input.tournamentId, input.teamOne, input.teamTwo,
+      input.teamOneVictory, input.startTstamp, now, targetedAtTstamp
+    ).executeInsert()
+  }
+
+  override def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long = {
+    SQL("insert into resultu(match_id, pickee_id, is_team_one values({},{},{})").onParams(
+      matchId, pickee.id, pickee.isTeamOne
+    ).executeInsert()
+  }
+
+  override def insertPoints(resultId: Long, statFieldId: Long, points: Double, pickeeId: Long)(implicit c: Connection): Long = {
+    SQL(
+      "insert into points(result_id, stat_field_id, value, pickee_id) values({}, {}, {}, {})"
+    ).onParams(resultId, statFieldId, points, pickeeId).executeInsert()
   }
 
 }

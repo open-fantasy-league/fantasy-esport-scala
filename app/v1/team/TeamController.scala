@@ -2,7 +2,6 @@ package v1.team
 
 import javax.inject.Inject
 
-import entry.SquerylEntrypointForMyApp._
 import play.api.mvc._
 import play.api.libs.json._
 import play.api.db._
@@ -21,18 +20,16 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   implicit val parser = parse.default
 
   def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
-    Future(inTransaction(Ok({
+    Future(Ok({
       db.withConnection{ implicit c => Json.toJson(teamRepo.getLeagueUserTeam(request.leagueUser.id))}
-    })))
+    }))
   }
 
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     // TODO yo this is so inefficient
     Future {
-        db.withConnection { implicit c =>
-          inTransaction {
-            Ok(Json.toJson(teamRepo.getAllLeagueUserTeam(request.league.id)))
-          }
+      db.withConnection { implicit c =>
+          Ok(Json.toJson(teamRepo.getAllLeagueUserTeam(request.league.id)))
         }
     }
   }

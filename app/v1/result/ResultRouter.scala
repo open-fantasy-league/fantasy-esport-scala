@@ -18,8 +18,8 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
     case GET(p"/leagues/$leagueId") =>
       controller.getReq(leagueId)
 
-//    case GET(p"/$id") =>
-//      controller.show(id)
+    case GET(p"/$id") =>
+      controller.getReq(id)
   }
 
 }

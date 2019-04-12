@@ -7,7 +7,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import models._
 import javax.inject.Inject
 import utils.{IdParser, TryHelper}
-import entry.SquerylEntrypointForMyApp._
 import com.typesafe.config.ConfigFactory
 import v1.league.LeagueRepo
 import play.api.db._
@@ -32,11 +31,11 @@ class LeaguePeriodRequest[A](val p: Option[Int], request: LeagueRequest[A]) exte
   def league = request.league
 }
 
-class LeagueUserRequest[A](val user: User, val leagueUser: LeagueUser, request: LeagueRequest[A]) extends WrappedRequest[A](request){
+class LeagueUserRequest[A](val user: UserRow, val leagueUser: LeagueUserRow, request: LeagueRequest[A]) extends WrappedRequest[A](request){
   def league = request.league
 }
 
-class AuthLeagueUserRequest[A](val u: User, val lu: LeagueUser, request: AuthLeagueRequest[A]) extends LeagueUserRequest[A](u, lu, request){
+class AuthLeagueUserRequest[A](val u: UserRow, val lu: LeagueUserRow, request: AuthLeagueRequest[A]) extends LeagueUserRequest[A](u, lu, request){
   def apiKey = request.apiKey
 }
 
@@ -75,27 +74,29 @@ class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[A
   }
 }
 
-class LeagueUserAction(val userId: String){
-  def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[User], LeagueRow) => Iterable[LeagueUser]]): Either[Result, (User, LeagueUser)] = {
+class LeagueUserAction @Inject()(leagueUserRepo: LeagueUserRepo, db: Database)(val userId: String){
+
+  def refineGeneric[A <: LeagueRequest[B], B](input: A, insertOnMissing: Option[(Iterable[Long], LeagueRow) => Iterable[LeagueUserRow]]): Either[Result, LeagueUserRow] = {
       println(userId)
-      inTransaction(
+      db.withConnection { implicit c =>
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
-          query <- TryHelper.tryOrResponse(() => join(AppDB.userTable, AppDB.leagueUserTable.leftOuter)((u, lu) => where(u.externalId === userIdLong)
-            select(u, lu)
-            // TODO FUCK SQUERYL> SERIOUSLY FUCKING FUCK FUCK FUCK THEM.
-            on(lu.map(_.userId) === u.id)).filter(q => q._2.isEmpty || q._2.get.leagueId == input.league.id).head, BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users"))
-          (user, maybeLeagueUser) = query
+          maybeLeagueUser = leagueUserRepo.getWithUser(request.league.id, userIdLong)
+          maybeInternalUserId =
           out <- maybeLeagueUser match {
-            case Some(x) => Right((user, x))
+            case Some(leagueUser) => Right(leagueUser)
+            case None if (
+              SQL("select user_id from useru where league_id = {} and external_id = {}").onParams(request.league.id, userIdLong).
+                as(long("user_id").singleOpt).isEmpty
+              ) => Left(BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users")))
             case None if (!insertOnMissing.isEmpty) => {
-              val leagueUser = insertOnMissing.get(List(user), input.league).head
-              Right((user, leagueUser))
+              val leagueUser = insertOnMissing.get(List(userIdLong), input.league).head
+              Right(leagueUser)
             }
             case _ => Left(BadRequest(f"User $userId not in league"))
           }
         } yield out)
-      )
+      }
     }
 
   def apply(insertOnMissing: Option[(Iterable[User], LeagueRow) => Iterable[LeagueUser]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
@@ -122,7 +123,6 @@ class Auther @Inject()(leagueRepo: LeagueRepo, db: Database){
   def AuthLeagueAction(leagueId: String)(implicit ec: ExecutionContext) = new ActionRefiner[AuthRequest, AuthLeagueRequest] {
     def executionContext = ec
     def refine[A](input: AuthRequest[A]) = Future.successful {
-      inTransaction(
         db.withConnection { implicit c =>
           (for {
             leagueId <- IdParser.parseLongId(leagueId, "league")
@@ -130,7 +130,6 @@ class Auther @Inject()(leagueRepo: LeagueRepo, db: Database){
             out <- Right(new AuthLeagueRequest(league, input))
           } yield out)
         }
-      )
     }
   }
 

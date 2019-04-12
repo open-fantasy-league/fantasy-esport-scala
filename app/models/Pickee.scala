@@ -4,35 +4,18 @@ import java.time.LocalDateTime
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import play.api.libs.json._
 
-import org.squeryl.KeyedEntity
-
-class Pickee(
-              val leagueId: Long,
-              var name: String,
-              var externalId: Long, // in the case of dota we have the pickee id which is unique for Antimage in league 1
-              // and Antimage in league 2. however we still want a field which is always AM hero id
-              var cost: BigDecimal,
-              var active: Boolean = true,
-            ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  lazy val limits = AppDB.pickeeLimitTable.left(this)
-
-}
-
-object Pickee{
-  implicit val implicitWrites = new Writes[Pickee] {
-    def writes(p: Pickee): JsValue = {
-      Json.obj(
-        "id" -> p.externalId,
-        "name" -> p.name,
-        "cost" -> p.cost,
-        "active" -> p.active,
-      )
-    }
-  }
-}
+case class StatDailyRow(
+                                   id: Long, statFieldName: String, previousRank: Int, value: Double,
+                                   period: Option[Int]
+                                 )
 
 case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
+
+case class PickeeLimitsRow(pickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
+
+case class PickeeLimitsAndStatsRow(
+                                    pickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
+                                    limitName: String, max: Int, statFieldName: String, value: Double, previousRank: Int)
 
 object PickeeRow {
   implicit val implicitWrites = new Writes[PickeeRow] {
@@ -44,6 +27,8 @@ object PickeeRow {
       )
     }
   }
+
+  val parser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
 }
 
 case class TeamRow(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
@@ -68,37 +53,4 @@ object TeamRow {
 //  }
 
   val parser: RowParser[TeamRow] = Macro.namedParser[TeamRow](ColumnNaming.SnakeCase)
-}
-
-
-class TeamPickee(
-                  var pickeeId: Long,
-                  var teamId: Long
-                ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  lazy val pickee = AppDB.pickeeToTeamPickee.right(this).single
-}
-
-
-class PickeeStat(
-                       val statFieldId: Long,
-                       val pickeeId: Long,
-                       var previousRank: Int = 0
-                     ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
-
-class PickeeStatDaily(
-                            val pickeeStatId: Long,
-                            val period: Option[Int],
-                            var value: Double = 0.0
-                          ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
-
-class PickeeLimit(
-                  val pickeeId: Long,
-                  val limitId: Long,
-                ) extends KeyedEntity[Long] {
-  val id: Long = 0
 }

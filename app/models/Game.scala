@@ -1,6 +1,5 @@
 package models
 
-import org.squeryl.KeyedEntity
 import play.api.libs.json._
 
 class Game(

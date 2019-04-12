@@ -29,18 +29,7 @@ class Module(environment: Environment, configuration: Configuration)
     bind[TeamRepo].to[TeamRepoImpl].in[Singleton]
     bind[TransferRepo].to[TransferRepoImpl].in[Singleton]
     bind[LeagueUserRepo].to[LeagueUserRepoImpl].in[Singleton]
+    bind[UserRepo].to[UserRepoImpl].in[Singleton]
     bind[AdminRepo].to[AdminRepoImpl].in[Singleton]
-    bind(classOf[SquerylInitialization]).asEagerSingleton()
   }
-}
-
-import play.api.db.Database
-import org.squeryl.{SessionFactory, Session}
-import org.squeryl.adapters.PostgreSqlAdapter
-@Singleton
-class SquerylInitialization @Inject()(conf: Configuration, DB: Database) {
-  SessionFactory.concreteFactory = Some(()=>
-      Session.create(
-      DB.getConnection(),
-  new PostgreSqlAdapter))
 }
