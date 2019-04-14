@@ -5,23 +5,23 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import play.api.libs.json._
 
 case class StatDailyRow(
-                                   id: Long, statFieldName: String, previousRank: Int, value: Double,
+                                   statFieldId: Long, statFieldName: String, previousRank: Int, value: Double,
                                    period: Option[Int]
                                  )
 
-case class PickeeRow(pickeeId: Long, name: String, cost: BigDecimal)
+case class PickeeRow(externalPickeeId: Long, name: String, cost: BigDecimal)
 
-case class PickeeLimitsRow(pickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
+case class PickeeLimitsRow(externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(
-                                    pickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
+                                    externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
                                     limitName: String, max: Int, statFieldName: String, value: Double, previousRank: Int)
 
 object PickeeRow {
   implicit val implicitWrites = new Writes[PickeeRow] {
     def writes(x: PickeeRow): JsValue = {
       Json.obj(
-        "id" -> x.pickeeId,
+        "id" -> x.externalPickeeId,
         "name" -> x.name,
         "cost" -> x.cost
       )

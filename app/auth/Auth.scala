@@ -53,26 +53,26 @@ class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, db: Data
   }
 }
 
-class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]){
-  def executionContext = ec
-  def refineGeneric[A <: Request[B], B](input: A): Either[Result, Option[Int]] = {
-      TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-    }
-
-  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[Request, PeriodRequest]{
-    def executionContext = ec
-    def refine[A](input: Request[A]) = Future.successful{
-      refineGeneric[Request[A], A](input).map(p => new PeriodRequest(p, input))
-    }
-
-  }
-  def league()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeaguePeriodRequest]{
-    def executionContext = ec
-    def refine[A](input: LeagueRequest[A]) = Future.successful {
-      refineGeneric[LeagueRequest[A], A](input).map(p => new LeaguePeriodRequest(p, input))
-    }
-  }
-}
+//class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]){
+//  def executionContext = ec
+//  def refineGeneric[A <: Request[B], B](input: A): Either[Result, Option[Int]] = {
+//      TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+//    }
+//
+//  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[Request, PeriodRequest]{
+//    def executionContext = ec
+//    def refine[A](input: Request[A]) = Future.successful{
+//      refineGeneric[Request[A], A](input).map(p => new PeriodRequest(p, input))
+//    }
+//
+//  }
+//  def league()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeaguePeriodRequest]{
+//    def executionContext = ec
+//    def refine[A](input: LeagueRequest[A]) = Future.successful {
+//      refineGeneric[LeagueRequest[A], A](input).map(p => new LeaguePeriodRequest(p, input))
+//    }
+//  }
+//}
 
 class LeagueUserAction @Inject()(leagueUserRepo: LeagueUserRepo, db: Database)(val userId: String){
 
@@ -81,12 +81,12 @@ class LeagueUserAction @Inject()(leagueUserRepo: LeagueUserRepo, db: Database)(v
       db.withConnection { implicit c =>
         (for {
           userIdLong <- IdParser.parseLongId(userId, "User")
-          maybeLeagueUser = leagueUserRepo.getWithUser(request.league.id, userIdLong)
+          maybeLeagueUser = leagueUserRepo.getWithUser(request.league.leagueId, userIdLong)
           maybeInternalUserId =
           out <- maybeLeagueUser match {
             case Some(leagueUser) => Right(leagueUser)
             case None if (
-              SQL("select user_id from useru where league_id = {} and external_id = {}").onParams(request.league.id, userIdLong).
+              SQL("select user_id from useru where league_id = {} and external_user_id = {}").onParams(request.league.leagueId, userIdLong).
                 as(long("user_id").singleOpt).isEmpty
               ) => Left(BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users")))
             case None if (!insertOnMissing.isEmpty) => {

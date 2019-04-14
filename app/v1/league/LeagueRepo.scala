@@ -71,7 +71,7 @@ trait LeagueRepo{
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
-  def getStatField(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
+  def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
 }
 
 @Singleton
@@ -91,12 +91,15 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           transfer_limit, transfer_wildcard, starting_money, team_size, transferDelayMinutes, transfer_open, transfer_blocked_during_period,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register,
            (cp is null) as started, (cp is not null and cp.end < now()) as ended,
-           p.value as period_value, start, "end", multiplier, (p.id = l.current_period_id) as current, sf.name as stat_field_name,
+           p.value as period_value, start, "end", multiplier, (p.period_id = l.current_period_id) as current, sf.name as stat_field_name,
            lt.name as limit_type_name, lt.description, l.name as limit_name, l."max" as limit_max
- | from league l join period p using(league_id) left join limit_type lt using(league_id)
+ | from league l
+ | join period p using(league_id)
+ | left join limit_type lt using(league_id)
  | left join current_period cp on (cp.league_id = l.league_id and cp.period_id = l.current_period_id)
-           left join "limit" lim using(limit_type_id) join league_stat_field sf using(league_id)
-        where league_id = {id} order by p.value, pck.external_id;""").on("id" -> id).as(detailedLeagueParser.*)
+           left join "limit" lim using(limit_type_id)
+           join stat_field sf using(league_id)
+        where league_id = {leagueId} order by p.value, pck.external_pickee_id;""").on("leagueId" -> id).as(detailedLeagueParser.*)
     detailedLeagueQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return
@@ -104,8 +107,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def getStatFields(league: LeagueRow)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
     val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-    val q = "select * from league_stat_field where league_id = {leagueId};"
-    SQL(q).on("leagueId" -> league.id).as(lsfParser.*)
+    val q = "select * from stat_field where league_id = {leagueId};"
+    SQL(q).on("leagueId" -> league.leagueId).as(lsfParser.*)
   }
 
   override def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String] = {
@@ -190,12 +193,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def getPeriods(league: LeagueRow)(implicit c: Connection): Iterable[PeriodRow] = {
     val q = "select * from period where league_id = {leagueId};"
-    SQL(q).on("leagueId" -> league.id).as(periodParser.*)
+    SQL(q).on("leagueId" -> league.leagueId).as(periodParser.*)
   }
 
   override def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow = {
     val q = "select * from period where league_id = {leagueId} and value = {value};"
-    SQL(q).on("leagueId" -> league.id, "value" -> value).as(periodParser.single)
+    SQL(q).on("leagueId" -> league.leagueId, "value" -> value).as(periodParser.single)
   }
 
   override def getPeriodBetween(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow] = {
@@ -214,7 +217,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       case Some(p) if !p.ended => Left(BadRequest("Must end current period before start next"))
       case Some(p) => {
         p.nextPeriodId match {
-          case Some(np) => getPeriod(np).toRight(InternalServerError(s"Could not find next period $np, for period ${p.id}"))
+          case Some(np) => getPeriod(np).toRight(InternalServerError(s"Could not find next period $np, for period ${p.periodId}"))
           case None => Left(BadRequest("No more periods left to start. League is over"))
         }
       }
@@ -252,20 +255,20 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     var setString: String = ""
     var params: collection.mutable.Seq[NamedParameter] =
       collection.mutable.Seq(
-        NamedParameter("value", toParameterValue(periodValue)),
-        NamedParameter("league_id", toParameterValue(leagueId)))
+        NamedParameter("value", periodValue),
+        NamedParameter("league_id", leagueId))
 
     if (start.isDefined) {
       setString += ", [start] = {start}"
-      params = params :+ NamedParameter("start", toParameterValue(start.get))
+      params = params :+ NamedParameter("start", start.get)
     }
     if (end.isDefined) {
       setString += ", [end] = {end}"
-      params = params :+ NamedParameter("end", toParameterValue(end.get))
+      params = params :+ NamedParameter("end", end.get)
     }
     if (multiplier.isDefined) {
       setString += ", [multiplier] = {multiplier}"
-      params = params :+ NamedParameter("multiplier", toParameterValue(multiplier.get))
+      params = params :+ NamedParameter("multiplier", multiplier.get)
     }
     SQL(
       "update period set " + setString + " WHERE [value] = {value} and [league_id] = {league_id}"
@@ -319,9 +322,10 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     postEndPeriodHook(leagueIds, periodIds, currentTime)
   }
   override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
+    // TODO this will get all furutue periods
     val q =
       """select * from league l join period p using(league_id)
-        |where (l.current_period_id.isNull or not(l.current_period_id === p.id)) and
+        |where (l.current_period_id is null or not(l.current_period_id == p.periodId)) and
         |p.ended = false and p.start <= {currentTime};""".stripMargin
     SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ periodParser).*).
       map(x => postStartPeriodHook(x._1, x._2, currentTime))
@@ -344,7 +348,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }).reduce(_ ++ _)
   }
 
-  override def getStatField(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long] = {
+  override def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long] = {
     SQL(
       "select stat_field_id from stat_field where league_id = $leagueId and name = $statFieldName"
     ).as(long('stat_field_id').singleOpt)

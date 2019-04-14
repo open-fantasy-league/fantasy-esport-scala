@@ -42,7 +42,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
   override def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): List[PickeeRow] = {
     val pickeeParser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
     val q =
-      """select p.external_id as pickee_id, p.name, p.cost from team t join team_pickee tp using(team_id) join pickee p using(pickee_id)
+      """select p.external_pickee_id, p.pickee_name, p.cost from team t join pickee p using(pickee_id)
     where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
     println(q)
@@ -54,8 +54,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
   override def getAllLeagueUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut] = {
     val pickeeParser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
     val q =
-      """select u.external_id as external_user_id, u.username, league_user_id, t.start, t.end, true, p.external_id as externalPickeeId,
-        | p.name as pickeeName, p.cost as pickeeCost from team t join team_pickee tp on (tp.team_id = t.id)
+      """select u.external_user_id, u.username, league_user_id, t.start, t.end, true, p.external_pickee_id,
+        | p.pickee_name, p.cost as pickeeCost from team t
  |                   join pickee p using(pickee_id)
  |                   join league_user lu using(league_user_id)
  |                   join useru u using(user_id)

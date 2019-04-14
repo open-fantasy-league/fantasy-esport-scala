@@ -2,8 +2,8 @@ package models
 
 import play.api.libs.json._
 
-class Game(
-            val name: String,
+class GameRow(
+            val gameName: String,
             val code: String,
             val variant: String,
             val description: String
@@ -11,11 +11,11 @@ class Game(
   val id: Long = 0
 }
 
-object Game{
-  implicit val implicitWrites = new Writes[Game] {
-    def writes(g: Game): JsValue = {
+object GameRow{
+  implicit val implicitWrites = new Writes[GameRow] {
+    def writes(g: GameRow): JsValue = {
       Json.obj(
-        "name" -> g.name,
+        "name" -> g.gameName,
         "code" -> g.code,
         "variant" -> g.variant,
         "description" -> g.description

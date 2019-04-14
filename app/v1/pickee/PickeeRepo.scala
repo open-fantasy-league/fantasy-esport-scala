@@ -20,41 +20,6 @@ case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[Repri
 
 case class PickeeLimits(pickee: PickeeRow, limits: Map[String, String])
 
-case class PickeeStatsOut(
-                              pickee: PickeeRow, limits: Map[String, String], stats: Map[String, Double])
-                            )
-
-object PickeeOut{
-  implicit val implicitWrites = new Writes[PickeeOut] {
-    def writes(p: PickeeOut): JsValue = {
-      // TODO how to unduplicate this between Pickee and PickeeOut jsonifiers?
-      // need check play api json docs, see what fancy stuff can do with concat json objs
-      Json.obj(
-        "id" -> p.pickee.externalId,
-        "name" -> p.pickee.name,
-        "cost" -> p.pickee.cost,
-        "active" -> p.pickee.active,
-        "limits" -> p.limits
-      )
-    }
-  }
-}
-
-object PickeeStatsOut{
-  implicit val implicitWrites = new Writes[PickeeStatsOut] {
-    def writes(p: PickeeStats): JsValue = {
-      Json.obj(
-        "id" -> p.pickee.externalId,
-        "name" -> p.pickee.name,
-        "stats" -> p.stats,
-        "limits" -> p.limits,
-        "cost" -> p.pickee.cost,
-        "active" -> p.pickee.active
-      )
-    }
-  }
-}
-
 trait PickeeRepo{
   def insertPickee(leagueId: Long, pickee: PickeeFormInput)(implicit c: Connection): Long
   def insertPickeeStat(statFieldId: Long, pickeeId: Long)(implicit c: Connection): Long
@@ -67,7 +32,7 @@ trait PickeeRepo{
   def getPickeeStat(
                      leagueId: Long, statFieldId: Option[Long], period: Option[Int]
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
-  def getInternalId(leagueId: Long, externalId: Long)(implicit c: Connection): Option[Long]
+  def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
   def updateCost(pickeeId: Long, cost: BigDecimal)(implicit c: Connection): Long
 }
 
@@ -76,8 +41,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
   override def insertPickee(leagueId: Long, pickee: PickeeFormInput): Long = {
     SQL(
-      """insert into pickee(league_id, name, external_id, value, active)
-        | values($leagueId, $pickee.name, $pickee.id, $pickee.value, $pickee.active)""".stripMargin
+      """insert into pickee(league_id, pickee_name, external_pickee_id, value, active)
+        | values($leagueId, ${pickee.name}, ${pickee.id}, ${pickee.value}, ${pickee.active})""".stripMargin
     ).executeInsert()
   }
 
@@ -112,7 +77,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimits] = {
     val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
     SQL(
-      """select pickee_id, p.name as pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max)
+      """select pickee_id, p.pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max)
         |from pickee p
         |left join limit_type lt using(league_id)
         |left join "limit" l using(limit_type_id)
@@ -127,10 +92,10 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     val rowParser: RowParser[PickeeLimitsAndStatsRow] = Macro.namedParser[PickeeLimitsAndStatsRow](ColumnNaming.SnakeCase)
     SQL(
       """
-        |select pickee_id, p.name as pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max),
-        |lsf.name as stat_field_name, psd.value, ps.previous_rank
+        |select pickee_id, p.pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max),
+        |sf.name as stat_field_name, psd.value, ps.previous_rank
         |from pickee p join pickee_stat ps using(pickee_id) join pickee_stat_daily psd using(pickee_stat_id)
-        | join league_stat_field lsf using(stat_field_id)
+        | join stat_field sf using(stat_field_id)
         | left join limit_type lt using(league_id) left join "limit" l using(limit_type_id)
         | where league_id = $leagueId and ($period is null or period = $period) and
         | ($statFieldId is null or stat_field_id = $statFieldId)
@@ -143,9 +108,9 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     }})
   }
 
-  override def getInternalId(leagueId: Long, externalId: Long)(implicit c: Connection): Option[Long] = {
+  override def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long] = {
     SQL(
-      "select pickee_id from pickee where league_id = $leagueId and external_id = $externalId;"
+      "select pickee_id from pickee where league_id = $leagueId and external_pickee_id = $externalPickeeId;"
     ).as(long('pickee_id').singleOpt)
   }
 

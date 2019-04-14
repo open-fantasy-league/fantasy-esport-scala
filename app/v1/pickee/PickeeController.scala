@@ -18,7 +18,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
 
   implicit val parser = parse.default
   def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
-    Future(db.withConnection { implicit c => Ok(Json.toJson(pickeeRepo.getPickeesLimits(request.league.id)))})
+    Future(db.withConnection { implicit c => Ok(Json.toJson(pickeeRepo.getPickeesLimits(request.league.leagueId)))})
   }
 
   def getStatsReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
@@ -26,7 +26,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       db.withConnection { implicit c =>
         (for {
           period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.id, Option.empty[Int], period)))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.leagueId, Option.empty[Int], period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -66,11 +66,11 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     def success(inputs: RepricePickeeFormInputList) = {
       Future {
         db.withConnection { implicit c =>
-            val leaguePickees = pickeeRepo.getPickees(request.league.id)
-            val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
+            val leaguePickees = pickeeRepo.getPickees(request.league.leagueId)
+            val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.pickeeId -> p).toMap
           // TODO withFIlter
-            leaguePickees.withFilter(p => pickees.contains(p.externalId)).map(p => {
-              pickeeRepo.updateCost(p.pickeeId, pickees(p.externalId).cost)
+            leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
+              pickeeRepo.updateCost(p.pickeeId, pickees(p.externalPickeeId).cost)
             })
             // TODO print out pickees that changed
             Ok("Successfully updated pickee costs")
@@ -90,7 +90,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       Future {
         db.withConnection { implicit c =>
             // TODO print out pickees that changed
-            val newPickeeId = pickeeRepo.insertPickee(request.league.id, input)
+            val newPickeeId = pickeeRepo.insertPickee(request.league.leagueId, input)
             Created(s"{'id': $newPickeeId}")
         }
       }

@@ -39,26 +39,26 @@ case class DetailedLeagueRow(
 
 case class PublicLeagueRow(
                           leagueId: Long,
-                                         name: String,
-                                         gameId: Option[Long],
-                                         isPrivate: Boolean,
-                                         tournamentId: Long,
-                                         pickeeDescription: String,
-                                         periodDescription: String,
-                                         transferLimit: Option[Int],
-                                         transferWildcard: Boolean,
-                                         startingMoney: BigDecimal,
-                                         teamSize: Int,
-                                         transferDelayMinutes: Int,
-                                         transferOpen: Boolean,
-                                         transferBlockedDuringPeriod: Boolean,
-                                         url: String,
-                                         urlVerified: Boolean,
-                                         applyPointsAtStartTime: Boolean,
-                                         noWildcardForLateRegister: Boolean,
-                                         started: Boolean,
-                                         ended: Boolean
-                                       )
+                          leagueName: String,
+                          gameId: Option[Long],
+                          isPrivate: Boolean,
+                          tournamentId: Long,
+                          pickeeDescription: String,
+                          periodDescription: String,
+                          transferLimit: Option[Int],
+                          transferWildcard: Boolean,
+                          startingMoney: BigDecimal,
+                          teamSize: Int,
+                          transferDelayMinutes: Int,
+                          transferOpen: Boolean,
+                          transferBlockedDuringPeriod: Boolean,
+                          url: String,
+                          urlVerified: Boolean,
+                          applyPointsAtStartTime: Boolean,
+                          noWildcardForLateRegister: Boolean,
+                          started: Boolean,
+                          ended: Boolean
+)
 
 object PublicLeagueRow{
   //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
@@ -66,7 +66,7 @@ object PublicLeagueRow{
     def writes(league: PublicLeagueRow): JsValue = {
       Json.obj(
         "id" -> league.leagueId,
-        "name" -> league.name,
+        "name" -> league.leagueName,
         "gameId" -> league.gameId,
         "tournamentId" -> league.tournamentId,
         "isPrivate" -> league.isPrivate,
@@ -89,8 +89,8 @@ object PublicLeagueRow{
   }
 }
 
-case class LeagueRow(id: Long,
-                      name: String,
+case class LeagueRow(leagueId: Long,
+                     leagueName: String,
                      apiKey: String, // the api user/platform that created the league
                      gameId: Option[Long],
                      isPrivate: Boolean,
@@ -124,7 +124,7 @@ object LimitRow{
   }
 }
 
-case class PeriodRow(id: Long,
+case class PeriodRow(periodId: Long,
                      leagueId: Long,
                      value: Int,
                      start: LocalDateTime,
@@ -152,8 +152,8 @@ object LeagueRow{
   implicit val implicitWrites = new Writes[LeagueRow] {
     def writes(league: LeagueRow): JsValue = {
       Json.obj(
-        "id" -> league.id,
-        "name" -> league.name,
+        "id" -> league.leagueId,
+        "name" -> league.leagueName,
         "gameId" -> league.gameId,
         "tournamentId" -> league.tournamentId,
         "isPrivate" -> league.isPrivate,

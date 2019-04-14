@@ -17,9 +17,7 @@ import utils.IdParser
 import utils.TryHelper._
 import auth._
 import anorm._
-import models.{League, LimitType, Limit, LeagueRow,
-  PickeeLimit
-}
+import models._
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeRepo, PickeeFormInput}
 
@@ -35,7 +33,6 @@ case class TransferInput(
                           transferBlockedDuringPeriod: Boolean, noWildcardForLateRegister: Boolean,
                         )
 
-// TODO period descriptor
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
@@ -153,7 +150,7 @@ class LeagueController @Inject()(
   }
 
   def getWithRelatedReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    Future(db.withConnection { implicit c => Ok(Json.toJson(leagueRepo.getWithRelated(request.league.id)))})
+    Future(db.withConnection { implicit c => Ok(Json.toJson(leagueRepo.getWithRelated(request.league.leagueId)))})
   }
 
   def update(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>
@@ -165,7 +162,7 @@ class LeagueController @Inject()(
   def getAllUsersReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
         db.withConnection { implicit c =>
-          val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.id)
+          val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.leagueId)
           Ok(Json.toJson(leagueUsers))
         }
     }
@@ -177,7 +174,9 @@ class LeagueController @Inject()(
       val showTeam = !request.getQueryString("team").isEmpty
       val showScheduledTransfers = !request.getQueryString("scheduledTransfers").isEmpty
       val stats = !request.getQueryString("stats").isEmpty
-      Ok(Json.toJson(leagueUserRepo.detailedLeagueUser(request.user, request.leagueUser, showTeam, showScheduledTransfers, stats)))
+      db.withConnection { implicit c =>
+        Ok(Json.toJson(leagueUserRepo.detailedLeagueUser(request.user, request.leagueUser, showTeam, showScheduledTransfers, stats)))
+      }
     }
   }
 
@@ -185,13 +184,12 @@ class LeagueController @Inject()(
     Future {
       db.withConnection { implicit c =>
         val users = request.getQueryString("users").map(_.split(",").map(_.toLong))
-        val secondaryOrdering = request.getQueryString("secondary").map(_.split(",").toList.map(s => leagueRepo.getStatFieldId(request.league.id, s).get.id))
+        val secondaryOrdering = request.getQueryString("secondary").map(_.split(",").toList.map(s => leagueRepo.getStatFieldId(request.league.leagueId, s).get))
         (for {
-          statFieldId <- leagueRepo.getStatFieldId(request.league.id, statFieldName).toRight(BadRequest("Unknown stat field"))
+          statFieldId <- leagueRepo.getStatFieldId(request.league.leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           rankings = leagueUserRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering)
-          out = Ok(Json.toJson(rankings))
-        } yield out).fold(identity, identity)
+        } yield Ok(Json.toJson(rankings))).fold(identity, identity)
       }
     }
   }
@@ -201,7 +199,7 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         leagueRepo.getCurrentPeriod(request.league) match {
           case Some(p) if !p.ended => {
-            leagueRepo.postEndPeriodHook(List(p.id), List(request.league.id), LocalDateTime.now())
+            leagueRepo.postEndPeriodHook(List(p.periodId), List(request.league.leagueId), LocalDateTime.now())
             Ok("Successfully ended day")
           }
           case _ => BadRequest("Period already ended (Must start next period first)")
@@ -227,7 +225,7 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         (for {
           periodValueInt <- IdParser.parseIntId(periodValue, "period value")
-          out = handleUpdatePeriodForm(request.league.id, periodValueInt)
+          out = handleUpdatePeriodForm(request.league.leagueId, periodValueInt)
         } yield out).fold(identity, identity)
       }
     }
@@ -259,33 +257,33 @@ class LeagueController @Inject()(
         db.withConnection { implicit c =>
           val newLeague = leagueRepo.insert(input)
           (input.prizeDescription, input.prizeEmail) match {
-            case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.id, d, e)
+            case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.leagueId, d, e)
             case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
             case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
             case _ => ;
           }
 
-          val pointsFieldId = leagueRepo.insertLeagueStatField(newLeague.id, "points")
-          val statFieldIds = List(pointsFieldId) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.id, es))
+          val pointsFieldId = leagueRepo.insertLeagueStatField(newLeague.leagueId, "points")
+          val statFieldIds = List(pointsFieldId) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.leagueId, es))
 
-          val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.id, _))
+          val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
           val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
           val newPickeeStatIds = statFieldIds.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
-          val newLeagueUserStatIds = statFieldIds.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.id)))
+          val newLeagueUserStatIds = statFieldIds.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.leagueUserId)))
 
           newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, None))
           newLeagueUserStats.foreach(nlu => leagueUserRepo.insertLeagueUserStatDaily(nlu.leagueUserId, None))
           var nextPeriodId: Option[Long] = None
           // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
           input.periods.zipWithIndex.reverse.foreach({ case (p, i) => {
-            val newPeriodId = leagueRepo.insertPeriod(newLeague.id, p, i + 1, nextPeriodId)
+            val newPeriodId = leagueRepo.insertPeriod(newLeague.leagueId, p, i + 1, nextPeriodId)
             nextPeriodId = Some(newPeriodId)
             newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Some(i + 1)))
             newLeagueUserStatIds.foreach(nluid => leagueUserRepo.insertLeagueUserStatDaily(nluid, Some(i + 1)))
           }
           })
 
-          val limitNamesToIds = leagueRepo.insertLimits(newLeague.id, input.limits)
+          val limitNamesToIds = leagueRepo.insertLimits(newLeague.leagueId, input.limits)
           pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
 
           Created(Json.toJson(newLeague))

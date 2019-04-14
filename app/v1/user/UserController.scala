@@ -19,7 +19,7 @@ import auth._
 
 case class UserFormInput(username: String, userId: Long)
 
-case class UpdateUserFormInput(username: Option[String], externalId: Option[Long])
+case class UpdateUserFormInput(username: Option[String], externalUserId: Option[Long])
 
 class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueUserRepo, userRepo: UserRepo)
                               (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc)
@@ -53,7 +53,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
           userId <- parseLongId(userId, "User")
           user <- userRepo.get(userId).toRight(BadRequest("User does not exist"))
           //todo tis hacky
-          validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.id)) Left(BadRequest("User already in this league")) else Right(true)
+          validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.leagueId)) Left(BadRequest("User already in this league")) else Right(true)
           added <- Try(leagueUserRepo.joinUsers(List(user), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
           success = "Successfully added user to league"
         } yield success).fold(identity, Ok(_))

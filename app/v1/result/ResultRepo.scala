@@ -14,11 +14,9 @@ import javax.inject.{Inject, Singleton}
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-//case class ResultQuery(matchu: MatchRow, resultu: ResultRow, points: PointsRow, statField: LeagueStatFieldRow, pickee: PickeeRow)
-
 case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean, tournamentId: Long,
                          startTstamp: LocalDateTime, addedDBTstamp: LocalDateTime,
-                         targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, pointsValue: Double,
+                         targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
                          statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeeCost: BigDecimal)
 
 case class SingleResult(isTeamOne: Boolean, pickeeName: String, results: Map[String, Double])
@@ -54,7 +52,7 @@ trait ResultRepo{
                    leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
                  )(implicit c: Connection)
   def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
-  def insertPoints(resultId: Long, statFieldId: Long, points: Double, pickeeId: Long)(implicit c: Connection): Long
+  def insertStats(resultId: Long, statFieldId: Long, stats: Double, pickeeId: Long)(implicit c: Connection): Long
 }
 
 @Singleton
@@ -65,15 +63,16 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   override def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut] = {
     val q =
       """
-        | select m.external_id as external_match_id, m.team_one, m.team_two, m.team_one_victory, m.tournament_id, m.start_time, m.added_time,
-        | m.targeted_at_time, m.period, result_id, r.is_team_one, p.value as points_value, lsf.name as stat_field_name, pck.external_id as external_pickee_id,
-        |  pck.name as pickee_name, pck.cost as pickee_cost
+        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.tournament_id, m.start_time, m.added_time,
+        | m.targeted_at_time, m.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
+        |  pck.external_pickee_id,
+        |  pck.pickee_name, pck.cost as pickee_cost
         |  from matchu m join resultu r using(match_id)
-        | join points p using(result_id)
-        | join league_stat_field lsf on (lsf.league_stat_field_id = p.pointsFieldId)
+        | join stats s using(result_id)
+        | join stat_field sf on (sf.stat_field_id = s.stat_field_id)
         | join pickee pck using(pickee_id)
         | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
-        | order by m.targeted_at_tstamp desc, p.value;
+        | order by m.targeted_at_tstamp desc, s.value;
       """.stripMargin
     val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullResultParser.*)
     // TODO period filter
@@ -88,7 +87,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 //    resultQueryExtractor(r.map(q => {
 //      ResultQuery(MatchRow(q.externalMatchId, q.teamOne, q.teamTwo, q.teamOneVictory, q.tournamentId,
 //        q.startTime, q.addedTime,
-//        q.targetedAtTime, q.period), ResultRow(q.resultId, q.isTeamOne), PointsRow(q.pointsValue),
+//        q.targetedAtTime, q.period), ResultRow(q.resultId, q.isTeamOne), StatsRow(q.pointsValue),
 //        LeagueStatFieldRow(q.statFieldName), PickeeRow(q.externalPickeeId, q.pickeeName, q.pickeeCost, true))
 //    }))
   }
@@ -97,7 +96,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     val grouped = query.groupByOrdered(_.externalMatchId)
     grouped.map({case (externalMatchId, v) =>
       val results = v.groupByOrdered(tup => (tup.resultId, tup.externalPickeeId)).map({
-        case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne, x.head.pickeeName, x.map(y => y.statFieldName -> y.pointsValue).toMap)
+        case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne, x.head.pickeeName, x.map(y => y.statFieldName -> y.statsValue).toMap)
       })//(collection.breakOut): List[SingleResult]
       ResultsOut(MatchRow(externalMatchId, v.head.period, v.head.tournamentId, v.head.teamOne, v.head.teamTwo, v.head.teamOneVictory,
         v.head.startTstamp, v.head.addedDBTstamp, v.head.targetedAtTstamp), results)
@@ -109,7 +108,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                           )(implicit c: Connection) = {
     SQL(
       """
-        |insert into matchu(league_id, external_id, period, tournament_id, team_one, team_two, team_one_victory,
+        |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_victory,
         |start_tstamp, added_tstamp, targeted_at_tstamp) VALUES({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
       """.stripMargin).onParams(
       leagueId, input.matchId, period, input.tournamentId, input.teamOne, input.teamTwo,
@@ -119,14 +118,14 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 
   override def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long = {
     SQL("insert into resultu(match_id, pickee_id, is_team_one values({},{},{})").onParams(
-      matchId, pickee.id, pickee.isTeamOne
+      matchId, pickee.pickeeId, pickee.isTeamOne
     ).executeInsert()
   }
 
-  override def insertPoints(resultId: Long, statFieldId: Long, points: Double, pickeeId: Long)(implicit c: Connection): Long = {
+  override def insertStats(resultId: Long, statFieldId: Long, stats: Double, pickeeId: Long)(implicit c: Connection): Long = {
     SQL(
-      "insert into points(result_id, stat_field_id, value, pickee_id) values({}, {}, {}, {})"
-    ).onParams(resultId, statFieldId, points, pickeeId).executeInsert()
+      "insert into stats(result_id, stat_field_id, value, pickee_id) values({}, {}, {}, {})"
+    ).onParams(resultId, statFieldId, stats, pickeeId).executeInsert()
   }
 
 }

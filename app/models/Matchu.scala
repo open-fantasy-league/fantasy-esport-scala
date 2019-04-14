@@ -8,7 +8,7 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 //import utils.Formatter.timestampFormatFactory
 
 case class MatchRow( // because match is an sql keyword
-              externalId: Long, // this is the dota2 match id field
+              externalMatchId: Long, // this is the dota2 match id field
               // we dont want to have 2 different games where they can overlap primary key. so dont use match id as primary key
               period: Int,
               tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
@@ -29,7 +29,7 @@ object MatchRow{
         "addedTime" -> m.addedDBTstamp,
         "targetedAtTime" -> m.targetedAtTstamp,
         "tournamentId" -> m.tournamentId,
-        "id" -> m.externalId,
+        "matchId" -> m.externalMatchId,
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
         "teamOneVictory" -> m.teamOneVictory,

@@ -21,7 +21,7 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
 
   def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
     Future(Ok({
-      db.withConnection{ implicit c => Json.toJson(teamRepo.getLeagueUserTeam(request.leagueUser.id))}
+      db.withConnection{ implicit c => Json.toJson(teamRepo.getLeagueUserTeam(request.leagueUser.leagueUserId))}
     }))
   }
 
@@ -29,7 +29,7 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     // TODO yo this is so inefficient
     Future {
       db.withConnection { implicit c =>
-          Ok(Json.toJson(teamRepo.getAllLeagueUserTeam(request.league.id)))
+          Ok(Json.toJson(teamRepo.getAllLeagueUserTeam(request.league.leagueId)))
         }
     }
   }

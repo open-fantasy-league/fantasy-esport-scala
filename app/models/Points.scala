@@ -3,17 +3,17 @@ package models
 import play.api.libs.json.{JsValue, Json, Writes}
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-case class PointsRow(value: Double)
+case class StatsRow(value: Double)
 
-object PointsRow{
-  implicit val implicitWrites = new Writes[PointsRow] {
-    def writes(p: PointsRow): JsValue = {
-      Json.obj(
-        // TODO fix the fuck
-        "cat" -> p.value
-      )
-    }
-  }
+object StatsRow{
+//  implicit val implicitWrites = new Writes[StatsRow] {
+//    def writes(p: StatsRow): JsValue = {
+//      Json.obj(
+//        // TODO fix the fuck
+//        "cat" -> p.value
+//      )
+//    }
+//  }
 
-  val parser: RowParser[PointsRow] = Macro.namedParser[PointsRow](ColumnNaming.SnakeCase)
+  val parser: RowParser[StatsRow] = Macro.namedParser[StatsRow](ColumnNaming.SnakeCase)
 }

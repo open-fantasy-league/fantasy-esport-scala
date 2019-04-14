@@ -16,7 +16,7 @@ class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 
 trait UserRepo{
   def get(userId: Long)(implicit c: Connection): Option[UserRow]
-  def insert(username: String, externalId: Long)(implicit c: Connection): UserRow
+  def insert(username: String, externalUserId: Long)(implicit c: Connection): UserRow
   def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): UserRow
 }
 
@@ -26,16 +26,16 @@ class UserRepoImpl @Inject()()(implicit ec: UserExecutionContext, leagueRepo: Le
     SQL("select * from useru where user_id = {}").onParams(userId).as(UserRow.parser.singleOpt)
   }
 
-  override def insert(username: String, externalId: Long)(implicit c: Connection): UserRow = {
+  override def insert(username: String, externalUserId: Long)(implicit c: Connection): UserRow = {
     SQL(
-      "insert into useru(username, external_id) values ({},{}) returning user_id, username, external_id"
-    ).onParams(username, externalId).executeInsert(UserRow.parser.single)
+      "insert into useru(username, external_user_id) values ($username,$externalUserId) returning user_id, username, external_user_id"
+    ).executeInsert(UserRow.parser.single)
   }
 
   override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): UserRow = {
 //    SQL(
 //      "update useru(username, external_id) values ({},{}) returning user_id, username, external_id"
-//    ).onParams(username, externalId).executeInsert(UserRow.parser.single)
+//    ).onParams(username, externalUserId).executeInsert(UserRow.parser.single)
     println("todo")
   }
 }

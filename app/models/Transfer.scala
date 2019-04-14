@@ -6,7 +6,7 @@ import play.api.libs.json.{JsValue, Json, Writes}
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 case class TransferRow(
-                        transferId: Long, leagueUserId: Long, internalPickeeId: Long, externalPickeeId: Long,
+                        transferId: Long, leagueUserId: Long, pickeeId: Long, externalPickeeId: Long,
                         pickeeName: String, isBuy: Boolean, timeMade: LocalDateTime,
                         scheduledFor: LocalDateTime, processed: Boolean, cost: BigDecimal, wasWildcard: Boolean
               )

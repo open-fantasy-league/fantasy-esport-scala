@@ -35,8 +35,8 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     transferId, leagueUserId, internalPickeeId, externalPickeeId, pickeeName, isBuy, timeMade, scheduledFor, processed, cost, wasWildcard
     SQL(
       """
-        |select transfer_id, league_user_id, p.pickee_id as internalPickeeId, p.external_id as externalPickeeId,
-        | p.name as pickeeName, isBuy,
+        |select transfer_id, league_user_id, p.pickee_id, p.external_pickee_id,
+        | p.pickee_name, isBuy,
         | timeMade, scheduledFor, processed, cost, wasWildcard
         | from transfer join pickee p using(pickee_id) where league_user_id = {} {};
       """.stripMargin).onParams(leagueUserId, processedFilter).as(TransferRow.parser.*)
@@ -52,15 +52,13 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     """
       SQL(q).on("leagueUserId" -> leagueUserId).executeUpdate()
     println("Ended current team")
-    val newTeamId = SQL(
-      "insert into team(league_user_id, timespan) values ({leagueUserId}, tstzrange({now}, null));"
-    ).on("leagueUserId" -> leagueUserId, "now" -> time).executeInsert()
-    println("Inserted new team")
     SQL("update league_user set change_tstamp = null where league_user_id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
     print(newPickees.mkString(", "))
     newPickees.map(t => {
-      SQL("insert into team_pickee(pickee_id, team_id) values({}, {});").onParams(t, newTeamId.get).executeInsert()
+      SQL("insert into team(league_user_id, pickee_id, timespan) values({}, {}, tstzrange({now}, null));").
+        onParams(leagueUserId, t, time).executeInsert()
     })
+    println("Inserted new team")
   }
 
   override def processLeagueUserTransfer(leagueUserId: Long)(implicit c: Connection)  = {
@@ -72,8 +70,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     val toSellIds = transfers.filter(!_.isBuy).map(_.pickeeId).toSet
     val toBuyIds = transfers.filter(_.isBuy).map(_.pickeeId).toSet
       val q =
-        """select pickee_id from team t join team_pickee tp using(team_id)
-                  where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
+        """select pickee_id from team t where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
               """
       val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUserId).as(SqlParser.scalar[Long] *).toSet
       changeTeam(leagueUserId, toBuyIds, toSellIds, oldTeamIds, now)
@@ -99,7 +96,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       """
         |insert into transfer(league_user_id, pickee_id, is_buy, time_made, scheduled_for, processed, cost, was_wildcard)
         |""".stripMargin
-    ).onParams(leagueUser.id, p.id, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+    ).onParams(leagueUser.leagueUserId, p.pickeeId, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
         scheduledUpdateTime.isEmpty, p.cost, applyWildcard
       ).executeInsert()
   }
