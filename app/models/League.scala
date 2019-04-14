@@ -111,6 +111,8 @@ case class LeagueRow(leagueId: Long,
                      noWildcardForLateRegister: Boolean = false // late defined as after league has startd
 )
 
+case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)
+
 case class LimitRow(name: String, max: Int)
 
 object LimitRow{

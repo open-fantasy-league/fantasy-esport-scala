@@ -122,7 +122,7 @@ trait LeagueUserRepo{
   def joinUsers(userIds: Iterable[Long], league: LeagueRow)(implicit c: Connection): Iterable[LeagueUserRow]
   def userInLeague(userId: Long, leagueId: Long)(implicit c: Connection): Boolean
   def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
-  def updateHistoricRanks(league: League)(implicit c: Connection)
+  def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
 
   //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
@@ -337,7 +337,9 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     // TODO move to league user repo
     // // can ust pass stat field ids?
     val newLeagueUsers = userIds.map(uid => insertLeagueUser(league, uid))
-    val newLeagueUserStats = leagueRepo.getStatFields(league).flatMap(sf => newLeagueUsers.map(nlu => insertLeagueUserStat(sf.statFieldId, nlu.leagueUserId)))
+    val newLeagueUserStats = leagueRepo.getStatFields(league.leagueId).flatMap(sf => newLeagueUsers.map({
+      nlu => insertLeagueUserStat(sf.statFieldId, nlu.leagueUserId))
+    })
 
     newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.leagueUserId, None))
 
@@ -358,11 +360,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     SQL(q).on("leagueId" -> leagueId).as(long("league_user_id").*)
   }
 
-  override def updateHistoricRanks(league: League)(implicit c: Connection) = {
+  override def updateHistoricRanks(leagueId: Long)(implicit c: Connection) = {
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
-    league.statFields.foreach(sf => {
-      val leagueUserStatsOverall = getLeagueUserStats(league.leagueId, None, Some(sf.statFieldId), None, true)
+    leagueRepo.getStatFields(leagueId).foreach(sf => {
+      val leagueUserStatsOverall = getLeagueUserStats(leagueId, None, Some(sf.statFieldId), None, true)
       var lastScore = Double.MaxValue // TODO java max num
       var lastScoreRank = 0
       val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({

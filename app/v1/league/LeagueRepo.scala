@@ -50,10 +50,9 @@ trait LeagueRepo{
   def getWithRelated(id: Long)(implicit c: Connection): LeagueFull
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
   def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
-  def getStatFields(league: LeagueRow)(implicit c: Connection): Iterable[LeagueStatFieldRow]
-  def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String]
+  def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def isStarted(league: LeagueRow): Boolean
-  def insertLeagueStatField(leagueId: Long, name: String)(implicit c: Connection): Long
+  def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long
   def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long
   def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow]
@@ -66,7 +65,9 @@ trait LeagueRepo{
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
                     multiplier: Option[Double])(implicit c: Connection): Int
-  def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection)
+  def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
+    implicit c: Connection, updateHistoricRanks: Long => Unit
+  )
   def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
@@ -82,7 +83,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   private val detailedLeagueParser: RowParser[DetailedLeagueRow] = Macro.namedParser[DetailedLeagueRow](ColumnNaming.SnakeCase)
 
   override def get(id: Long)(implicit c: Connection): Option[LeagueRow] = {
-    SQL("select * from league where league_id = {id};").on("id" -> id).as(leagueParser.singleOpt)
+    SQL(
+      """select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
+        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
+        |transfer_blocked_during_period, url, url_verified, current_period_id, apply_points_at_start_time,
+        | no_wildcard_for_late_register
+        | from league where league_id = $id;""".stripMargin).as(leagueParser.singleOpt)
   }
 
 
@@ -105,19 +111,15 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         // check what db queries would actuallly return
   }
 
-  override def getStatFields(league: LeagueRow)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
+  override def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
     val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-    val q = "select * from stat_field where league_id = {leagueId};"
-    SQL(q).on("leagueId" -> league.leagueId).as(lsfParser.*)
-  }
-
-  override def getStatFieldNames(statFields: Iterable[LeagueStatField]): Array[String] = {
-    statFields.map(_.name).toArray
+    val q = "select stat_field_id, league_id, name from stat_field where league_id = $leagueId;"
+    SQL(q).as(lsfParser.*)
   }
 
   override def insert(input: LeagueFormInput)(implicit c: Connection): LeagueRow = {
     println("Inserting new league")
-    val newTeamId: Option[Long] = SQL(
+    val newLeagueId: Option[Long] = SQL(
       """insert into league(name, api_key, game_id, is_private, tournament_id, pickee_description, period_description, transfer_limit
         |transfer_wildcard, starting_money, team_size, transfer_blocked_during_period, transfer_open,
         |transfer_delay_minutes, url, url_verified, current_period_id, apply_points_at_start_time
@@ -133,8 +135,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       "transferDelayMinutes" -> input.transferInfo.transferDelayMinutes, "url" -> input.url.getOrElse(""),
       "applyPointsAtStartTime" -> input.applyPointsAtStartTime,
       "noWildcardForLateRegister" -> input.transferInfo.noWildcardForLateRegister).executeInsert()
-
-    LeagueRow(newTeamId.get, input.name, input.apiKey, input.gameId, input.isPrivate,
+    // TODO maybe better do returning
+    LeagueRow(newLeagueId.get, input.name, input.apiKey, input.gameId, input.isPrivate,
        input.tournamentId,  input.pickeeDescription,
       input.periodDescription, input.transferInfo.transferLimit,
       input.transferInfo.transferWildcard, input.startingMoney,
@@ -145,25 +147,59 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow = {
     // TODO update update!!! hehe
-    league
-//    league.name = input.name.getOrElse(league.name)
-//    league.isPrivate = input.isPrivate.getOrElse(league.isPrivate)
-//    league.transferOpen = input.transferOpen.getOrElse(league.transferOpen)
-//    league.transferBlockedDuringPeriod = input.transferBlockedDuringPeriod.getOrElse(league.transferBlockedDuringPeriod)
-//    league.transferDelayMinutes = input.transferDelayMinutes.getOrElse(league.transferDelayMinutes)
-//    println(league.transferDelayMinutes)
-//    league.periodDescription = input.periodDescription.getOrElse(league.periodDescription)
-//    league.pickeeDescription = input.pickeeDescription.getOrElse(league.pickeeDescription)
-//    league.transferLimit = if (input.transferLimit.nonEmpty) input.transferLimit else league.transferLimit
-//    league.transferWildcard = input.transferWildcard.getOrElse(league.transferWildcard)
-//    league.noWildcardForLateRegister = input.noWildcardForLateRegister.getOrElse(league.noWildcardForLateRegister)
-//    league.applyPointsAtStartTime = input.applyPointsAtStartTime.getOrElse(league.applyPointsAtStartTime)
-//    input.url.foreach(u => {
-//      league.url = u
-//      league.urlVerified = false
-//    })
-//    leagueTable.update(league)
-//    league
+    var setString: String = ""
+    var params: collection.mutable.Seq[NamedParameter] =
+      collection.mutable.Seq(NamedParameter("leagueId", league.leagueId))
+    if (input.name.isDefined) {
+      setString += ", [league_name] = {leagueName}"
+      params = params :+ NamedParameter("leagueName", input.name.get)
+    }
+    if (input.isPrivate.isDefined) {
+      setString += ", [league_name] = {isPrivate}"
+      params = params :+ NamedParameter("isPrivate", input.isPrivate.get)
+    }
+    if (input.transfer_open.isDefined) {
+      setString += ", [transfer_open] = {transferOpen}"
+      params = params :+ NamedParameter("transferOpen", input.transferOpen.get)
+    }
+    if (input.transferBlockedDuringPeriod.isDefined) {
+      setString += ", [transfer_blocked_during_period] = {transferBlockedDuringPeriod}"
+      params = params :+ NamedParameter("transferBlockedDuringPeriod", input.transferBlockedDuringPeriod.get)
+    }
+    if (input.transferDelayMinutes.isDefined) {
+      setString += ", [transfer_delay_minutes] = {transferDelayMinutes}"
+      params = params :+ NamedParameter("transferDelayMinutes", input.transferDelayMinutes.get)
+    }
+    if (input.periodDescription.isDefined) {
+      setString += ", [period_description] = {periodDescription}"
+      params = params :+ NamedParameter("periodDescription", input.periodDescription.get)
+    }
+    if (input.pickeeDescription.isDefined) {
+      setString += ", [pickee_description] = {pickeeDescription}"
+      params = params :+ NamedParameter("pickeeDescription", input.pickeeDescription.get)
+    }
+    if (input.transfer_limit.isDefined) {
+      setString += ", [transfer_limit] = {transferLimit}"
+      params = params :+ NamedParameter("transferLimit", input.transferLimit.get)
+    }
+    if (input.transferWildcard.isDefined) {
+      setString += ", [transfer_wildcard] = {transferWildcard}"
+      params = params :+ NamedParameter("transferWildcard", input.transferWildcard.get)
+    }
+    if (input.applyPointsAtStartTime.isDefined) {
+      setString += ", [apply_points_at_start_time] = {applyPointsAtStartTime}"
+      params = params :+ NamedParameter("applyPointsAtStartTime", input.applyPointsAtStartTime.get)
+    }
+    if (input.url.isDefined) {
+      setString += ", [url] = {url}"
+      params = params :+ NamedParameter("url", input.url.get)
+      setString += ", url_verified = false"
+    }
+    SQL(
+      "update league set " + setString + " WHERE [league_id] = {leagueId}"
+    ).on(params:_*).executeUpdate()
+    // TODO returning, or overwrite league row
+    get(league.leagueId)
   }
 
   override def isStarted(league: LeagueRow): Boolean = league.currentPeriodId.nonEmpty
@@ -173,7 +209,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).onParams(leagueId, description, email).executeInsert().get
   }
 
-  override def insertLeagueStatField(leagueId: Long, name: String)(implicit c: Connection): Long = {
+  override def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long = {
     val q = "insert into stat_field(league_id, name) values ({leagueId}, {name});"
     SQL(q).onParams(leagueId, name).executeInsert().get
   }
@@ -302,16 +338,15 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 //    leagueTable.update(league)
   }
 
-  override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(implicit c: Connection) = {
+  override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
+    implicit c: Connection, updateHistoricRanks: Long => Unit): Unit = {
     println("tmp")
-//    period.start = timestamp
-//    periodTable.update(period)
-//    league.currentPeriodId = Some(period.id)
-//    if (league.transferBlockedDuringPeriod) {
-//      league.transferOpen = false
-//    }
-//    leagueTable.update(league)
-//    if (period.value > 1) updateHistoricRanks(league)
+    val transferOpenSet = if (league.transferBlockedDuringPeriod) "and transfer_open = false" else ""
+    SQL("update period set start = $timestamp where period_id = ${period.periodId}").executeUpdate()
+    SQL(
+      "update league set current_period_id = ${period.periodId} #$transferOpenSet where league_id = ${league.leagueId};"
+    ).executeUpdate()
+    if (period.value > 1) updateHistoricRanks(league.leagueId)
   }
 
   override def endPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
@@ -321,7 +356,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as((long("league_id") ~ long("period_id")).*).map(x => (x._1, x._2)).toList.unzip
     postEndPeriodHook(leagueIds, periodIds, currentTime)
   }
-  override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
+  override def startPeriods(currentTime: LocalDateTime)(
+    implicit c: Connection, updateHistoricRanksFunc: Long => Unit
+  ) = {
     // TODO this will get all furutue periods
     val q =
       """select * from league l join period p using(league_id)

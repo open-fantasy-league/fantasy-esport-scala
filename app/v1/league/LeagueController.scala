@@ -210,6 +210,8 @@ class LeagueController @Inject()(
 
   def startPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
+      // hacky way to avoid circular dependency
+      implicit val implUpdateHistoricRanksFunc = leagueUserRepo.updateHistoricRanks
       db.withConnection { implicit c =>
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league)
@@ -263,8 +265,10 @@ class LeagueController @Inject()(
             case _ => ;
           }
 
-          val pointsFieldId = leagueRepo.insertLeagueStatField(newLeague.leagueId, "points")
-          val statFieldIds = List(pointsFieldId) ++ input.extraStats.getOrElse(Nil).map(es => leagueRepo.insertLeagueStatField(newLeague.leagueId, es))
+          val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points")
+          val statFieldIds = List(pointsFieldId) ++ input.extraStats.getOrElse(Nil).map({
+            es => leagueRepo.insertStatField(newLeague.leagueId, es)
+          })
 
           val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
           val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))

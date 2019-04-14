@@ -13,10 +13,11 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import auth._
 import v1.league.LeagueRepo
 import v1.transfer.TransferRepo
+import v1.leagueuser.LeagueUserRepo
 
 class AdminController @Inject()(
                                  db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
-                                 auther: Auther, adminRepo: AdminRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+                                 auther: Auther, adminRepo: AdminRepo, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
@@ -38,6 +39,8 @@ class AdminController @Inject()(
     // Thread.sleep(2000)
     Future {
       db.withConnection { implicit c =>
+        // hacky way to avoid circular dependency
+        implicit val updateHistoricRanksFunc = leagueUserRepo.updateHistoricRanks
         val currentTime = LocalDateTime.now()
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)
