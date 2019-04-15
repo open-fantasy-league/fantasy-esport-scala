@@ -13,7 +13,6 @@ import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import anorm.SqlParser.long
 
-import scala.util.Try
 import models._
 import utils.GroupByOrderedImplicit._
 
@@ -73,7 +72,7 @@ object LeagueRankings{
   }
 }
 
-case class DetailedLeagueUser(leagueUser: LeagueUserRow, team: Option[List[PickeeRow]], scheduledTransfers: Option[Iterable[TransferRow]], stats: Option[Map[String, Double]])
+case class DetailedLeagueUser(leagueUser: LeagueUserRow, team: Option[Iterable[PickeeRow]], scheduledTransfers: Option[Iterable[TransferRow]], stats: Option[Map[String, Double]])
 
 object DetailedLeagueUser{
   implicit val implicitWrites = new Writes[DetailedLeagueUser] {
@@ -112,9 +111,9 @@ trait LeagueUserRepo{
                                    timestamp: Option[LocalDateTime], secondaryOrdering: Option[List[Long]]
                                  )(implicit c: Connection): Iterable[RankingRow]
   def getLeagueUserStats(
-                          leagueId: Long, leagueUserId: Option[Long], statFieldId: Option[Long], period: Option[Int],
+                          leagueId: Option[Long], leagueUserId: Option[Long], statFieldId: Option[Long], period: Option[Int],
                           orderByValue: Boolean
-                        ): Iterable[LeagueUserStatDailyRow]
+                        )(implicit c: Connection): Iterable[LeagueUserStatDailyRow]
   def getLeagueUserStatsAndTeam(
                                  league: LeagueRow, statFieldId: Long, period: Option[Int], timestamp: Option[LocalDateTime],
                                  secondaryOrdering: Option[List[Long]])(implicit c: Connection): Iterable[RankingRow]
@@ -123,8 +122,6 @@ trait LeagueUserRepo{
   def userInLeague(userId: Long, leagueId: Long)(implicit c: Connection): Boolean
   def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
-
-  //private def statFieldIdFromName(statFieldName: String, leagueId: Long)
 }
 
 @Singleton
@@ -132,37 +129,27 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def getWithUser(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[LeagueUserRow] = {
-    SQL("select user_id, username, external_user_id, league_user_id, money, entered, remianing_transfers, used_wildcard, change_tstamp" +
-      "from league_user join user where league_id = {} and external_user_id = {};").
-      onParams(leagueId, externalUserId).as(LeagueUserRow.parser.singleOpt)
+    SQL("""select user_id, username, external_user_id, league_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp
+      from league_user join useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(LeagueUserRow.parser.singleOpt)
   }
 
   override def detailedLeagueUser(
                                    leagueUser: LeagueUserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                                   showStats: Boolean): DetailedLeagueUser = {
-    db.withConnection { implicit c =>
-      val team = showTeam match {
-        case false => None
-        case true => {
-          Some(teamRepo.getLeagueUserTeam(leagueUser.leagueUserId))
-        }
-      }
-      // todo boolean to option?
-      val scheduledTransfers = showScheduledTransfers match {
-        case false => None
-        case true => {
-          Some(transferRepo.getLeagueUserTransfer(leagueUser, Some(false)))
-        }
-      }
-      val stats = showStats match {
-        case false => None
-        case true => {
-          Some(getLeagueUserStats(
-            leagueUser.leagueId, Some(leagueUser.leagueUserId), None, None, false
-          )).map(x => x.statFieldName -> x.value).toMap
-        }
+                                   showStats: Boolean)(implicit c: Connection): DetailedLeagueUser = {
+    val team = showTeam match {
+      case false => None
+      case true => {
+        Some(teamRepo.getLeagueUserTeam(leagueUser.leagueUserId))
       }
     }
+    // todo boolean to option?
+    val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getLeagueUserTransfer(leagueUser.leagueUserId, Some(false))) else None
+    val stats = if (showStats) {
+      Some(getLeagueUserStats(
+        Option.empty[Long], Some(leagueUser.leagueUserId), None, None, false
+      ).map(x => x.statFieldName -> x.value).toMap)
+    }
+    else None
     DetailedLeagueUser(leagueUser, team, scheduledTransfers, stats)
   }
 
@@ -170,36 +157,36 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     val leagueIds = SQL(
       "select league_id from leagues join league_user using(league_id) join useru using(user_id) where external_user_id = {}"
     ).onParams(userId).as(SqlParser.scalar[Long].*)
-    leagueIds.map(lid => LeagueWithLeagueUser(leagueRepo.get(lid), getWithUser(lid, userId)))
+    leagueIds.map(lid => LeagueWithLeagueUser(leagueRepo.get(lid).get, getWithUser(lid, userId).get))
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[LeagueUserRow] = {
-    SQL("select user_id, username, external_user_id, league_user_id, money, entered, remianing_transfers, used_wildcard, change_tstamp" +
-      "from league_user join user where league_id = {}").
-      onParams(leagueId).as(LeagueUserRow.parser.*)
+    SQL("select user_id, username, external_user_id, league_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp" +
+      "from league_user join user where league_id = $leagueId").as(LeagueUserRow.parser.*)
   }
 
   override def insertLeagueUser(league: LeagueRow, userId: Long)(implicit c: Connection): LeagueUserRow = {
-    val leagueUserId = SQL(
+    SQL(
       """
         |insert into league_user(league_id, user_id, money, entered, remaining_transfers, used_wildcard) values
         |({}, (select user_id from useru where external_user_id = {}), {}, {}, {}, {});
       """.stripMargin).onParams(league.leagueId, userId, league.startingMoney, LocalDateTime.now(), league.transferLimit,
-      !league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister)).executeInsert.get
-    getWithUser(league.leagueId, userId)
+      !league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister)).executeInsert()
+      getWithUser(league.leagueId, userId).get
     // dont give wildcard to people who join league late
+    // TODO update query to do returning x
   }
 
   override def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long)(implicit c: Connection): Long = {
     SQL(
       "insert into league_user_stat(stat_field_id, league_user_id) VALUES ({}, {});"
-    ).onParams(statFieldId, leagueUserId).executeInsert().get
+    ).onParams(statFieldId, leagueUserId).executeInsert()
   }
 
-  override def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int]): Long = {
+  override def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int])(implicit c: Connection): Long = {
     SQL(
       "insert into league_user_stat_daily(league_user_stat_id, period) VALUES ({}, {});"
-    ).onParams(leagueUserStatId, period).executeInsert().get
+    ).onParams(leagueUserStatId, period).executeInsert()
   }
 
   override def update(
@@ -207,8 +194,8 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
                        appliedWildcard: Boolean
                      )(implicit c: Connection): Unit = {
     val usedWildcardSet = if (appliedWildcard) ", used_wildcard = true" else ""
-    val _ = SQL("update league_user set money = {}, remaining_transfers = {}, change_tstamp = {}{} where league_user_id = {}")
-      .onParams(money, remainingTransfers, changeTstamp, usedWildcardSet, leagueUserId).executeUpdate()
+    SQL("update league_user set money = {}, remaining_transfers = {}, change_tstamp = {}#$usedWildcardSet where league_user_id = {}")
+      .onParams(money, remainingTransfers, changeTstamp, leagueUserId).executeUpdate()
   }
 
   override def getRankings(
@@ -217,15 +204,15 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
                           )(implicit c: Connection): LeagueRankings = {
       println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
       val qResult = getLeagueUserStatsAndTeam(league, statFieldId, period, None, secondaryOrdering).toList
-      val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.userId)) else qResult
-      val stats = filteredByUsers.groupByOrdered(_.userId).toList
+      val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
+      val stats = filteredByUsers.groupByOrdered(_.externalUserId).toList
       var lastScore = Double.MaxValue
       var lastScoreRank = 0
       val tmp = stats.map({case (u, v) => {
         val team = v.withFilter(_.pickeeId.isDefined).map(v2 => PickeeRow(v2.pickeeId.get, v2.pickeeName.get, v2.cost.get))
         (v.head, team)}
       })
-      tmp.zipWithIndex.map({case ((q, team), i) => {
+      val rankings = tmp.zipWithIndex.map({case ((q, team), i) => {
         println(f"i: $i")
         val value = q.value
         println(f"value: $value")
@@ -233,32 +220,33 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
         println(f"rank: $rank")
         lastScore = value
         lastScoreRank = rank
-        Ranking(q.userId, q.username, value, rank, q.previousRank, Some(team))
+        Ranking(q.externalUserId, q.username, value, rank, q.previousRank, Some(team))
       }})
 
     LeagueRankings(
-      league.leagueId, league.name, statField.name, rankings
+      league.leagueId, league.leagueName, leagueRepo.getStatFieldName(statFieldId).get, rankings
     )
   }
 
   override def getLeagueUserStats(
-                                   leagueId: Long, leagueUserId: Option[Long], statFieldId: Option[Long],
+                                   leagueId: Option[Long], leagueUserId: Option[Long], statFieldId: Option[Long],
                                    period: Option[Int], orderByValue: Boolean
-                                 ): Iterable[LeagueUserStatDailyRow] = {
+                                 )(implicit c: Connection): Iterable[LeagueUserStatDailyRow] = {
+    // todo assert either league or league user id non empty
+    // they are both nullable so that this func can work for either getting all league-users, or just one
     val periodFilter = if (period.isEmpty) "is null" else s"= ${period.get}"
     val statFieldFilter = if (statFieldId.isEmpty) "" else s"sf.stat_field_id = ${statFieldId.get} and"
     val leagueUserFilter = if (leagueUserId.isEmpty) "" else s"lu.league_user_id = ${leagueUserId.get} and"
-    val orderByValueStr = if (orderByValue.isEmpty) "" else "order by value desc"
+    val leagueFilter = if (leagueId.isEmpty) "" else s"league_id = ${leagueId.get} and"
+    val orderByValueStr = if (orderByValue) "" else "order by value desc"
     SQL(
       """
         |select league_user_id, stat_field_name, previous_rank, value, period from league_user lu join stat_field sf using(league_id)
         |join league_user_stat lus on(lus.league_id = lu.league_id and lus.stat_field_id = sf.stat_field_id)
         |join league_user_stat_daily lusd using(league_user_stat_id)
-        |where lu.league_id = {} and {} {} period {} {};
+        |where #$leagueFilter #$leagueUserFilter #$statFieldFilter period #$periodFilter #$orderByValueStr;
         |
-      """.stripMargin).onParams(
-      leagueId, leagueUserFilter, statFieldFilter, periodFilter, orderByValueStr
-    ).as(LeagueUserStatDailyRow.parser.*)
+      """.stripMargin).as(LeagueUserStatDailyRow.parser.*)
   }
 
   override def leagueUserStatsAndTeamQuery(
@@ -290,7 +278,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
         s"""select u.external_user_id, u.username, lu.league_user_id, lusd.value, lus.previous_rank, pickee_id,
             p.pickee_name, p.cost from useru u
              join league_user lu using(user_id)
-             join team t on (t.league_user_id = lu.league_user_id and #$timestampFilter)
+             left join team t on (t.league_user_id = lu.league_user_id and #$timestampFilter)
              left join pickee p using(pickee_id)
              join league_user_stat lus on (lus.league_user_id = lu.league_user_id and lus.stat_field_id = {statFieldId})
              join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.league_user_stat_id and #$periodFilter)
@@ -300,7 +288,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
       }
     }
     println(q)
-    SQL(q).on ("timestamp" -> timestamp, "period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
+    SQL(q).on("timestamp" -> timestamp, "period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
   }
 
   override def getLeagueUserStatsAndTeam(
@@ -316,7 +304,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
         this.leagueUserStatsAndTeamQuery(league.leagueId, statFieldId, Some(periodVal), None,secondaryOrdering)
       case (Some(_), _, Some(_)) => throw new Exception("Specify period, or timestamp. not both")
       case (None, _, Some(t)) => {
-        val period = leagueRepo.getPeriodBetween(league.leagueId, t).get
+        val period = leagueRepo.getPeriodFromTimestamp(league.leagueId, t).get
         leagueUserStatsAndTeamQuery(league.leagueId, statFieldId, Some(period.value), Some(t), secondaryOrdering)
       }
       case (Some(pVal), _, None) => {
@@ -337,14 +325,14 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     // TODO move to league user repo
     // // can ust pass stat field ids?
     val newLeagueUsers = userIds.map(uid => insertLeagueUser(league, uid))
-    val newLeagueUserStats = leagueRepo.getStatFields(league.leagueId).flatMap(sf => newLeagueUsers.map({
-      nlu => insertLeagueUserStat(sf.statFieldId, nlu.leagueUserId))
-    })
+    // TODO for yield expression
+    val newLeagueUserStatIds = leagueRepo.getStatFields(league.leagueId).flatMap(sf => newLeagueUsers.map({
+      nlu => insertLeagueUserStat(sf.statFieldId, nlu.leagueUserId)
+    }))
+    newLeagueUserStatIds.foreach(sid => insertLeagueUserStatDaily(sid, None))
 
-    newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.leagueUserId, None))
-
-    leagueRepo.getPeriods(league).foreach(p =>
-      newLeagueUserStats.foreach(nlu => insertLeagueUserStatDaily(nlu.leagueUserId, Some(p.value)))
+    leagueRepo.getPeriods(league.leagueId).foreach(p =>
+      newLeagueUserStatIds.foreach(sid => insertLeagueUserStatDaily(sid, Some(p.value)))
     )
 
     newLeagueUsers
@@ -360,11 +348,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     SQL(q).on("leagueId" -> leagueId).as(long("league_user_id").*)
   }
 
-  override def updateHistoricRanks(leagueId: Long)(implicit c: Connection) = {
+  override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {
     // TODO this needs to group by the stat field.
     // currently will do weird ranks
     leagueRepo.getStatFields(leagueId).foreach(sf => {
-      val leagueUserStatsOverall = getLeagueUserStats(leagueId, None, Some(sf.statFieldId), None, true)
+      val leagueUserStatsOverall = getLeagueUserStats(Some(leagueId), None, Some(sf.statFieldId), None, true)
       var lastScore = Double.MaxValue // TODO java max num
       var lastScoreRank = 0
       val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({
@@ -374,7 +362,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
           lastScore = value
           lastScoreRank = rank
           val previousRank = rank
-          (leagueUserId, sf.statFieldId, previousRank)
+          (row.leagueUserId, sf.statFieldId, previousRank)
         }
       }).foreach(x => (updatePreviousRank _).tupled(x))
       // can do all update in one call if append then update outside loop

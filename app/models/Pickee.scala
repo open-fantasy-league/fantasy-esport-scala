@@ -54,3 +54,20 @@ object TeamRow {
 
   val parser: RowParser[TeamRow] = Macro.namedParser[TeamRow](ColumnNaming.SnakeCase)
 }
+
+case class PickeeStatsOut(pickee: PickeeRow, limits: Map[String, String], stats: Map[String, Double])
+
+object PickeeStatsOut{
+  implicit val implicitWrites = new Writes[PickeeStatsOut] {
+    def writes(p: PickeeStatsOut): JsValue = {
+      Json.obj(
+        "id" -> p.pickee.externalPickeeId,
+        "name" -> p.pickee.name,
+        "stats" -> p.stats,
+        "limits" -> p.limits,
+        "cost" -> p.pickee.cost,
+        "active" -> true //p.pickee.active  TODO reimplement active
+      )
+    }
+  }
+}

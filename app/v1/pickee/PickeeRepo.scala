@@ -8,7 +8,6 @@ import play.api.libs.concurrent.CustomExecutionContext
 import models._
 import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
-import play.api.libs.json._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -39,20 +38,20 @@ trait PickeeRepo{
 @Singleton
 class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends PickeeRepo{
 
-  override def insertPickee(leagueId: Long, pickee: PickeeFormInput): Long = {
+  override def insertPickee(leagueId: Long, pickee: PickeeFormInput)(implicit c: Connection): Long = {
     SQL(
       """insert into pickee(league_id, pickee_name, external_pickee_id, value, active)
         | values($leagueId, ${pickee.name}, ${pickee.id}, ${pickee.value}, ${pickee.active})""".stripMargin
     ).executeInsert()
   }
 
-  override def insertPickeeStat(statFieldId: Long, pickeeId: Long): Long = {
+  override def insertPickeeStat(statFieldId: Long, pickeeId: Long)(implicit c: Connection): Long = {
     SQL(
       "insert into pickee_stat(stat_field_id, pickee_id) values($statFieldId, $pickeeId);"
     ).executeInsert()
   }
 
-  override def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int]): Long = {
+  override def insertPickeeStatDaily(pickeeStatId: Long, period: Option[Int])(implicit c: Connection): Long = {
     SQL(
       "insert into pickee_stat_daily(pickee_stat_id, period) values($pickeeStatId, $period);"
     ).executeInsert()
@@ -81,14 +80,14 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         |from pickee p
         |left join limit_type lt using(league_id)
         |left join "limit" l using(limit_type_id)
-        |where league_id = $leagueId;""".stripMargin).as(rowParser.parser.*).groupBy(_.pickeeId).map({case(pickeeId, v) => {
-      PickeeLimits(PickeeRow(pickeeId, v.head.pickeeName, v.head.cost), v.map(_.limitType <- _.limitName).toMap)
+        |where league_id = $leagueId;""".stripMargin).as(rowParser.*).groupBy(_.externalPickeeId).map({case(pickeeId, v) => {
+      PickeeLimits(PickeeRow(pickeeId, v.head.pickeeName, v.head.cost), v.map(lim => lim.limitType -> lim.limitName).toMap)
     }})
   }
 
   override def getPickeeStat(
                                   leagueId: Long, statFieldId: Option[Long], period: Option[Int]
-                                )(implicit c: Connection): Iterable[PickeeStatsOutput] = {
+                                )(implicit c: Connection): Iterable[PickeeStatsOut] = {
     val rowParser: RowParser[PickeeLimitsAndStatsRow] = Macro.namedParser[PickeeLimitsAndStatsRow](ColumnNaming.SnakeCase)
     SQL(
       """
@@ -100,10 +99,10 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         | where league_id = $leagueId and ($period is null or period = $period) and
         | ($statFieldId is null or stat_field_id = $statFieldId)
         | order by p.cost desc
-      """.stripMargin).as(rowParser.parser.*).groupBy(_.pickeeId).map({case(pickeeId, v) => {
-      PickeeStatsOutput(
-        PickeeRow(pickeeId, v.head.pickeeName, v.head.cost), v.map(_.limitType <- _.limitName).toMap,
-      v.map(_.statFieldName <- _.value).toMap
+      """.stripMargin).as(rowParser.*).groupBy(_.externalPickeeId).map({case(pickeeId, v) => {
+      PickeeStatsOut(
+        PickeeRow(pickeeId, v.head.pickeeName, v.head.cost), v.map(lim => lim.limitType -> lim.limitName).toMap,
+      v.map(s => s.statFieldName -> s.value).toMap
       )
     }})
   }
@@ -111,7 +110,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long] = {
     SQL(
       "select pickee_id from pickee where league_id = $leagueId and external_pickee_id = $externalPickeeId;"
-    ).as(long('pickee_id').singleOpt)
+    ).as(SqlParser.long("pickee_id").singleOpt)
   }
 
   // TODO bulk func

@@ -50,7 +50,7 @@ trait ResultRepo{
   def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut]
   def insertMatch(
                    leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
-                 )(implicit c: Connection)
+                 )(implicit c: Connection): Long
   def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
   def insertStats(resultId: Long, statFieldId: Long, stats: Double, pickeeId: Long)(implicit c: Connection): Long
 }
@@ -105,7 +105,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 
   override def insertMatch(
                             leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
-                          )(implicit c: Connection) = {
+                          )(implicit c: Connection): Long = {
     SQL(
       """
         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_victory,
@@ -118,7 +118,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 
   override def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long = {
     SQL("insert into resultu(match_id, pickee_id, is_team_one values({},{},{})").onParams(
-      matchId, pickee.pickeeId, pickee.isTeamOne
+      matchId, pickee.id, pickee.isTeamOne
     ).executeInsert()
   }
 

@@ -33,20 +33,20 @@ object TeamOut {
 class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TeamRepo{
-  def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): List[PickeeRow]
+  def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): Iterable[PickeeRow]
   def getAllLeagueUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut]
 }
 
 @Singleton
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
-  override def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): List[PickeeRow] = {
+  override def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
     val pickeeParser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
     val q =
       """select p.external_pickee_id, p.pickee_name, p.cost from team t join pickee p using(pickee_id)
     where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
     println(q)
-    val out = SQL(q).on("leagueUserId" -> leagueUserId).as(pickeeParser.*).toList
+    val out = SQL(q).on("leagueUserId" -> leagueUserId).as(pickeeParser.*)
     println(out.mkString(","))
     out
   }
@@ -62,7 +62,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
     where lu.league_id = {leagueId} and upper(t.timespan) is NULL;
     """
     println(q)
-    val out = SQL(q).on("leagueId" -> leagueId).as(TeamRow.parser.*).toList
+    val out = SQL(q).on("leagueId" -> leagueId).as(TeamRow.parser.*)
     println(out.mkString(","))
     teamRowsToOut(out)
   }

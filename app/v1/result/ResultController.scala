@@ -109,7 +109,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       case (_, true) => input.startTstamp
       case _ => now
     }
-    tryOrResponse(() => {leagueRepo.getPeriodBetween(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
+    tryOrResponse(() => {leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
   }
 
   private def getTargetedAtTstamp(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): LocalDateTime = {

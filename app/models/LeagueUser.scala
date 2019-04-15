@@ -17,7 +17,7 @@ object LeagueUserRow{
     def writes(lu: LeagueUserRow): JsValue = {
       Json.obj(
         "userId" -> lu.externalUserId,
-        "username" -> lu.username
+        "username" -> lu.username,
         "money" -> lu.money,
         "entered" -> lu.entered,
         "remainingTransfers" -> lu.remainingTransfers,
@@ -34,3 +34,8 @@ case class LeagueUserStatDailyRow(
                                    leagueUserId: Long, statFieldName: String, previousRank: Int, value: Double,
                                    period: Option[Int]
                                  )
+
+object LeagueUserStatDailyRow{
+
+  val parser: RowParser[LeagueUserStatDailyRow] = Macro.namedParser[LeagueUserStatDailyRow](ColumnNaming.SnakeCase)
+}

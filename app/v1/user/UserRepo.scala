@@ -17,26 +17,32 @@ class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 trait UserRepo{
   def get(userId: Long)(implicit c: Connection): Option[UserRow]
   def insert(username: String, externalUserId: Long)(implicit c: Connection): UserRow
-  def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): UserRow
+  def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
 }
 
 @Singleton
 class UserRepoImpl @Inject()()(implicit ec: UserExecutionContext, leagueRepo: LeagueRepo) extends UserRepo{
-  override def get(userId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL("select * from useru where user_id = {}").onParams(userId).as(UserRow.parser.singleOpt)
+  override def get(userId: Long)(implicit c: Connection): Option[UserRow] = {
+    SQL("select user_id, username, external_user_id from useru where external_user_id = $userId").as(UserRow.parser.singleOpt)
   }
 
   override def insert(username: String, externalUserId: Long)(implicit c: Connection): UserRow = {
     SQL(
-      "insert into useru(username, external_user_id) values ($username,$externalUserId) returning user_id, username, external_user_id"
+      "insert into useru(username, external_user_id) values ($username, $externalUserId) returning user_id, username, external_user_id"
     ).executeInsert(UserRow.parser.single)
   }
 
-  override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): UserRow = {
-//    SQL(
-//      "update useru(username, external_id) values ({},{}) returning user_id, username, external_id"
-//    ).onParams(username, externalUserId).executeInsert(UserRow.parser.single)
-    println("todo")
+  override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
+    val setString = (input.username, input.externalUserId) match {
+      case (Some(username), Some(externalId)) => s"set username = $input.username, external_user_id = $input.externalUserId"
+      case (None, Some(externalId)) => s"set external_user_id = $input.externalUserId"
+      case (Some(username), None) => s"set username = $input.username"
+      case (None, None) => ""
+    }
+    SQL(
+      s"update useru #$setString where external_user_id = $userId returning user_id, username, external_user_id"
+    ).executeUpdate()
+    println("todo return stuff")
   }
 }
 

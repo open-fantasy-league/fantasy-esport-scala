@@ -24,22 +24,21 @@ trait TransferRepo{
   def insert(
               leagueUserId: Long, pickeeId: Long, currentTime: LocalDateTime,
               scheduledUpdateTime: Option[LocalDateTime], cost: BigDecimal, applyWildcard: Boolean
-            )(implicit c: Connection)
+            )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
 }
 
 @Singleton
 class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
   override def getLeagueUserTransfer(leagueUserId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow] = {
-    val processedFilter = if (unprocessed.isEmpty) "" else s"and processed = $processed"
-    transferId, leagueUserId, internalPickeeId, externalPickeeId, pickeeName, isBuy, timeMade, scheduledFor, processed, cost, wasWildcard
+    val processedFilter = if (processed.isEmpty) "" else s"and processed = $processed"
     SQL(
-      """
+      s"""
         |select transfer_id, league_user_id, p.pickee_id, p.external_pickee_id,
         | p.pickee_name, isBuy,
         | timeMade, scheduledFor, processed, cost, wasWildcard
-        | from transfer join pickee p using(pickee_id) where league_user_id = {} {};
-      """.stripMargin).onParams(leagueUserId, processedFilter).as(TransferRow.parser.*)
+        | from transfer join pickee p using(pickee_id) where league_user_id = $leagueUserId #$processedFilter;
+      """.stripMargin).as(TransferRow.parser.*)
   }
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
   override def changeTeam(leagueUserId: Long, toBuyIds: Set[Long], toSellIds: Set[Long],
@@ -95,9 +94,10 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     SQL(
       """
         |insert into transfer(league_user_id, pickee_id, is_buy, time_made, scheduled_for, processed, cost, was_wildcard)
+        |values({}, {}, {}, {}, {}, {}, {}, {});
         |""".stripMargin
-    ).onParams(leagueUser.leagueUserId, p.pickeeId, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-        scheduledUpdateTime.isEmpty, p.cost, applyWildcard
+    ).onParams(leagueUserId, pickeeId, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+        scheduledUpdateTime.isEmpty, cost, applyWildcard
       ).executeInsert()
   }
 
