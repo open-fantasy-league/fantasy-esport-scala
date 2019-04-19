@@ -38,7 +38,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       mapping(
         "isInternalId" -> default(boolean, false),
         "pickees" -> list(
-          mapping("id" -> of(longFormat), "cost" -> bigDecimal(10, 1))
+          mapping("id" -> of(longFormat), "price" -> bigDecimal(10, 1))
           (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
         )
       )(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
@@ -70,10 +70,10 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
           // TODO withFIlter
             leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
-              pickeeRepo.updateCost(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).cost)
+              pickeeRepo.updatePrice(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).price)
             })
             // TODO print out pickees that changed
-            Ok("Successfully updated pickee costs")
+            Ok("Successfully updated pickee prices")
         }
       }
     }

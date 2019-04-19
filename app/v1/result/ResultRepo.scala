@@ -17,7 +17,7 @@ class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean, tournamentId: Long,
                          startTstamp: LocalDateTime, addedDBTstamp: LocalDateTime,
                          targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
-                         statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeeCost: BigDecimal)
+                         statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeePrice: BigDecimal)
 
 case class SingleResult(isTeamOne: Boolean, pickeeName: String, results: Map[String, Double])
 object SingleResult{
@@ -66,7 +66,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.tournament_id, m.start_time, m.added_time,
         | m.targeted_at_time, m.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
         |  pck.external_pickee_id,
-        |  pck.pickee_name, pck.cost as pickee_cost
+        |  pck.pickee_name, pck.price as pickee_price
         |  from matchu m join resultu r using(match_id)
         | join stats s using(result_id)
         | join stat_field sf on (sf.stat_field_id = s.stat_field_id)

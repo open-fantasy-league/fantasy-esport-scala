@@ -8,7 +8,7 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 case class TransferRow(
                         transferId: Long, leagueUserId: Long, pickeeId: Long, externalPickeeId: Long,
                         pickeeName: String, isBuy: Boolean, timeMade: LocalDateTime,
-                        scheduledFor: LocalDateTime, processed: Boolean, cost: BigDecimal, wasWildcard: Boolean
+                        scheduledFor: LocalDateTime, processed: Boolean, price: BigDecimal, wasWildcard: Boolean
               )
 
 object TransferRow{
@@ -20,7 +20,7 @@ object TransferRow{
         "timeMade" -> t.timeMade,
         "scheduledFor" -> t.scheduledFor,
         "processed" -> t.processed,
-        "cost" -> t.cost,
+        "price" -> t.price,
         "wasWildcard" -> t.wasWildcard,
         "pickeeId" -> t.externalPickeeId,
         "pickeeName" -> t.pickeeName

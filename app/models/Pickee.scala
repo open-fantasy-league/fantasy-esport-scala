@@ -9,12 +9,12 @@ case class StatDailyRow(
                                    period: Option[Int]
                                  )
 
-case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, name: String, cost: BigDecimal)
+case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal)
 
-case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
+case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(
-                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
+                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String,
                                     limitName: String, max: Int, statFieldName: String, value: Double, previousRank: Int)
 
 object PickeeRow {
@@ -22,8 +22,8 @@ object PickeeRow {
     def writes(x: PickeeRow): JsValue = {
       Json.obj(
         "id" -> x.externalPickeeId,
-        "name" -> x.name,
-        "cost" -> x.cost
+        "name" -> x.pickeeName,
+        "price" -> x.price
       )
     }
   }
@@ -33,7 +33,7 @@ object PickeeRow {
 
 case class TeamRow(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
                    end: Option[LocalDateTime], isActive: Boolean, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String,
-                   pickeeCost: BigDecimal)
+                   pickeePrice: BigDecimal)
 
 object TeamRow {
 //  implicit val implicitWrites = new Writes[TeamRow] {
@@ -47,7 +47,7 @@ object TeamRow {
 //        "isActive" -> x.isActive,
 //        "pickeeId" -> x.externalPickeeId,
 //        "name" -> x.name,
-//        "cost" -> x.cost
+//        "price" -> x.price
 //      )
 //    }
 //  }
@@ -62,10 +62,10 @@ object PickeeStatsOut{
     def writes(p: PickeeStatsOut): JsValue = {
       Json.obj(
         "id" -> p.pickee.externalPickeeId,
-        "name" -> p.pickee.name,
+        "name" -> p.pickee.pickeeName,
         "stats" -> p.stats,
         "limits" -> p.limits,
-        "cost" -> p.pickee.cost,
+        "price" -> p.pickee.price,
         "active" -> true //p.pickee.active  TODO reimplement active
       )
     }

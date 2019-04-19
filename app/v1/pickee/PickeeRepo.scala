@@ -14,7 +14,7 @@ class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 
 case class PickeeFormInput(id: Long, name: String, value: BigDecimal, active: Boolean, limits: List[String])
 
-case class RepricePickeeFormInput(id: Long, cost: BigDecimal)
+case class RepricePickeeFormInput(id: Long, price: BigDecimal)
 
 case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
 
@@ -25,8 +25,8 @@ object PickeeLimitsOut {
     def writes(x: PickeeLimitsOut): JsValue = {
       Json.obj(
         "id" -> x.pickee.externalPickeeId,
-        "name" -> x.pickee.name,
-        "cost" -> x.pickee.cost,
+        "name" -> x.pickee.pickeeName,
+        "price" -> x.pickee.price,
         "limits" -> x.limits,
       )
     }
@@ -48,7 +48,7 @@ trait PickeeRepo{
                      leagueId: Long, statFieldId: Option[Long], period: Option[Int]
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
   def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
-  def updateCost(leagueId: Long, externalPickeeId: Long, cost: BigDecimal)(implicit c: Connection): Long
+  def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long
 }
 
 @Singleton
@@ -57,8 +57,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def insertPickee(leagueId: Long, pickee: PickeeFormInput)(implicit c: Connection): Long = {
     SQL(
       s"""insert into pickee(league_id, pickee_name, external_pickee_id, price, active)
-        | values($leagueId, '${pickee.name}', ${pickee.id}, ${pickee.value}, ${pickee.active}) returning pickee_id""".stripMargin
-    ).executeInsert().get
+        | values($leagueId, {name}, ${pickee.id}, ${pickee.value}, ${pickee.active}) returning pickee_id""".stripMargin
+    ).on("name" -> pickee.name).executeInsert().get
   }
 
   override def insertPickeeStat(statFieldId: Long, pickeeId: Long)(implicit c: Connection): Long = {
@@ -85,20 +85,20 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
-    SQL(s"select external_pickee_id, name, cost from pickee where league_id = $leagueId;").as(PickeeRow.parser.*)
+    SQL(s"select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price from pickee where league_id = $leagueId;").as(PickeeRow.parser.*)
  }
 
 
   override def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut] = {
     val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
     SQL(
-      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max)
+      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max)
         |from pickee p
         |left join limit_type lt using(league_id)
         |left join "limit" l using(limit_type_id)
         |where league_id = $leagueId;""".stripMargin).as(rowParser.*).groupBy(_.internalPickeeId).map({case(internalPickeeId, v) => {
       PickeeLimitsOut(PickeeRow(
-        internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.cost
+        internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price
       ), v.map(lim => lim.limitType -> lim.limitName).toMap)
     }})
   }
@@ -108,18 +108,19 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
                                 )(implicit c: Connection): Iterable[PickeeStatsOut] = {
     val rowParser: RowParser[PickeeLimitsAndStatsRow] = Macro.namedParser[PickeeLimitsAndStatsRow](ColumnNaming.SnakeCase)
     SQL(
-      s"""
-        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, cost, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max),
+      """
+        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max),
         |sf.name as stat_field_name, psd.value, ps.previous_rank
         |from pickee p join pickee_stat ps using(pickee_id) join pickee_stat_period psd using(pickee_stat_id)
         | join stat_field sf using(stat_field_id)
         | left join limit_type lt using(league_id) left join "limit" l using(limit_type_id)
-        | where league_id = $leagueId and ($period is null or period = $period) and
-        | ($statFieldId is null or stat_field_id = $statFieldId)
-        | order by p.cost desc
-      """.stripMargin).as(rowParser.*).groupBy(_.externalPickeeId).map({case(internalPickeeId, v) => {
+        | where league_id = {leagueId} and ({period} is null or period = {period}) and
+        | ({statFieldId} is null or stat_field_id = {statFieldId})
+        | order by p.price desc
+      """.stripMargin).on("leagueId" -> leagueId, "period" -> period, "statFieldId" -> statFieldId).
+      as(rowParser.*).groupBy(_.externalPickeeId).map({case(internalPickeeId, v) => {
       PickeeStatsOut(
-        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.cost), v.map(lim => lim.limitType -> lim.limitName).toMap,
+        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price), v.map(lim => lim.limitType -> lim.limitName).toMap,
       v.map(s => s.statFieldName -> s.value).toMap
       )
     }})
@@ -132,8 +133,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   // TODO bulk func
-  override def updateCost(leagueId: Long, externalPickeeId: Long, cost: BigDecimal)(implicit c: Connection): Long = {
-    SQL(s"update pickee set cost = $cost where league_id = $leagueId and external_pickee_id = $externalPickeeId").executeUpdate()
+  override def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long = {
+    SQL(s"update pickee set price = $price where league_id = $leagueId and external_pickee_id = $externalPickeeId").executeUpdate()
   }
 }
 

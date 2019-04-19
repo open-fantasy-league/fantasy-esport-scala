@@ -23,7 +23,7 @@ trait TransferRepo{
   def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean
   def insert(
               leagueUserId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
-              scheduledUpdateTime: LocalDateTime, processed: Boolean, cost: BigDecimal, applyWildcard: Boolean
+              scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
             )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
 }
@@ -36,7 +36,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       s"""
         |select transfer_id, league_user_id, p.pickee_id, p.external_pickee_id,
         | p.pickee_name, isBuy,
-        | timeMade, scheduledFor, processed, cost, wasWildcard
+        | timeMade, scheduledFor, processed, price, wasWildcard
         | from transfer join pickee p using(pickee_id) where league_user_id = $leagueUserId #$processedFilter;
       """.stripMargin).as(TransferRow.parser.*)
   }
@@ -82,23 +82,23 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       """select not exists (select 1 from pickee p
         | join limit_type lt using(league_id)
         | join "limit" l using(limit_type_id)
-        | where p.league_id = {leagueId} and p.pickee_id in {newTeamIds} group by (lt.max, l.limit_id) having count(*) > lt.max);
-      """
+        | where p.league_id = {leagueId} and p.pickee_id in ({newTeamIds}) group by (lt."max", l.limit_id) having count(*) > lt."max");
+      """.stripMargin
     SQL(q).on("leagueId" -> leagueId, "newTeamIds" -> newTeamIds).as(SqlParser.scalar[Boolean].single)
   }
 
   override def insert(
                        leagueUserId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
-                       scheduledUpdateTime: LocalDateTime, processed: Boolean, cost: BigDecimal, applyWildcard: Boolean
+                       scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
                      )(implicit c: Connection): Long = {
     SQL(
       """
-        |insert into transfer(league_user_id, pickee_id, is_buy, time_made, scheduled_for, processed, cost, was_wildcard)
-        |values({leagueUserId}, {internalPickeeId}, {isBuy}, {currentTime}, {scheduledUpdateTime}, {processed}, {cost}, {applyWildcard})
+        |insert into transfer(league_user_id, pickee_id, is_buy, time_made, scheduled_for, processed, price, was_wildcard)
+        |values({leagueUserId}, {internalPickeeId}, {isBuy}, {currentTime}, {scheduledUpdateTime}, {processed}, {price}, {applyWildcard})
         |returning transfer_id;
         |""".stripMargin
     ).on("leagueUserId" -> leagueUserId, "internalPickeeId" -> internalPickeeId, "isBuy" -> isBuy, "currentTime" -> currentTime,
-      "scheduledUpdateTime" -> scheduledUpdateTime, "processed" -> processed, "cost" -> cost, "applyWildcard" -> applyWildcard
+      "scheduledUpdateTime" -> scheduledUpdateTime, "processed" -> processed, "price" -> price, "applyWildcard" -> applyWildcard
       ).executeInsert().get
   }
 

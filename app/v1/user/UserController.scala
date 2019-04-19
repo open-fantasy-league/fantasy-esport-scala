@@ -3,17 +3,16 @@ package v1.user
 import javax.inject.Inject
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Try
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.db._
-import models._
 import play.api.data.format.Formats._
 import utils.IdParser.parseLongId
 import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
+import utils.TryHelper.tryOrResponse
 import auth._
 
 case class UserFormInput(username: String, userId: Long)
@@ -53,7 +52,9 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
           internalUserId <- userRepo.get(externalUserId).toRight(BadRequest("User does not exist")).map(_.userId)
           //todo tis hacky
           _ <- if (leagueUserRepo.userInLeague(internalUserId, request.league.leagueId)) Left(BadRequest("User already in this league")) else Right(true)
-          _ <- Try(leagueUserRepo.joinUsers(List(internalUserId), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+          _ <- tryOrResponse(() =>
+            leagueUserRepo.joinUsers(List(externalUserId), request.league),
+            InternalServerError("Internal server error adding user to league"))
           success = "Successfully added user to league"
         } yield success).fold(identity, Ok(_))
       }
@@ -121,7 +122,7 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
           (for {
             userId <- parseLongId(userId, "User")
             user <- userRepo.get(userId).toRight(BadRequest("User does not exist"))
-            updateUser <- Try(userRepo.update(userId, input)).toOption.toRight(InternalServerError("Could not update user"))
+            updateUser <- tryOrResponse(() => userRepo.update(userId, input), InternalServerError("Could not update user"))
             finished = Ok("User updated")
           } yield finished).fold(identity, identity)
         }
