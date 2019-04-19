@@ -14,7 +14,6 @@ import play.api.data.format.Formats._
 import utils.IdParser.parseLongId
 import v1.leagueuser.LeagueUserRepo
 import v1.league.LeagueRepo
-import v1.user.UserRepo
 import auth._
 
 case class UserFormInput(username: String, userId: Long)
@@ -50,11 +49,11 @@ class UserController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
     Future{
       db.withConnection { implicit c =>
         (for {
-          userId <- parseLongId(userId, "User")
-          user <- userRepo.get(userId).toRight(BadRequest("User does not exist"))
+          externalUserId <- parseLongId(userId, "User")
+          internalUserId <- userRepo.get(externalUserId).toRight(BadRequest("User does not exist")).map(_.userId)
           //todo tis hacky
-          validateUnique <- if (leagueUserRepo.userInLeague(userId, request.league.leagueId)) Left(BadRequest("User already in this league")) else Right(true)
-          added <- Try(leagueUserRepo.joinUsers(List(user), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
+          _ <- if (leagueUserRepo.userInLeague(internalUserId, request.league.leagueId)) Left(BadRequest("User already in this league")) else Right(true)
+          _ <- Try(leagueUserRepo.joinUsers(List(internalUserId), request.league)).toOption.toRight(InternalServerError("Internal server error adding user to league"))
           success = "Successfully added user to league"
         } yield success).fold(identity, Ok(_))
       }

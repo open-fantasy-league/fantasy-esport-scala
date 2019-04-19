@@ -40,7 +40,7 @@ class AdminController @Inject()(
     Future {
       db.withConnection { implicit c =>
         // hacky way to avoid circular dependency
-        implicit val updateHistoricRanksFunc = leagueUserRepo.updateHistoricRanks
+        implicit val updateHistoricRanksFunc: Long => Unit = leagueUserRepo.updateHistoricRanks
         val currentTime = LocalDateTime.now()
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)

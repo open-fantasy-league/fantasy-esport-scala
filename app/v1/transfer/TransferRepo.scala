@@ -22,8 +22,8 @@ trait TransferRepo{
                 )(implicit c: Connection): Unit
   def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean
   def insert(
-              leagueUserId: Long, pickeeId: Long, currentTime: LocalDateTime,
-              scheduledUpdateTime: Option[LocalDateTime], cost: BigDecimal, applyWildcard: Boolean
+              leagueUserId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
+              scheduledUpdateTime: LocalDateTime, processed: Boolean, cost: BigDecimal, applyWildcard: Boolean
             )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
 }
@@ -46,16 +46,16 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
                          )(implicit c: Connection) = {
       val newPickees: Set[Long] = (oldTeamIds -- toSellIds) ++ toBuyIds
       val q =
-        """update team t set timespan = tstzrange(lower(timespan), now())
+        """update team t set timespan = tstzrange(lower(timespan), {time})
     where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
     """
-      SQL(q).on("leagueUserId" -> leagueUserId).executeUpdate()
+      SQL(q).on("leagueUserId" -> leagueUserId, "time" -> time).executeUpdate()
     println("Ended current team")
     SQL("update league_user set change_tstamp = null where league_user_id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
     print(newPickees.mkString(", "))
     newPickees.map(t => {
-      SQL("insert into team(league_user_id, pickee_id, timespan) values({}, {}, tstzrange({now}, null));").
-        onParams(leagueUserId, t, time).executeInsert()
+      SQL("insert into team(league_user_id, pickee_id, timespan) values({leagueUserId}, {pickeeId}, tstzrange({time}, null)) returning team_id;").
+        on("leagueUserId" -> leagueUserId, "pickeeId" -> t, "time" -> time).executeInsert().get
     })
     println("Inserted new team")
   }
@@ -71,7 +71,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       val q =
         """select pickee_id from team t where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
               """
-      val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUserId).as(SqlParser.scalar[Long] *).toSet
+      val oldTeamIds = SQL(q).on("leagueUserId" -> leagueUserId).as(SqlParser.scalar[Long].*).toSet
       changeTeam(leagueUserId, toBuyIds, toSellIds, oldTeamIds, now)
       transfers.map(t => setProcessed(t.transferId))
   }
@@ -88,21 +88,22 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
   }
 
   override def insert(
-                       leagueUserId: Long, pickeeId: Long, currentTime: LocalDateTime,
-                       scheduledUpdateTime: Option[LocalDateTime], cost: BigDecimal, applyWildcard: Boolean
+                       leagueUserId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
+                       scheduledUpdateTime: LocalDateTime, processed: Boolean, cost: BigDecimal, applyWildcard: Boolean
                      )(implicit c: Connection): Long = {
     SQL(
       """
         |insert into transfer(league_user_id, pickee_id, is_buy, time_made, scheduled_for, processed, cost, was_wildcard)
-        |values({}, {}, {}, {}, {}, {}, {}, {});
+        |values({leagueUserId}, {internalPickeeId}, {isBuy}, {currentTime}, {scheduledUpdateTime}, {processed}, {cost}, {applyWildcard})
+        |returning transfer_id;
         |""".stripMargin
-    ).onParams(leagueUserId, pickeeId, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
-        scheduledUpdateTime.isEmpty, cost, applyWildcard
-      ).executeInsert()
+    ).on("leagueUserId" -> leagueUserId, "internalPickeeId" -> internalPickeeId, "isBuy" -> isBuy, "currentTime" -> currentTime,
+      "scheduledUpdateTime" -> scheduledUpdateTime, "processed" -> processed, "cost" -> cost, "applyWildcard" -> applyWildcard
+      ).executeInsert().get
   }
 
   override def setProcessed(transferId: Long)(implicit c: Connection): Long = {
-    SQL("update transfer set processed = true where transfer_id = $transferId").executeUpdate()
+    SQL(s"update transfer set processed = true where transfer_id = $transferId").executeUpdate()
   }
 }
 

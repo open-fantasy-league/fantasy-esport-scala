@@ -1,5 +1,5 @@
-curl -v -H "Content-Type: application/json" -X POST -d '{"username": "Username1", "externalId": 3}' localhost/api/v1/users
-curl -v -H "Content-Type: application/json" -X POST -d '{"username": "Username2", "externalId": 4}' localhost/api/v1/users
+curl -v -H "Content-Type: application/json" -X POST -d '{"username": "Username1", "externalId": 3}' localhost/api/v1/users/
+curl -v -H "Content-Type: application/json" -X POST -d '{"username": "Username2", "externalId": 4}' localhost/api/v1/users/
 
 curl -v -H "Content-Type: application/json" -X POST -d '{"name": "TI99", "apiKey": "A", "tournamentId": 5401, "gameId": 1, "pickeeDescription": "Hero", "periodDescription": "day", "transferLimit": 5, "transferWildcard": true, "transferBlockedDuringPeriod": true, "pickees": [{"id": 1, "name": "dog", "value": 20.0, "factions": ["Support", "VP"]}, {"id": 2, "name": "Lich", "value": 10.1, "factions": ["Core", "EG"]}], "factions": [{"name": "role", "types": [{"name": "Support", "max": 2}, {"name": "Core", "max": 3}]}, {"name": "Team", "max": 2,"types": [{"name": "EG"}, {"name": "VP"}]}], "extraStats": ["wins", "picks", "bans"], "users": [1], "periods": [{"start": "2002-02-02 04:05", "end": "2002-02-02 04:05", "multiplier": 1}, {"start": "2002-02-02 04:05", "end": "2002-02-02 04:05", "multiplier": 1}, {"start": "2002-02-02 04:05", "end": "2002-02-02 04:05", "multiplier": 2}]}' localhost/api/v1/leagues
 

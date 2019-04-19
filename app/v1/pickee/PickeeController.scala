@@ -17,7 +17,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
                                 (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc) with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
-  def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
+  def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future(db.withConnection { implicit c => Ok(Json.toJson(pickeeRepo.getPickeesLimits(request.league.leagueId)))})
   }
 
@@ -26,7 +26,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       db.withConnection { implicit c =>
         (for {
           period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.leagueId, Option.empty[Int], period)))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.leagueId, Option.empty[Long], period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -66,11 +66,11 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     def success(inputs: RepricePickeeFormInputList) = {
       Future {
         db.withConnection { implicit c =>
-            val leaguePickees = pickeeRepo.getPickees(request.league.leagueId)
-            val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.pickeeId -> p).toMap
+            val leaguePickees = pickeeRepo.getPickees(request.league.leagueId).toList
+            val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
           // TODO withFIlter
             leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
-              pickeeRepo.updateCost(p.pickeeId, pickees(p.externalPickeeId).cost)
+              pickeeRepo.updateCost(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).cost)
             })
             // TODO print out pickees that changed
             Ok("Successfully updated pickee costs")

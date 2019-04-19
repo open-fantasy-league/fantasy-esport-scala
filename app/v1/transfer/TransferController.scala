@@ -59,7 +59,7 @@ class TransferController @Inject()(
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     db.withConnection { implicit c =>
-    new LeagueUserAction(userId).auth(Some(leagueUserRepo.joinUsers))}).async { implicit request =>
+    new LeagueUserAction(leagueUserRepo, db)(userId).auth(Some(leagueUserRepo.joinUsers))}).async { implicit request =>
     scheduleTransfer(request.league, request.leagueUser)
   }
 
@@ -73,11 +73,12 @@ class TransferController @Inject()(
     }
   }
 
-  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(userId)).apply()).async { implicit request =>
+  def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen
+    (new LeagueUserAction(leagueUserRepo, db)(userId)).apply()).async { implicit request =>
     Future{
       db.withConnection { implicit c =>
         val processed = request.getQueryString("processed").map(_ (0) == 't')
-        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser, processed)))
+        Ok(Json.toJson(transferRepo.getLeagueUserTransfer(request.leagueUser.leagueUserId, processed)))
       }
     }
   }
@@ -104,7 +105,7 @@ class TransferController @Inject()(
             newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser.remainingTransfers, sell)
             pickees = pickeeRepo.getPickees(league.leagueId).toList
             newMoney <- updatedMoney(leagueUser.money, pickees, sell, buy, applyWildcard, league.startingMoney)
-            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser.leagueUserId).map(_.pickeeId).toSet
+            currentTeamIds <- Try(teamRepo.getLeagueUserTeam(leagueUser.leagueUserId).map(_.externalPickeeId).toSet
             ).toOption.toRight(InternalServerError("Missing pickee externalPickeeId"))
             _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
             sellOrWildcard = if (applyWildcard) currentTeamIds else sell
@@ -148,7 +149,9 @@ class TransferController @Inject()(
     }
   }
 
-  private def validatePickeeIds(currentTeamIds: Set[Long], pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long]): Either[Result, Boolean] = {
+  private def validatePickeeIds(
+                                 currentTeamIds: Set[Long], pickees: Iterable[PickeeRow], toSell: Set[Long],
+                                 toBuy: Set[Long]): Either[Result, Boolean] = {
     // TODO return what ids are invalid
     (toSell ++ toBuy).subsetOf(pickees.map(_.externalPickeeId).toSet) match {
       case true => {
@@ -167,7 +170,7 @@ class TransferController @Inject()(
   }
 
   private def updatedMoney(
-                            money: BigDecimal, pickees: Iterable[Pickee], toSell: Set[Long], toBuy: Set[Long],
+                            money: BigDecimal, pickees: Iterable[PickeeRow], toSell: Set[Long], toBuy: Set[Long],
                             wildcardApplied: Boolean, startingMoney: BigDecimal): Either[Result, BigDecimal] = {
     val spent = pickees.filter(p => toBuy.contains(p.externalPickeeId)).map(_.cost).sum
     println(spent)
@@ -189,7 +192,7 @@ class TransferController @Inject()(
       case x if x <= leagueTeamSize => Right(x)
       //case x if x < league.teamSize && !isCheck => Left(BadRequest(f"Cannot confirm transfers as team unfilled (require ${league.teamSize})"))
       case x => Left(BadRequest(
-        f"Exceeds maximum team size of ${leagueTeamSize}"
+        f"Exceeds maximum team size of $leagueTeamSize"
       ))
     }
   }
@@ -214,20 +217,22 @@ class TransferController @Inject()(
     val toSellPickees = toSell.map(ts => pickees.find(_.externalPickeeId == ts).get)
     toSellPickees.map(
       p => transferRepo.insert(
-        leagueUser.leagueUserId, p.pickeeId, false, currentTime, scheduledUpdateTime, p.cost, applyWildcard
+        leagueUser.leagueUserId, p.externalPickeeId, false, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+          scheduledUpdateTime.isEmpty, p.cost, applyWildcard
       )
     )
     val toBuyPickees = toBuy.map(tb => pickees.find(_.externalPickeeId == tb).get)
     toBuyPickees.map(
       p => transferRepo.insert(
-      leagueUser.leagueUserId, p.pickeeId, true, currentTime, scheduledUpdateTime, p.cost, applyWildcard
+        leagueUser.leagueUserId, p.internalPickeeId, true, currentTime, scheduledUpdateTime.getOrElse(currentTime),
+        scheduledUpdateTime.isEmpty, p.cost, applyWildcard
     ))
     val currentTeam = teamRepo.getLeagueUserTeam(leagueUser.leagueUserId).map({
-      cp => pickees.find(_.externalPickeeId == cp.pickeeId).get.pickeeId
+      cp => pickees.find(_.externalPickeeId == cp.externalPickeeId).get.internalPickeeId
     }).toSet
     if (scheduledUpdateTime.isEmpty) {
       transferRepo.changeTeam(
-        leagueUser.leagueUserId, toBuyPickees.map(_.pickeeId), toSellPickees.map(_.pickeeId), currentTeam, currentTime
+        leagueUser.leagueUserId, toBuyPickees.map(_.internalPickeeId), toSellPickees.map(_.internalPickeeId), currentTeam, currentTime
       )
     }
     leagueUserRepo.update(

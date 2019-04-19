@@ -10,6 +10,7 @@ import v1.leagueuser.{LeagueUserRepo, LeagueUserRepoImpl}
 import v1.team.{TeamRepo, TeamRepoImpl}
 import v1.transfer.{TransferRepo, TransferRepoImpl}
 import v1.admin.{AdminRepo, AdminRepoImpl}
+import v1.user.{UserRepo, UserRepoImpl}
 
 
 /**

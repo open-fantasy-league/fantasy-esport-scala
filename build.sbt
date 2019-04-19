@@ -1,15 +1,10 @@
 import sbt.Keys._
 
-lazy val GatlingTest = config("gatling") extend Test
-
 scalaVersion in ThisBuild := "2.12.6"
 
 crossScalaVersions := Seq("2.11.12", "2.12.4")
 
-def gatlingVersion(scalaBinVer: String): String = scalaBinVer match {
-  case "2.11" => "2.2.5"
-  case "2.12" => "2.3.0"
-}
+resolvers += Resolver.sbtPluginRepo("releases")
 
 libraryDependencies += guice
 libraryDependencies += evolutions
@@ -35,19 +30,11 @@ libraryDependencies ++=  Seq(
 )
 // The Play project itself
 lazy val root = (project in file("."))
-  .enablePlugins(PlayScala, GatlingPlugin)
-  .configs(GatlingTest)
-  .settings(inConfig(GatlingTest)(Defaults.testSettings): _*)
+  .enablePlugins(PlayScala)
   .settings(
     name := """fantasy-esport-scala""",
-    scalaSource in GatlingTest := baseDirectory.value / "/gatling/simulation"
   )
 
 // Documentation for this project:
 //    sbt "project docs" "~ paradox"
 //    open docs/target/paradox/site/index.html
-
-lazy val docs = (project in file("docs")).enablePlugins(ParadoxPlugin).
-  settings(
-    paradoxProperties += ("download_url" -> "https://example.lightbend.com/v1/download/play-rest-api")
-  )

@@ -23,7 +23,7 @@ trait AdminRepo{
 @Singleton
 class AdminRepoImpl @Inject()(implicit ec: AdminExecutionContext) extends AdminRepo{
   override def insertApiUser(name: String, email: String, role: Int)(implicit c: Connection): ApiUserRow = {
-    val q = """insert into api_user(name, email, role) values ($name, $email, $role) returning api_user_id as key, name, email, role;"""
+    val q = s"""insert into api_user(name, email, role) values ('$name', '$email', $role) returning api_user_id as key, name, email, role;"""
     SQL(q).executeInsert(ApiUserRow.parser.single)
   }
 }

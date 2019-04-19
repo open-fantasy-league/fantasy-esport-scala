@@ -9,12 +9,12 @@ case class StatDailyRow(
                                    period: Option[Int]
                                  )
 
-case class PickeeRow(externalPickeeId: Long, name: String, cost: BigDecimal)
+case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, name: String, cost: BigDecimal)
 
-case class PickeeLimitsRow(externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
+case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(
-                                    externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
+                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, cost: BigDecimal, limitType: String,
                                     limitName: String, max: Int, statFieldName: String, value: Double, previousRank: Int)
 
 object PickeeRow {
@@ -28,11 +28,11 @@ object PickeeRow {
     }
   }
 
-  val parser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
+  val parser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
 }
 
 case class TeamRow(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
-                   end: Option[LocalDateTime], isActive: Boolean, externalPickeeId: Long, pickeeName: String,
+                   end: Option[LocalDateTime], isActive: Boolean, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String,
                    pickeeCost: BigDecimal)
 
 object TeamRow {

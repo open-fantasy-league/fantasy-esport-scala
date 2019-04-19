@@ -107,25 +107,22 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                             leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
                           )(implicit c: Connection): Long = {
     SQL(
-      """
+      s"""
         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_victory,
-        |start_tstamp, added_tstamp, targeted_at_tstamp) VALUES({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
-      """.stripMargin).onParams(
-      leagueId, input.matchId, period, input.tournamentId, input.teamOne, input.teamTwo,
-      input.teamOneVictory, input.startTstamp, now, targetedAtTstamp
-    ).executeInsert()
+        |start_tstamp, added_tstamp, targeted_at_tstamp)
+        |VALUES($leagueId, ${input.matchId}, $period, ${input.tournamentId}, '${input.teamOne}', '${input.teamTwo}',
+        | ${input.teamOneVictory}, '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
+      """.stripMargin).executeInsert().get
   }
 
   override def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long = {
-    SQL("insert into resultu(match_id, pickee_id, is_team_one values({},{},{})").onParams(
-      matchId, pickee.id, pickee.isTeamOne
-    ).executeInsert()
+    SQL(s"insert into resultu(match_id, pickee_id, is_team_one) values($matchId, ${pickee.id}, ${pickee.isTeamOne}) returning result_id;").executeInsert().get
   }
 
   override def insertStats(resultId: Long, statFieldId: Long, stats: Double, pickeeId: Long)(implicit c: Connection): Long = {
     SQL(
-      "insert into stats(result_id, stat_field_id, value, pickee_id) values({}, {}, {}, {})"
-    ).onParams(resultId, statFieldId, stats, pickeeId).executeInsert()
+      "insert into stat(result_id, stat_field_id, value, pickee_id) values({resultId}, {statFieldId}, {stats}, {pickeeId}) returning stat_id"
+    ).on("resultId" -> resultId, "statFieldId" -> statFieldId, "stats" -> stats, "pickeeId" -> pickeeId).executeInsert().get
   }
 
 }

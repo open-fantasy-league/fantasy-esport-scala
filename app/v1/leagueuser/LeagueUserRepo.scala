@@ -28,7 +28,8 @@ case class LeagueRankings(leagueId: Long, leagueName: String, statField: String,
 case class LeagueWithLeagueUser(league: LeagueRow, info: LeagueUserRow)
 
 case class RankingRow(
-                       externalUserId: Long, username: String, leagueUserId: Long, value: Double, previousRank: Option[Int], pickeeId: Option[Long],
+                       externalUserId: Long, username: String, leagueUserId: Long, value: Double, previousRank: Option[Int],
+                       internalPickeeId: Option[Long], externalPickeeId: Option[Long],
                        pickeeName: Option[String], cost: Option[BigDecimal]
                      )
 
@@ -100,7 +101,7 @@ trait LeagueUserRepo{
   def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long)(implicit c: Connection): Long
   def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int])(implicit c: Connection): Long
   def update(
-              leagueUserId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: LocalDateTime,
+              leagueUserId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: Option[LocalDateTime],
               appliedWildcard: Boolean
             )(implicit c: Connection): Unit
   def getRankings(
@@ -129,7 +130,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def getWithUser(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[LeagueUserRow] = {
-    SQL("""select user_id, username, external_user_id, league_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp
+    SQL(s"""select user_id, username, external_user_id, league_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp
       from league_user join useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(LeagueUserRow.parser.singleOpt)
   }
 
@@ -155,8 +156,8 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def getAllLeaguesForUser(userId: Long)(implicit c: Connection): Iterable[LeagueWithLeagueUser] = {
     val leagueIds = SQL(
-      "select league_id from leagues join league_user using(league_id) join useru using(user_id) where external_user_id = {}"
-    ).onParams(userId).as(SqlParser.scalar[Long].*)
+      s"select league_id from leagues join league_user using(league_id) join useru using(user_id) where external_user_id = $userId"
+    ).as(SqlParser.scalar[Long].*)
     leagueIds.map(lid => LeagueWithLeagueUser(leagueRepo.get(lid).get, getWithUser(lid, userId).get))
   }
 
@@ -169,9 +170,13 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     SQL(
       """
         |insert into league_user(league_id, user_id, money, entered, remaining_transfers, used_wildcard) values
-        |({}, (select user_id from useru where external_user_id = {}), {}, {}, {}, {});
-      """.stripMargin).onParams(league.leagueId, userId, league.startingMoney, LocalDateTime.now(), league.transferLimit,
-      !league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister)).executeInsert()
+        |({leagueId}, (select user_id from useru where external_user_id = {userId}), {startingMoney}, {entered},
+        | {remainingTransfers}, {usedWildcard}) returning league_user_id;
+      """.stripMargin).on(
+      "leagueId" -> league.leagueId, "userId" -> userId, "startingMoney" -> league.startingMoney,
+      "entered" -> LocalDateTime.now(), "remainingTransfers" -> league.transferLimit,
+      "usedWildcard" -> (!league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister))
+    ).executeInsert().get
       getWithUser(league.leagueId, userId).get
     // dont give wildcard to people who join league late
     // TODO update query to do returning x
@@ -179,23 +184,24 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long)(implicit c: Connection): Long = {
     SQL(
-      "insert into league_user_stat(stat_field_id, league_user_id) VALUES ({}, {});"
-    ).onParams(statFieldId, leagueUserId).executeInsert()
+      s"insert into league_user_stat(stat_field_id, league_user_id, previous_rank) VALUES ($statFieldId, $leagueUserId, 1) returning league_user_stat_id;"
+    ).executeInsert().get
   }
 
   override def insertLeagueUserStatDaily(leagueUserStatId: Long, period: Option[Int])(implicit c: Connection): Long = {
     SQL(
-      "insert into league_user_stat_daily(league_user_stat_id, period) VALUES ({}, {});"
-    ).onParams(leagueUserStatId, period).executeInsert()
+      """insert into league_user_stat_period(league_user_stat_id, period, value) VALUES
+        |({leagueUserStatId}, {period}, 0) returning league_user_stat_period_id;""".stripMargin
+    ).on("leagueUserStatId" -> leagueUserStatId, "period" -> period).executeInsert().get
   }
 
   override def update(
-                       leagueUserId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: LocalDateTime,
+                       leagueUserId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: Option[LocalDateTime],
                        appliedWildcard: Boolean
                      )(implicit c: Connection): Unit = {
     val usedWildcardSet = if (appliedWildcard) ", used_wildcard = true" else ""
-    SQL("update league_user set money = {}, remaining_transfers = {}, change_tstamp = {}#$usedWildcardSet where league_user_id = {}")
-      .onParams(money, remainingTransfers, changeTstamp, leagueUserId).executeUpdate()
+    SQL(s"update league_user set money = {money}, remaining_transfers = {remainingTransfers}, change_tstamp = {changeTstamp}#$usedWildcardSet where league_user_id = {leagueUserId}")
+      .on("money" -> money, "remainingTransfers" -> remainingTransfers, "changeTstamp" -> changeTstamp, "leagueUserId" -> leagueUserId).executeUpdate()
   }
 
   override def getRankings(
@@ -209,7 +215,9 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
       var lastScore = Double.MaxValue
       var lastScoreRank = 0
       val tmp = stats.map({case (u, v) => {
-        val team = v.withFilter(_.pickeeId.isDefined).map(v2 => PickeeRow(v2.pickeeId.get, v2.pickeeName.get, v2.cost.get))
+        val team = v.withFilter(_.internalPickeeId.isDefined).map(v2 => PickeeRow(
+          v2.internalPickeeId.get, v2.externalPickeeId.get, v2.pickeeName.get, v2.cost.get)
+        )
         (v.head, team)}
       })
       val rankings = tmp.zipWithIndex.map({case ((q, team), i) => {
@@ -240,10 +248,10 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     val leagueFilter = if (leagueId.isEmpty) "" else s"league_id = ${leagueId.get} and"
     val orderByValueStr = if (orderByValue) "" else "order by value desc"
     SQL(
-      """
+      s"""
         |select league_user_id, stat_field_name, previous_rank, value, period from league_user lu join stat_field sf using(league_id)
         |join league_user_stat lus on(lus.league_id = lu.league_id and lus.stat_field_id = sf.stat_field_id)
-        |join league_user_stat_daily lusd using(league_user_stat_id)
+        |join league_user_stat_period lusd using(league_user_stat_id)
         |where #$leagueFilter #$leagueUserFilter #$statFieldFilter period #$periodFilter #$orderByValueStr;
         |
       """.stripMargin).as(LeagueUserStatDailyRow.parser.*)
@@ -261,27 +269,27 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     // TODO nice injection
     val q = secondaryOrdering match {
       case None => s"""select u.external_user_id, u.username, lu.league_user_id, lusd.value, lus.previous_rank,
-                  pickee_id, p.pickee_name, p.cost from useru u
+                  pickee_id, external_pickee_id, p.pickee_name, p.cost from useru u
            join league_user lu using(user_id)
            left join team t on (t.league_user_id = lu.league_user_id and #$timestampFilter)
            left join pickee p using(pickee_id)
            join league_user_stat lus on (lus.league_user_id = lu.league_user_id and lus.stat_field_id = {statFieldId})
-           join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.league_user_stat_id and #$periodFilter)
+           join league_user_stat_period lusd on (lusd.league_user_stat_id = lus.league_user_stat_id and #$periodFilter)
            order by lusd.value desc;
            """
       case Some(secondary) => {
         val extraJoins = secondary.map(s =>
         s"""join league_user_stat lus$s on (lus$s.league_user_id = lu.league_user_id and lus$s.stat_field_id = $s)
-            join league_user_stat_daily lusd$s on (lusd$s.league_user_stat_id = lus$s.league_user_stat_id and $periodFilter)
+            join league_user_stat_period lusd$s on (lusd$s.league_user_stat_id = lus$s.league_user_stat_id and $periodFilter)
             """).mkString(" ")
         val extraOrder = secondary.map(s => s"lusd$s.value desc").mkString(" ")
-        s"""select u.external_user_id, u.username, lu.league_user_id, lusd.value, lus.previous_rank, pickee_id,
+        s"""select u.external_user_id, u.username, lu.league_user_id, lusd.value, lus.previous_rank, pickee_id, external_pickee_id
             p.pickee_name, p.cost from useru u
              join league_user lu using(user_id)
              left join team t on (t.league_user_id = lu.league_user_id and #$timestampFilter)
              left join pickee p using(pickee_id)
              join league_user_stat lus on (lus.league_user_id = lu.league_user_id and lus.stat_field_id = {statFieldId})
-             join league_user_stat_daily lusd on (lusd.league_user_stat_id = lus.league_user_stat_id and #$periodFilter)
+             join league_user_stat_period lusd on (lusd.league_user_stat_id = lus.league_user_stat_id and #$periodFilter)
              #$extraJoins
              order by lusd.value desc #$extraOrder;
              """
@@ -317,8 +325,8 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def updatePreviousRank(leagueUserId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit = {
     SQL(
-      "update league_user_stat set previous_rank = {} where league_user_id = {} and stat_field_id = {};"
-    ).onParams(previousRank, leagueUserId, statFieldId).executeUpdate()
+      "update league_user_stat set previous_rank = {previousRank} where league_user_id = {leagueUserId} and stat_field_id = {statFieldId};"
+    ).on("previousRank" -> previousRank, "leagueUserId" -> leagueUserId, "statFieldId" -> statFieldId).executeUpdate()
   }
 
   override def joinUsers(userIds: Iterable[Long], league: LeagueRow)(implicit c: Connection): Iterable[LeagueUserRow] = {
@@ -339,7 +347,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
   }
 
   override def userInLeague(userId: Long, leagueId: Long)(implicit c: Connection): Boolean = {
-    SQL("select 1 from league_user where league_id = {} and user_id ={};").onParams(leagueId, userId).
+    SQL(s"select 1 from league_user where league_id = $leagueId and user_id = $userId").
       as(SqlParser.scalar[Int].singleOpt).isDefined
   }
 

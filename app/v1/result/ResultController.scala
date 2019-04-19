@@ -18,6 +18,7 @@ import play.api.db._
 import utils.TryHelper.tryOrResponse
 import auth._
 import v1.league.LeagueRepo
+import v1.pickee.PickeeRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -30,7 +31,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, Auther: Auther)
+class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -76,14 +77,14 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           db.withConnection { implicit c =>
               (for {
                 validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
-                internalPickee = input.pickees.map(p => pickeeRepo.getInternalId(league.leagueId, p.pickeeId)
-                now: LocalDateTime = LocalDateTime.now
+                internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
+                now = LocalDateTime.now
                 targetTstamp = getTargetedAtTstamp(input, league, now)
                 correctPeriod <- getPeriod(input, league, targetTstamp)
-                insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp)
+                insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
                 insertedResults <- newResults(input, league, insertedMatch, internalPickee)
                 insertedStats <- newStats(league, insertedResults.toList, internalPickee)
-                updatedStats <- updateStats(insertedStats, league, correctPeriod, insertedMatch.targetedAtTstamp)
+                updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
                 success = "Successfully added results"
               } yield success).fold(l => {
                 error = Some(l); c.rollback(); throw new Exception("fuck")
@@ -120,17 +121,20 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     }
   }
 
-  private def newMatch(input: ResultFormInput, league: LeagueRow, period: Int, targetAt: LocalDateTime)(implicit c: Connection): Either[Result, Long] = {
-    tryOrResponse[Matchu](() => resultRepo.insertMatch(
+  private def newMatch(input: ResultFormInput, league: LeagueRow, period: Int, targetAt: LocalDateTime, now: LocalDateTime)
+                      (implicit c: Connection): Either[Result, Long] = {
+    tryOrResponse[Long](() => resultRepo.insertMatch(
       league.leagueId, period, input, now, targetAt
     ), InternalServerError("Internal server error adding match"))
   }
 
-  private def newResults(input: ResultFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])(implicit c: Connection): Either[Result, List[Resultu]] = {
+  private def newResults(input: ResultFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
+                        (implicit c: Connection): Either[Result, Iterable[Long]] = {
     tryOrResponse(() => pickees.map(p => resultRepo.insertResult(matchId, p)), InternalServerError("Internal server error adding result"))
   }
 
-  private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])(implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
+  private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])
+                      (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
     // doing add results, add stats to pickee, and to league user all at once
     // (was not like this in python)
     // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
@@ -138,10 +142,10 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     // score stats from hero they were selling, then also hero they were buying, with rrace condition
     // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
     tryOrResponse(() => {
-      val newStats = pickees.zip(resultIds).map((ip, resultId) => ip.stats.map(s => {
+      pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
         val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
-        resultRepo.insertStats(resultId, leagueRepo.getStatFieldId(league.leagueId, s.name).get, stats, ip.pickeeId)
-      }))
+        (StatsRow(resultRepo.insertStats(resultId, leagueRepo.getStatFieldId(league.leagueId, s.field).get, stats, ip.id), s.value), ip.id)
+      })})
     }, InternalServerError("Internal server error adding result"))
   }
 
@@ -149,7 +153,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeQ =
-          s"""update pickee_stat_daily psd set value = value + {newStats} from pickee p
+          s"""update pickee_stat_period psd set value = value + {newStats} from pickee p
          join league_user lu using(user_id)
          join league l using(league_id)
          join pickee_stat ps using(pickee_id)
@@ -157,11 +161,11 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
              |p.pickee_id = {pickeeId} and ps.stat_field_id = {statFieldId} and league_id = {leagueId};
          """
         SQL(pickeeQ).on(
-          "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statsFieldId,
+          "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statFieldId,
           "targetedAtTstamp" -> targetedAtTstamp, "leagueId" -> league.leagueId
         ).executeUpdate()
           val q =
-            s"""update league_user_stat_daily lusd set value = value + {newStats} from useru u
+            s"""update league_user_stat_period lusd set value = value + {newStats} from useru u
          join league_user lu using(user_id)
          join league l using(league_id)
          join team t using(league_user_id)
@@ -172,7 +176,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
                |"""
           //(select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;
           SQL(q).on(
-            "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statsFieldId,
+            "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statFieldId,
             "targetedAtTstamp" -> targetedAtTstamp
           ).executeUpdate()
     }}), InternalServerError("Internal server error updating stats"))
