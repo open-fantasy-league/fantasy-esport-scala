@@ -53,7 +53,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
   override def getAllLeagueUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut] = {
     val q =
       """select u.external_user_id, u.username, league_user_id, lower(t.timespan) as start, upper(t.timespan) as "end", true, p.pickee_id as internal_pickee_id, p.external_pickee_id,
-        | p.pickee_name, p.price as pickeePrice from team t
+        | p.pickee_name, p.price as pickee_price from team t
  |                   join pickee p using(pickee_id)
  |                   join league_user lu using(league_user_id)
  |                   join useru u using(user_id)

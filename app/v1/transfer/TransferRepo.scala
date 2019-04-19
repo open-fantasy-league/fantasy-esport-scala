@@ -31,13 +31,13 @@ trait TransferRepo{
 @Singleton
 class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
   override def getLeagueUserTransfer(leagueUserId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow] = {
-    val processedFilter = if (processed.isEmpty) "" else s"and processed = $processed"
+    val processedFilter = if (processed.isEmpty) "" else s"and processed = ${processed.get}"
     SQL(
       s"""
-        |select transfer_id, league_user_id, p.pickee_id, p.external_pickee_id,
-        | p.pickee_name, isBuy,
-        | timeMade, scheduledFor, processed, price, wasWildcard
-        | from transfer join pickee p using(pickee_id) where league_user_id = $leagueUserId #$processedFilter;
+        |select transfer_id, league_user_id, p.pickee_id as internal_pickee_id, p.external_pickee_id,
+        | p.pickee_name, is_buy,
+        | time_made, scheduled_for, processed, transfer.price, was_wildcard
+        | from transfer join pickee p using(pickee_id) where league_user_id = $leagueUserId $processedFilter;
       """.stripMargin).as(TransferRow.parser.*)
   }
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
@@ -66,8 +66,8 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     // TODO map and filter together
     val transfers = getLeagueUserTransfer(leagueUserId, Some(false))
     // TODO single iteration
-    val toSellIds = transfers.filter(!_.isBuy).map(_.pickeeId).toSet
-    val toBuyIds = transfers.filter(_.isBuy).map(_.pickeeId).toSet
+    val toSellIds = transfers.filter(!_.isBuy).map(_.internalPickeeId).toSet
+    val toBuyIds = transfers.filter(_.isBuy).map(_.internalPickeeId).toSet
       val q =
         """select pickee_id from team t where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
               """

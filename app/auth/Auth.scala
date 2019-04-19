@@ -89,9 +89,9 @@ class LeagueUserAction(leagueUserRepo: LeagueUserRepo, db: Database)(val userId:
           out <- maybeLeagueUser match {
             case Some(leagueUser) => Right(leagueUser)
             case None if
-              SQL("select user_id from useru where league_id = {leagueId} and external_user_id = {externalUserId}").
+              SQL("select user_id from useru where external_user_id = {externalUserId}").
                 on("leagueId" -> input.league.leagueId, "externalUserId" -> userIdLong).
-                as(SqlParser.long("user_id").singleOpt).isEmpty
+                as(SqlParser.long("user_id").*).isEmpty
               => Left(BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users"))
             case None if insertOnMissing.isDefined => {
               val leagueUser = insertOnMissing.get(List(userIdLong), input.league).head

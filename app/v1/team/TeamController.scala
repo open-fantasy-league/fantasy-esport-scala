@@ -19,7 +19,8 @@ class TeamController @Inject()(cc: ControllerComponents, leagueUserRepo: LeagueU
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
   implicit val parser = parse.default
 
-  def getSingleTeamReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen (new LeagueUserAction(leagueUserRepo, db)(userId)).apply()).async { implicit request =>
+  def getSingleTeamReq(leagueId: String, userId: String) = (
+    new LeagueAction(leagueId) andThen new LeagueUserAction(leagueUserRepo, db)(userId).apply()).async { implicit request =>
     Future(Ok({
       db.withConnection{ implicit c => Json.toJson(teamRepo.getLeagueUserTeam(request.leagueUser.leagueUserId))}
     }))

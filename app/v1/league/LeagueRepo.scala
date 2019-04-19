@@ -102,19 +102,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
 
   override def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull = {
-    val queryResult = SQL(s"""select league_id, name as league_name, game_id, is_private, tournament_id, pickee_description, period_description,
-          transfer_limit, transfer_wildcard, starting_money, team_size, transferDelayMinutes, transfer_open, transfer_blocked_during_period,
+    val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
+          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open, transfer_blocked_during_period,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register,
-           (cp is null) as started, (cp is not null and upper(cp.timestpan) < now()) as ended,
-           p.value as period_value, lower(timespan) as start, upper(timespan) as "end", multiplier, (p.period_id = l.current_period_id) as current, sf.name as stat_field_name,
-           lt.name as limit_type_name, lt.description, l.name as limit_name, l."max" as limit_max
- | from league l
- | join period p using(league_id)
- | left join limit_type lt using(league_id)
- | left join current_period cp on (cp.league_id = l.league_id and cp.period_id = l.current_period_id)
+           (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
+           p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
+          CASE WHEN l.current_period_id is null then false
+          WHEN p.period_id = l.current_period_id then true
+           ELSE false END as current, sf.name as stat_field_name,
+           lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max
+          from league l
+    join period p using(league_id)
+    left join limit_type lt on(l.league_id = lt.league_id)
+    left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
            left join "limit" lim using(limit_type_id)
-           join stat_field sf using(league_id)
-        where league_id = $leagueId order by p.value, pck.external_pickee_id;""").as(detailedLeagueParser.*)
+           join stat_field sf on(l.league_id = sf.league_id)
+        where l.league_id = $leagueId order by p.value;""".stripMargin).as(detailedLeagueParser.*)
     detailedLeagueQueryExtractor(queryResult)
         // deconstruct tuple
         // check what db queries would actuallly return
@@ -242,27 +245,38 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow] = {
-    val q = s"select * from period where period_id = $periodId;"
-    SQL(q).as(periodParser.singleOpt)
+    val q =
+      """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
+        | next_period_id, ended
+        | from period
+        | where period_id = {periodId};""".stripMargin
+    SQL(q).on("periodId" -> periodId).as(periodParser.singleOpt)
   }
 
   override def getPeriods(leagueId: Long)(implicit c: Connection): Iterable[PeriodRow] = {
-    val q = s"select * from period where league_id = $leagueId;"
+    val q = s"""select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
+      next_period_id, ended
+      from period where league_id = $leagueId;"""
     SQL(q).as(periodParser.*)
   }
 
   override def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow = {
-    val q = s"select * from period where league_id = $leagueId and value = $value;"
+    val q = s"""select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
+      next_period_id, ended
+       from period where league_id = $leagueId and value = $value;"""
     SQL(q).as(periodParser.single)
   }
 
   override def getPeriodFromTimestamp(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow] = {
-    val q = """select * from period where league_id = {leagueId} and  timespan @> {time};"""
+    val q = """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
+              next_period_id, ended from period where league_id = {leagueId} and  timespan @> {time}::timestamptz;"""
     SQL(q).on("leagueId" -> leagueId, "time" -> time).as(periodParser.singleOpt)
   }
 
   override def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow] = {
-    val q = "select * from period where period_id = {periodId};"
+    val q = """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
+      next_period_id, ended
+      from period where period_id = {periodId};"""
     SQL(q).on("periodId" -> league.currentPeriodId).as(periodParser.singleOpt)
   }
 
@@ -351,7 +365,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     })
     leagueIds.foreach(lid =>
       SQL(
-        s"update league set transferOpen = true where league_id = $lid;"
+        s"update league set transfer_open = true where league_id = $lid;"
       ).executeUpdate()
     )
   }
@@ -365,7 +379,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
     val transferOpenSet = if (league.transferBlockedDuringPeriod) ", transfer_open = false" else ""
     SQL(
-      s"update league set current_period_id = ${period.periodId} #$transferOpenSet where league_id = ${league.leagueId};"
+      s"update league set current_period_id = ${period.periodId} $transferOpenSet where league_id = ${league.leagueId};"
     ).executeUpdate()
     if (period.value > 1) updateHistoricRanks(league.leagueId)
   }

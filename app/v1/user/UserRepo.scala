@@ -43,7 +43,7 @@ class UserRepoImpl @Inject()()(implicit ec: UserExecutionContext, leagueRepo: Le
       case (None, None) => ""
     }
     SQL(
-      s"update useru #$setString where external_user_id = $userId returning user_id, username, external_user_id"
+      s"update useru $setString where external_user_id = $userId returning user_id, username, external_user_id"
     ).executeUpdate()
     println("todo return stuff")
   }

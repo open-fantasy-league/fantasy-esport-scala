@@ -16,7 +16,7 @@ case class MatchRow( // because match is an sql keyword
               teamTwo: String,
               teamOneVictory: Boolean,
               startTstamp: LocalDateTime,
-              addedDBTstamp: LocalDateTime,
+              addedDbTstamp: LocalDateTime,
               targetedAtTstamp: LocalDateTime // what timestamp do we look up teams for
             )
 
@@ -26,7 +26,7 @@ object MatchRow{
     def writes(m: MatchRow): JsValue = {
       Json.obj(
         "startTime" -> m.startTstamp,
-        "addedTime" -> m.addedDBTstamp,
+        "addedTime" -> m.addedDbTstamp,
         "targetedAtTime" -> m.targetedAtTstamp,
         "tournamentId" -> m.tournamentId,
         "matchId" -> m.externalMatchId,

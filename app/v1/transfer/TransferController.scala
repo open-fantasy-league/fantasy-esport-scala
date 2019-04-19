@@ -57,8 +57,7 @@ class TransferController @Inject()(
   // todo add a transfer check call
   def scheduleTransferReq(userId: String, leagueId: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
-    db.withConnection { implicit c =>
-    new LeagueUserAction(leagueUserRepo, db)(userId).auth(Some(leagueUserRepo.joinUsers))}).async { implicit request =>
+    new LeagueUserAction(leagueUserRepo, db)(userId).auth(Some(leagueUserRepo.joinUsers))).async { implicit request =>
     scheduleTransfer(request.league, request.leagueUser)
   }
 
@@ -73,7 +72,7 @@ class TransferController @Inject()(
   }
 
   def getUserTransfersReq(userId: String, leagueId: String) = (new LeagueAction(leagueId) andThen
-    (new LeagueUserAction(leagueUserRepo, db)(userId)).apply()).async { implicit request =>
+    new LeagueUserAction(leagueUserRepo, db)(userId).apply()).async { implicit request =>
     Future{
       db.withConnection { implicit c =>
         val processed = request.getQueryString("processed").map(_ (0) == 't')

@@ -13,10 +13,12 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import models._
 import anorm._
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.{Macro, RowParser}
+import Macro.ColumnNaming
 import play.api.db._
-import utils.TryHelper.tryOrResponse
+import utils.TryHelper.{tryOrResponse, tryOrResponseRollback}
 import auth._
+import play.api.Logger
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
@@ -34,7 +36,7 @@ case class StatsFormInput(field: String, value: Double)
 class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
-
+  private val logger = Logger(getClass)
   private val form: Form[ResultFormInput] = {
 
     Form(
@@ -72,26 +74,19 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
     def success(input: ResultFormInput) = {
       Future {
-        var error: Option[Result] = None
-        try {
-          db.withConnection { implicit c =>
-              (for {
-                validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
-                internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
-                now = LocalDateTime.now
-                targetTstamp = getTargetedAtTstamp(input, league, now)
-                correctPeriod <- getPeriod(input, league, targetTstamp)
-                insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
-                insertedResults <- newResults(input, league, insertedMatch, internalPickee)
-                insertedStats <- newStats(league, insertedResults.toList, internalPickee)
-                updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
-                success = "Successfully added results"
-              } yield success).fold(l => {
-                error = Some(l); c.rollback(); throw new Exception("fuck")
-              }, Created(_))
-          }
-        } catch {
-          case _: Throwable => error.get
+        //var error: Option[Result] = None
+        db.withTransaction { implicit c =>
+          (for {
+            validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
+            internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
+            now = LocalDateTime.now
+            targetTstamp = getTargetedAtTstamp(input, league, now)
+            correctPeriod <- getPeriod(input, league, targetTstamp)
+            insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
+            insertedResults <- newResults(input, league, insertedMatch, internalPickee)
+            insertedStats <- newStats(league, insertedResults.toList, internalPickee)
+            updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
+          } yield Created("Successfully added results")).fold(identity, identity)
         }
       }
     }
@@ -130,7 +125,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   private def newResults(input: ResultFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
                         (implicit c: Connection): Either[Result, Iterable[Long]] = {
-    tryOrResponse(() => pickees.map(p => resultRepo.insertResult(matchId, p)), InternalServerError("Internal server error adding result"))
+    tryOrResponseRollback(() => pickees.map(p => resultRepo.insertResult(matchId, p)), c, InternalServerError("Internal server error adding result"))
   }
 
   private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])
@@ -141,24 +136,26 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     // i.e. avoidss what i was worried about where if user transferred a hero midway through processing, maybe they can
     // score stats from hero they were selling, then also hero they were buying, with rrace condition
     // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
-    tryOrResponse(() => {
+    tryOrResponseRollback(() => {
       pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
         val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
-        (StatsRow(resultRepo.insertStats(resultId, leagueRepo.getStatFieldId(league.leagueId, s.field).get, stats, ip.id), s.value), ip.id)
+        val statFieldId = leagueRepo.getStatFieldId(league.leagueId, s.field).get
+        (StatsRow(resultRepo.insertStats(resultId, statFieldId, stats), statFieldId, s.value), ip.id)
       })})
-    }, InternalServerError("Internal server error adding result"))
+    }, c, InternalServerError("Internal server error adding result"))
   }
 
-  private def updateStats(newStats: List[(StatsRow, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime)(implicit c: Connection): Either[Result, Any] = {
-    tryOrResponse(() =>
+  private def updateStats(newStats: List[(StatsRow, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime)
+                         (implicit c: Connection): Either[Result, Any] = {
+    tryOrResponseRollback(() =>
       newStats.foreach({ case (s, pickeeId) => {
+        logger.info(s"Updating stats: $s, ${s.value} for internal pickee id: $pickeeId")
+        println(s"Updating stats: $s, ${s.value} for internal pickee id: $pickeeId. targeting $targetedAtTstamp")
         val pickeeQ =
           s"""update pickee_stat_period psd set value = value + {newStats} from pickee p
-         join league_user lu using(user_id)
-         join league l using(league_id)
          join pickee_stat ps using(pickee_id)
          where (period is NULL or period = {period}) and ps.pickee_stat_id = psd.pickee_stat_id and
-             |p.pickee_id = {pickeeId} and ps.stat_field_id = {statFieldId} and league_id = {leagueId};
+          p.pickee_id = {pickeeId} and ps.stat_field_id = {statFieldId} and league_id = {leagueId};
          """
         SQL(pickeeQ).on(
           "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statFieldId,
@@ -172,14 +169,18 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
          join pickee p using(pickee_id)
          join league_user_stat lus using(league_user_id)
          where (period is NULL or period = {period}) and lus.league_user_stat_id = lusd.league_user_stat_id and
-               |t.timespan @> {targetedAtTstamp} and p.pickee_id = {pickeeId} and lus.stat_field_id = {statFieldId};
-               |"""
+                t.timespan @> {targetedAtTstamp}::timestamptz and p.pickee_id = {pickeeId} and lus.stat_field_id = {statFieldId}
+               and l.league_id = {leagueId};
+              """
           //(select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;
-          SQL(q).on(
+          val sql = SQL(q).on(
             "newStats" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.statFieldId,
-            "targetedAtTstamp" -> targetedAtTstamp
-          ).executeUpdate()
-    }}), InternalServerError("Internal server error updating stats"))
+            "targetedAtTstamp" -> targetedAtTstamp, "leagueId" -> league.leagueId
+          )
+          //println(sql.sql)
+           sql.executeUpdate()
+        //println(changed)
+    }}), c, InternalServerError("Internal server error updating stats"))
   }
 
   def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>

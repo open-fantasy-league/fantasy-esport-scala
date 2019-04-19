@@ -9,6 +9,7 @@ import play.api.libs.json._
 import models._
 import anorm._
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import utils.GroupByOrderedImplicit._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -107,20 +108,22 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
                                   leagueId: Long, statFieldId: Option[Long], period: Option[Int]
                                 )(implicit c: Connection): Iterable[PickeeStatsOut] = {
     val rowParser: RowParser[PickeeLimitsAndStatsRow] = Macro.namedParser[PickeeLimitsAndStatsRow](ColumnNaming.SnakeCase)
+    //order by p.price desc
     SQL(
       """
-        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max),
+        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max) as "max",
         |sf.name as stat_field_name, psd.value, ps.previous_rank
         |from pickee p join pickee_stat ps using(pickee_id) join pickee_stat_period psd using(pickee_stat_id)
         | join stat_field sf using(stat_field_id)
-        | left join limit_type lt using(league_id) left join "limit" l using(limit_type_id)
-        | where league_id = {leagueId} and ({period} is null or period = {period}) and
+        | left join limit_type lt on(lt.league_id = p.league_id) left join "limit" l using(limit_type_id)
+        | where p.league_id = {leagueId} and ({period} is null or period = {period}) and
         | ({statFieldId} is null or stat_field_id = {statFieldId})
-        | order by p.price desc
+        | order by pickee_name;
       """.stripMargin).on("leagueId" -> leagueId, "period" -> period, "statFieldId" -> statFieldId).
-      as(rowParser.*).groupBy(_.externalPickeeId).map({case(internalPickeeId, v) => {
+      as(rowParser.*).groupByOrdered(_.externalPickeeId).map({case(internalPickeeId, v) => {
       PickeeStatsOut(
-        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price), v.map(lim => lim.limitType -> lim.limitName).toMap,
+        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price),
+        v.withFilter(_.limitType.isDefined).map(lim => lim.limitType.get -> lim.limitName.get).toMap,
       v.map(s => s.statFieldName -> s.value).toMap
       )
     }})

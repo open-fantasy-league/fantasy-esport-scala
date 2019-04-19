@@ -3,7 +3,7 @@ package models
 import play.api.libs.json.{JsValue, Json, Writes}
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-case class StatsRow(statFieldId: Long, value: Double)
+case class StatsRow(statId: Long, statFieldId: Long, value: Double)
 
 object StatsRow{
 //  implicit val implicitWrites = new Writes[StatsRow] {

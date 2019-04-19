@@ -14,8 +14,8 @@ case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName:
 case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(
-                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String,
-                                    limitName: String, max: Int, statFieldName: String, value: Double, previousRank: Int)
+                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: Option[String],
+                                    limitName: Option[String], max: Option[Int], statFieldName: String, value: Double, previousRank: Int)
 
 object PickeeRow {
   implicit val implicitWrites = new Writes[PickeeRow] {
