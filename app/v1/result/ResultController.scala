@@ -78,8 +78,8 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
                 insertedMatch <- newMatch(input, league, now)
                 insertedResults <- newResults(input, league, insertedMatch, internalPickee)
                 insertedStats <- newStats(league, insertedMatch.id, internalPickee)
-                correctPeriod <- getPeriod(input, league, now)
-                updatedStats <- updateStats(c, insertedStats, league, correctPeriod)
+                correctPeriod <- getPeriod(input, league, insertedMatch.targetedAtTstamp)
+                updatedStats <- updateStats(c, insertedStats, league, correctPeriod, insertedMatch.targetedAtTstamp)
                 success = "Successfully added results"
               } yield success).fold(l => {
                 error = Some(l); c.rollback(); throw new Exception("fuck")
@@ -157,8 +157,8 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
     }))
     tryOrResponse(() => {pointsTable.insert(newStats.map(_._1)); newStats}, InternalServerError("Internal server error adding result"))
   }
-
-  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: League, period: Int): Either[Result, Any] = {
+  
+  private def updateStats(implicit c: Connection, newStats: List[(Points, Long)], league: League, period: Int, targetedAtTstamp: Timestamp): Either[Result, Any] = {
     tryOrResponse(() =>
       newStats.foreach({ case (s, pickeeId) => {
         val pickeeStat = pickeeStatTable.where(
@@ -173,14 +173,17 @@ class ResultController @Inject()(db: Database, cc: ControllerComponents, resultR
             s"""update league_user_stat_daily lusd set value = value + {newPoints} from useru u
          join league_user lu on (u.id = lu.user_id)
          join league l on (l.id = lu.league_id)
-         join team t on (t.league_user_id = lu.id and upper(t.timespan) is NULL)
+         join team t on (t.league_user_id = lu.id and t.timespan @> {targetedAtTstamp}::timestamptz)
          join team_pickee tp on (tp.team_id = t.id)
          join pickee p on (p.id = tp.pickee_id and p.id = {pickeeId})
          join league_user_stat lus on (lus.league_user_id = lu.id and lus.stat_field_id = {statFieldId})
          where (period is NULL or period = {period}) and lus.id = lusd.league_user_stat_id and
           (select count(*) from team_pickee where team_pickee.team_id = t.id) = l.team_size;
          """
-          SQL(q).on("newPoints" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.pointsFieldId).executeUpdate()
+          SQL(q).on(
+            "newPoints" -> s.value, "period" -> period, "pickeeId" -> pickeeId, "statFieldId" -> s.pointsFieldId,
+            "targetedAtTstamp" -> targetedAtTstamp
+          ).executeUpdate()
     }}), InternalServerError("Internal server error updating stats"))
   }
 

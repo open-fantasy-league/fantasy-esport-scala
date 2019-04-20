@@ -109,6 +109,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getPickeesWithLimits(leagueId: Long): Iterable[PickeeOut] = {
   val query = join(leagueTable, pickeeTable, pickeeLimitTable.leftOuter, limitTable.leftOuter, limitTypeTable.leftOuter)(
     (l, p, pf, f, ft) =>
+      where(p.leagueId === leagueId)
       select((p, ft, f))
         on(
         p.leagueId === l.id, pf.map(_.pickeeId) === p.id, pf.map(_.limitId) === f.map(_.id),

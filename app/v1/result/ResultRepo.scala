@@ -55,8 +55,9 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   override def get(period: Option[Int]): Iterable[ResultsOut] = {
     // TODO period filter
     // TODO filter by league
+    // TODO i hardcoded dreamleague here
     val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
-      (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
+      (m, r, p, s, pck) => where(r.matchId === m.id and m.leagueId === 2 and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
       select((m, r, p, s, pck))
       orderBy(m.targetedAtTstamp desc, p.value asc)
     )
