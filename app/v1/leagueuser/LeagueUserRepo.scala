@@ -23,7 +23,8 @@ import v1.transfer.TransferRepo
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
-case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]])
+case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]],
+                   showTeam: Boolean = true)
 
 case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
 
@@ -56,7 +57,7 @@ object Ranking{
         "value" -> ranking.value,
         "rank" -> ranking.rank,
         "previousRank" -> ranking.previousRank,
-        "team" -> ranking.team
+        "team" ->  ranking.team
       )
     }
   }
@@ -108,7 +109,7 @@ trait LeagueUserRepo{
             )(implicit c: Connection): Unit
   def getRankings(
                    league: LeagueRow, statFieldId: Long, period: Option[Int], userIds: Option[Array[Long]],
-                   secondaryOrdering: Option[List[Long]]
+                   secondaryOrdering: Option[List[Long]], showTeam: Boolean
                  )(implicit c: Connection): LeagueRankings
   def leagueUserStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int],
                                    timestamp: Option[LocalDateTime], secondaryOrdering: Option[List[Long]]
@@ -210,7 +211,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
 
   override def getRankings(
                             league: LeagueRow, statFieldId: Long, period: Option[Int],
-                            userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]]
+                            userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]], showTeam: Boolean
                           )(implicit c: Connection): LeagueRankings = {
       println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
       val qResult = getLeagueUserStatsAndTeam(league, statFieldId, period, None, secondaryOrdering).toList
@@ -232,7 +233,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
         println(f"rank: $rank")
         lastScore = value
         lastScoreRank = rank
-        Ranking(q.externalUserId, q.username, value, rank, q.previousRank, Some(team))
+        Ranking(q.externalUserId, q.username, value, rank, q.previousRank, if (showTeam) Some(team) else None)
       }})
 
     LeagueRankings(

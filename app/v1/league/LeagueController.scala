@@ -191,11 +191,12 @@ class LeagueController @Inject()(
     Future {
       db.withConnection { implicit c =>
         val users = request.getQueryString("users").map(_.split(",").map(_.toLong))
+        val showTeam = request.getQueryString("team").isDefined
         val secondaryOrdering = request.getQueryString("secondary").map(_.split(",").toList.map(s => leagueRepo.getStatFieldId(request.league.leagueId, s).get))
         (for {
           statFieldId <- leagueRepo.getStatFieldId(request.league.leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          rankings = leagueUserRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering)
+          rankings = leagueUserRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering, showTeam)
         } yield Ok(Json.toJson(rankings))).fold(identity, identity)
       }
     }

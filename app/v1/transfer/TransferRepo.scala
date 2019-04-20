@@ -78,6 +78,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
 
   override def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean = {
     // TODO need to check this againbst something. doesnt work right now
+    if (newTeamIds.isEmpty) return true
     val q =
       """select not exists (select 1 from pickee p
         | join limit_type lt using(league_id)
