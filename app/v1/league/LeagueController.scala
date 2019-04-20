@@ -20,8 +20,12 @@ import models._
 import v1.leagueuser.LeagueUserRepo
 import v1.pickee.{PickeeFormInput, PickeeRepo}
 
-case class PeriodInput(start: LocalDateTime, end: LocalDateTime, multiplier: Double)
-case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double])
+case class PeriodInput(
+                        start: LocalDateTime, end: LocalDateTime, multiplier: Double, onStartCloseTransferWindow: Boolean,
+                        onEndOpenTransferWindow: Boolean
+                      )
+case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double],
+                             onStartCloseTransferWindow: Option[Boolean], onEndOpenTransferWindow: Option[Boolean])
 
 case class LimitInput(name: String, max: Option[Int])
 
@@ -29,7 +33,7 @@ case class LimitTypeInput(name: String, description: Option[String], max: Option
 
 case class TransferInput(
                           transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
-                          transferBlockedDuringPeriod: Boolean, noWildcardForLateRegister: Boolean,
+                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean
                         )
 
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
@@ -42,7 +46,7 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
 
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
                                  tournamentId: Option[Int], transferOpen: Option[Boolean],
-                                 transferBlockedDuringPeriod: Option[Boolean],
+                                 forceFullTeams: Option[Boolean],
                                  transferDelayMinutes: Option[Int],
                                  url: Option[String], transferLimit: Option[Int],
                                  transferWildcard: Option[Boolean],
@@ -70,7 +74,9 @@ class LeagueController @Inject()(
         "periods" -> list(mapping(
           "start" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),
           "end" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),
-          "multiplier" -> default(of(doubleFormat), 1.0)
+          "multiplier" -> default(of(doubleFormat), 1.0),
+          "onStartCloseTransferWindow" -> default(boolean, false),
+          "onEndOpenTransferWindow" -> default(boolean, false)
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
         //"captain" -> default(boolean, false),
@@ -78,7 +84,7 @@ class LeagueController @Inject()(
           "transferLimit" -> optional(number),
           "transferDelayMinutes" -> default(number, 0),
           "transferWildcard" -> boolean,
-          "transferBlockedDuringPeriod" -> default(boolean, false),
+          "forceFullTeams" -> default(boolean, false),
           "noWildcardForLateRegister" -> default(boolean, false),
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
@@ -119,7 +125,7 @@ class LeagueController @Inject()(
         "isPrivate" -> optional(boolean),
         "tournamentId" -> optional(number),
         "transferOpen" -> optional(boolean),
-        "transferBlockedDuringPeriod" -> optional(boolean),
+        "forceFullTeams" -> optional(boolean),
         "transferDelayMinutes" -> optional(number),
         "url" -> optional(nonEmptyText),
         "transferLimit" -> optional(number),
@@ -138,6 +144,8 @@ class LeagueController @Inject()(
         "start" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
         "end" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
         "multiplier" -> optional(of(doubleFormat)),
+        "onStartCloseTransferWindow" -> optional(boolean),
+        "onEndOpenTransferWindow" -> optional(boolean)
       )(UpdatePeriodInput.apply)(UpdatePeriodInput.unapply)
     )
   }
@@ -240,7 +248,9 @@ class LeagueController @Inject()(
     def success(input: UpdatePeriodInput) = {
       db.withConnection { implicit c =>
         (for {
-          updatedPeriodId <- tryOrResponse(() => leagueRepo.updatePeriod(leagueId, periodValue, input.start, input.end, input.multiplier), BadRequest("Invalid leagueId or period value"))
+          updatedPeriodId <- tryOrResponse(() => leagueRepo.updatePeriod(
+            leagueId, periodValue, input.start, input.end, input.multiplier, input.onStartCloseTransferWindow, input.onEndOpenTransferWindow
+          ), BadRequest("Invalid leagueId or period value"))
           out = Ok(Json.toJson("Successfully updated"))
         } yield out).fold(identity, identity)
       }

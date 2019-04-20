@@ -3,6 +3,7 @@ package models
 import java.time.LocalDateTime
 
 import play.api.libs.json._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 case class DetailedLeagueRow(
                             leagueId: Long,
@@ -18,7 +19,7 @@ case class DetailedLeagueRow(
                              teamSize: Int,
                              transferDelayMinutes: Int,
                              transferOpen: Boolean,
-                             transferBlockedDuringPeriod: Boolean,
+                             forceFullTeams: Boolean,
                              url: String,
                              urlVerified: Boolean,
                              applyPointsAtStartTime: Boolean,
@@ -29,6 +30,8 @@ case class DetailedLeagueRow(
                              start: LocalDateTime,
                              end: LocalDateTime,
                              multiplier: Double,
+                             onStartCloseTransferWindow: Boolean,
+                             onEndOpenTransferWindow: Boolean,
                              current: Boolean,
                              statFieldName: Option[String],
                              limitTypeName: Option[String],
@@ -51,7 +54,7 @@ case class PublicLeagueRow(
                           teamSize: Int,
                           transferDelayMinutes: Int,
                           transferOpen: Boolean,
-                          transferBlockedDuringPeriod: Boolean,
+                          forceFullTeams: Boolean,
                           url: String,
                           urlVerified: Boolean,
                           applyPointsAtStartTime: Boolean,
@@ -78,7 +81,7 @@ object PublicLeagueRow{
         "startingMoney" -> league.startingMoney,
         "transferOpen" -> league.transferOpen,
         "transferDelayMinutes" -> league.transferDelayMinutes,
-        "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
+        "forceFullTeams" -> league.forceFullTeams,
         "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister,
@@ -103,7 +106,7 @@ case class LeagueRow(leagueId: Long,
                      teamSize: Int,
                      transferDelayMinutes: Int = 0, // Only applies for when period 1 has started
                      transferOpen: Boolean = false,
-                     transferBlockedDuringPeriod: Boolean = false,
+                     forceFullTeams: Boolean = false,
                      url: String = "",
                      urlVerified: Boolean = false,
                      currentPeriodId: Option[Long] = None,
@@ -132,6 +135,8 @@ case class PeriodRow(periodId: Long,
                      start: LocalDateTime,
                      end: LocalDateTime,
                      multiplier: Double = 1.0,
+                     onStartCloseTransferWindow: Boolean = false,
+                     onEndOpenTransferWindow: Boolean = false,
                      nextPeriodId: Option[Long] = None,
                      ended: Boolean = false,
                     )
@@ -143,10 +148,14 @@ object PeriodRow{
         "value" -> f.value,
         "start" -> f.start,
         "end" -> f.end,
-        "multiplier" -> f.multiplier
+        "multiplier" -> f.multiplier,
+        "onStartCloseTransferWindow" -> f.onStartCloseTransferWindow,
+        "onEndOpenTransferWindow" -> f.onEndOpenTransferWindow
       )
     }
   }
+
+  val parser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
 }
 
 object LeagueRow{
@@ -167,7 +176,7 @@ object LeagueRow{
         "startingMoney" -> league.startingMoney,
         "transferOpen" -> league.transferOpen,
         "transferDelayMinutes" -> league.transferDelayMinutes,
-        "transferBlockedDuringPeriod" -> league.transferBlockedDuringPeriod,
+        "forceFullTeams" -> league.forceFullTeams,
         "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister

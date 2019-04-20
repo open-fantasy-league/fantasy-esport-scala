@@ -34,7 +34,7 @@ object LeagueFull{
         "transferWildcard" -> league.league.transferWildcard,
         "transferOpen" -> league.league.transferOpen,
         "transferDelayMinutes" -> league.league.transferDelayMinutes,
-        "transferBlockedDuringPeriod" -> league.league.transferBlockedDuringPeriod,
+        "forceFullTeams" -> league.league.forceFullTeams,
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields,
         "limitTypes" -> league.limits,
@@ -72,7 +72,8 @@ trait LeagueRepo{
   def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow]): LeagueFull // TODO private
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
-                    multiplier: Option[Double])(implicit c: Connection): Int
+                    multiplier: Option[Double], onStartCloseTransferWindow: Option[Boolean],
+                    onEndOpenTransferWindow: Option[Boolean])(implicit c: Connection): Int
   def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
     implicit c: Connection, updateHistoricRanks: Long => Unit
   )
@@ -87,7 +88,6 @@ trait LeagueRepo{
 @Singleton
 class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
 
-  private val periodParser: RowParser[PeriodRow] = Macro.namedParser[PeriodRow](ColumnNaming.SnakeCase)
   private val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
   private val detailedLeagueParser: RowParser[DetailedLeagueRow] = Macro.namedParser[DetailedLeagueRow](ColumnNaming.SnakeCase)
 
@@ -95,7 +95,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(
       s"""select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
-        |transfer_blocked_during_period, url, url_verified, current_period_id, apply_points_at_start_time,
+        |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
         | no_wildcard_for_late_register
         | from league where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
@@ -103,10 +103,11 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull = {
     val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
-          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open, transfer_blocked_during_period,
+          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register,
            (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
            p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
+           p.on_start_close_transfer_window, p.on_end_open_transfer_window,
           CASE WHEN l.current_period_id is null then false
           WHEN p.period_id = l.current_period_id then true
            ELSE false END as current, sf.name as stat_field_name,
@@ -133,18 +134,18 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     println("Inserting new league")
     val q = SQL(
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description, transfer_limit,
-        |transfer_wildcard, starting_money, team_size, transfer_blocked_during_period, transfer_open,
+        |transfer_wildcard, starting_money, team_size, force_full_teams, transfer_open,
         |transfer_delay_minutes, url, url_verified, current_period_id, apply_points_at_start_time,
         |no_wildcard_for_late_register) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription}, {transferLimit}, {transferWildcard},
-        | {startingMoney}, {teamSize}, {transferBlockedDuringPeriod}, false, {transferDelayMinutes}, {url}, false, null,
+        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {transferDelayMinutes}, {url}, false, null,
         |  {applyPointsAtStartTime},
         | {noWildcardForLateRegister}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
       "periodDescription" -> input.periodDescription, "transferLimit" -> input.transferInfo.transferLimit,
       "transferWildcard" -> input.transferInfo.transferWildcard, "startingMoney" -> input.startingMoney,
-      "teamSize" -> input.teamSize, "transferBlockedDuringPeriod" -> input.transferInfo.transferBlockedDuringPeriod,
+      "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams,
       "transferDelayMinutes" -> input.transferInfo.transferDelayMinutes, "url" -> input.url.getOrElse(""),
       "applyPointsAtStartTime" -> input.applyPointsAtStartTime,
       "noWildcardForLateRegister" -> input.transferInfo.noWildcardForLateRegister)
@@ -157,7 +158,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
        input.tournamentId,  input.pickeeDescription,
       input.periodDescription, input.transferInfo.transferLimit,
       input.transferInfo.transferWildcard, input.startingMoney,
-      input.teamSize, input.transferInfo.transferDelayMinutes, false, input.transferInfo.transferBlockedDuringPeriod,
+      input.teamSize, input.transferInfo.transferDelayMinutes, false, input.transferInfo.forceFullTeams,
       input.url.getOrElse(""), false, null,
       input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister)
   }
@@ -179,9 +180,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       setString += ", transfer_open = {transferOpen}"
       params = params :+ NamedParameter("transferOpen", input.transferOpen.get)
     }
-    if (input.transferBlockedDuringPeriod.isDefined) {
-      setString += ", transfer_blocked_during_period = {transferBlockedDuringPeriod}"
-      params = params :+ NamedParameter("transferBlockedDuringPeriod", input.transferBlockedDuringPeriod.get)
+    if (input.forceFullTeams.isDefined) {
+      setString += ", force_full_teams = {forceFullTeams}"
+      params = params :+ NamedParameter("forceFullTeams", input.forceFullTeams.get)
     }
     if (input.transferDelayMinutes.isDefined) {
       setString += ", transfer_delay_minutes = {transferDelayMinutes}"
@@ -237,47 +238,51 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long = {
     val q =
-      s"""insert into period(league_id, value, timespan, multiplier, next_period_id, ended) values (
-        |{leagueId}, {period}, tstzrange({start}, {end}), {multiplier}, {nextPeriodId}, false
+      s"""insert into period(league_id, value, timespan, multiplier, next_period_id, ended, on_start_close_transfer_window,
+         | on_end_open_transfer_window) values (
+        |{leagueId}, {period}, tstzrange({start}, {end}), {multiplier}, {nextPeriodId}, false, {onStartCloseTransferWindow},
+         | {onEndOpenTransferWindow}
         |) returning period_id;""".stripMargin
     SQL(q).on("leagueId" -> leagueId, "nextPeriodId" -> nextPeriodId, "period" -> period, "start" -> input.start,
-    "end" -> input.end, "multiplier" -> input.multiplier).executeInsert().get
+    "end" -> input.end, "multiplier" -> input.multiplier, "onStartCloseTransferWindow" -> input.onStartCloseTransferWindow,
+    "onEndOpenTransferWindow" -> input.onEndOpenTransferWindow).executeInsert().get
   }
 
   override def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow] = {
     val q =
       """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
-        | next_period_id, ended
+        | next_period_id, ended, on_start_close_transfer_window, on_end_open_transfer_window
         | from period
         | where period_id = {periodId};""".stripMargin
-    SQL(q).on("periodId" -> periodId).as(periodParser.singleOpt)
+    SQL(q).on("periodId" -> periodId).as(PeriodRow.parser.singleOpt)
   }
 
   override def getPeriods(leagueId: Long)(implicit c: Connection): Iterable[PeriodRow] = {
     val q = s"""select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
-      next_period_id, ended
+      next_period_id, ended, on_start_close_transfer_window, on_end_open_transfer_window
       from period where league_id = $leagueId;"""
-    SQL(q).as(periodParser.*)
+    SQL(q).as(PeriodRow.parser.*)
   }
 
   override def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow = {
     val q = s"""select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
-      next_period_id, ended
+      next_period_id, ended, on_start_close_transfer_window, on_end_open_transfer_window
        from period where league_id = $leagueId and value = $value;"""
-    SQL(q).as(periodParser.single)
+    SQL(q).as(PeriodRow.parser.single)
   }
 
   override def getPeriodFromTimestamp(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow] = {
     val q = """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
-              next_period_id, ended from period where league_id = {leagueId} and  timespan @> {time}::timestamptz;"""
-    SQL(q).on("leagueId" -> leagueId, "time" -> time).as(periodParser.singleOpt)
+              next_period_id, ended, on_start_close_transfer_window, on_end_open_transfer_window
+               from period where league_id = {leagueId} and  timespan @> {time}::timestamptz;"""
+    SQL(q).on("leagueId" -> leagueId, "time" -> time).as(PeriodRow.parser.singleOpt)
   }
 
   override def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow] = {
     val q = """select period_id, league_id, value, lower(timespan) as start, upper(timespan) as "end", multiplier,
-      next_period_id, ended
+      next_period_id, ended, on_start_close_transfer_window, on_end_open_transfer_window
       from period where period_id = {periodId};"""
-    SQL(q).on("periodId" -> league.currentPeriodId).as(periodParser.singleOpt)
+    SQL(q).on("periodId" -> league.currentPeriodId).as(PeriodRow.parser.singleOpt)
   }
 
   override def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow] = {
@@ -303,15 +308,17 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val league = PublicLeagueRow(
       head.leagueId, head.leagueName, head.gameId, head.isPrivate, head.tournamentId, head.pickeeDescription, head.periodDescription,
       head.transferLimit, head.transferWildcard, head.startingMoney, head.teamSize, head.transferDelayMinutes,
-      head.transferOpen, head.transferBlockedDuringPeriod, head.url, head.urlVerified, head.applyPointsAtStartTime,
+      head.transferOpen, head.forceFullTeams, head.url, head.urlVerified, head.applyPointsAtStartTime,
       head.noWildcardForLateRegister, head.started, head.ended
     )
     val statFields = rows.flatMap(_.statFieldName)
     // TODO add current
     val periods = rows.map(
-      r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier)
+      r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier, r.onStartCloseTransferWindow, r.onEndOpenTransferWindow)
     )
-    val currentPeriod = rows.withFilter(_.current).map(r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier)).headOption
+    val currentPeriod = rows.withFilter(_.current).map(r => PeriodRow(
+      -1, -1, r.periodValue, r.start, r.end, r.multiplier, r.onStartCloseTransferWindow, r.onEndOpenTransferWindow
+    )).headOption
     // TODO think this filter before group by inefficient
     val limits: Map[String, Iterable[LimitRow]] = rows.filter(_.limitTypeName.isDefined).groupBy(_.limitTypeName.get).mapValues(
       v => v.map(x => LimitRow(x.limitName.get, x.limitMax.get))
@@ -321,7 +328,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def updatePeriod(
                              leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
-                             multiplier: Option[Double])(implicit c: Connection): Int = {
+                             multiplier: Option[Double], onStartCloseTransferWindow: Option[Boolean],
+                             onEndOpenTransferWindow: Option[Boolean])(implicit c: Connection): Int = {
     var setString: String = ""
     var params: collection.mutable.Seq[NamedParameter] =
       collection.mutable.Seq(
@@ -348,6 +356,15 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       setString += ", [multiplier] = {multiplier}"
       params = params :+ NamedParameter("multiplier", multiplier.get)
     }
+
+    if (onStartCloseTransferWindow.isDefined) {
+      setString += ", on_start_close_transfer_window = {onStartCloseTransferWindow}"
+      params = params :+ NamedParameter("onStartCloseTransferWindow", onStartCloseTransferWindow.get)
+    }
+    if (onEndOpenTransferWindow.isDefined) {
+      setString += ", on_end_open_transfer_window = {onEndOpenTransferWindow}"
+      params = params :+ NamedParameter("onEndOpenTransferWindow", onEndOpenTransferWindow.get)
+    }
     SQL(
       "update period set " + setString + " WHERE [value] = {value} and [league_id] = {league_id}"
     ).on(params:_*).executeUpdate()
@@ -356,28 +373,29 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection): Unit = {
     println("tmp")
     // TODO batch
-    periodIds.foreach(periodId => {
+    val open_transfers = periodIds.map(periodId => {
       val q =
         """update period set ended = true, timespan = tstzrange(lower(timespan), {timestamp})
-    where period_id = {periodId};
+    where period_id = {periodId} returning on_end_open_transfer_window;
     """
-      SQL(q).on("periodId" -> periodId, "timestamp" -> timestamp).executeUpdate()
+      SQL(q).on("periodId" -> periodId, "timestamp" -> timestamp).as(
+        SqlParser.bool("on_end_open_transfer_window").single)
     })
-    leagueIds.foreach(lid =>
+    leagueIds.zip(open_transfers).withFilter(_._2).foreach({ case (lid, _) =>
       SQL(
         s"update league set transfer_open = true where league_id = $lid;"
       ).executeUpdate()
-    )
+    })
   }
 
   override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
     implicit c: Connection, updateHistoricRanks: Long => Unit): Unit = {
     println("tmp")
-    SQL("""update period set timespan = tstzrange({timestamp}, upper(timespan)) where period_id = {periodId};""").on(
+    val closeTransfer = SQL("""update period set timespan = tstzrange({timestamp}, upper(timespan)) where period_id = {periodId} returning on_start_close_transfer_window;""").on(
       "timestamp" -> timestamp, "periodId" -> period.periodId
-    ).executeUpdate()
+    ).as(SqlParser.bool("on_start_close_transfer_window").single)
 
-    val transferOpenSet = if (league.transferBlockedDuringPeriod) ", transfer_open = false" else ""
+    val transferOpenSet = if (closeTransfer) ", transfer_open = false" else ""
     SQL(
       s"update league set current_period_id = ${period.periodId} $transferOpenSet where league_id = ${league.leagueId};"
     ).executeUpdate()
@@ -402,7 +420,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       """select * from league l join period p using(league_id)
         |where (l.current_period_id is null or not(l.current_period_id == p.periodId)) and
         |p.ended = false and lower(p.timespan) <= {currentTime};""".stripMargin
-    SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ periodParser).*).
+    SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ PeriodRow.parser).*).
       foreach(x => postStartPeriodHook(x._1, x._2, currentTime))
   }
 
