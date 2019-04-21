@@ -10,6 +10,7 @@ import play.api.libs.json._
 import play.api.mvc.Result
 import play.api.mvc.Results.{BadRequest, InternalServerError}
 import anorm._
+import anorm.~
 import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 import akka.actor.ActorSystem
@@ -74,10 +75,10 @@ trait LeagueRepo{
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
                     multiplier: Option[Double], onStartCloseTransferWindow: Option[Boolean],
                     onEndOpenTransferWindow: Option[Boolean])(implicit c: Connection): Int
-  def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
+  def postStartPeriodHook(leagueId: Long, periodId: Long, periodValue: Int, timestamp: LocalDateTime)(
     implicit c: Connection, updateHistoricRanks: Long => Unit
   )
-  def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
+  def postEndPeriodHook(leagueIds: Iterable[Long], periodIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection, updateHistoricRanksFunc: Long => Unit)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
@@ -370,9 +371,10 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     ).on(params:_*).executeUpdate()
   }
 
-  override def postEndPeriodHook(periodIds: Iterable[Long], leagueIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection): Unit = {
+  override def postEndPeriodHook(leagueIds: Iterable[Long], periodIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection): Unit = {
     println("tmp")
     // TODO batch
+    println(s"""end period league: ${leagueIds.mkString(",")}, periodId: ${periodIds.mkString(",")}""")
     val open_transfers = periodIds.map(periodId => {
       val q =
         """update period set ended = true, timespan = tstzrange(lower(timespan), {timestamp})
@@ -388,23 +390,24 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     })
   }
 
-  override def postStartPeriodHook(league: LeagueRow, period: PeriodRow, timestamp: LocalDateTime)(
+  override def postStartPeriodHook(leagueId: Long, periodId: Long, periodValue: Int, timestamp: LocalDateTime)(
     implicit c: Connection, updateHistoricRanks: Long => Unit): Unit = {
     println("tmp")
+    println(s"starting period league: $leagueId, periodId: $periodId, value: $periodValue")
     val closeTransfer = SQL("""update period set timespan = tstzrange({timestamp}, upper(timespan)) where period_id = {periodId} returning on_start_close_transfer_window;""").on(
-      "timestamp" -> timestamp, "periodId" -> period.periodId
+      "timestamp" -> timestamp, "periodId" -> periodId
     ).as(SqlParser.bool("on_start_close_transfer_window").single)
 
     val transferOpenSet = if (closeTransfer) ", transfer_open = false" else ""
     SQL(
-      s"update league set current_period_id = ${period.periodId} $transferOpenSet where league_id = ${league.leagueId};"
+      s"update league set current_period_id = $periodId $transferOpenSet where league_id = $leagueId;"
     ).executeUpdate()
-    if (period.value > 1) updateHistoricRanks(league.leagueId)
+    if (periodValue > 1) updateHistoricRanks(leagueId)
   }
 
   override def endPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     val q =
-      """select league_id, period_id from league l join period p on (
+      """select l.league_id, period_id from league l join period p on (
         |l.current_period_id = p.period_id and p.ended = false and upper(p.timespan) <= {currentTime} and p.next_period_id is not null);""".stripMargin
     val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as(
       (SqlParser.long("league_id") ~ SqlParser.long("period_id")).*
@@ -416,12 +419,20 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   ) = {
     // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
     // and is future period that should have started...so lets start it
+    val parser: RowParser[(Long, Long, Int)] = (
+      SqlParser.long("league_id") ~
+        SqlParser.long("period_id") ~
+        SqlParser.int("value")
+      ) map {
+      case league_id ~ period_id ~ value => (league_id, period_id, value)
+    }
     val q =
-      """select * from league l join period p using(league_id)
-        |where (l.current_period_id is null or not(l.current_period_id == p.periodId)) and
+      """select l.league_id, period_id, value from league l join period p using(league_id)
+        |where (l.current_period_id is null or l.current_period_id != p.period_id) and
         |p.ended = false and lower(p.timespan) <= {currentTime};""".stripMargin
-    SQL(q).on("currentTime" -> currentTime).as((leagueParser ~ PeriodRow.parser).*).
-      foreach(x => postStartPeriodHook(x._1, x._2, currentTime))
+    SQL(q).on("currentTime" -> currentTime).as(parser.*).foreach(
+      x => postStartPeriodHook(x._1, x._2, x._3, currentTime)
+    )
   }
 
   override def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long] = {

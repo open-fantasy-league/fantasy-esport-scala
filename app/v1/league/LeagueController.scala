@@ -207,7 +207,7 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         leagueRepo.getCurrentPeriod(request.league) match {
           case Some(p) if !p.ended => {
-            leagueRepo.postEndPeriodHook(List(p.periodId), List(request.league.leagueId), LocalDateTime.now())
+            leagueRepo.postEndPeriodHook(List(request.league.leagueId), List(p.periodId), LocalDateTime.now())
             Ok("Successfully ended day")
           }
           case _ => BadRequest("Period already ended (Must start next period first)")
@@ -223,7 +223,7 @@ class LeagueController @Inject()(
         implicit val implUpdateHistoricRanksFunc: Long => Unit = leagueUserRepo.updateHistoricRanks
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league)
-          _ = leagueRepo.postStartPeriodHook(request.league, newPeriod, LocalDateTime.now())
+          _ = leagueRepo.postStartPeriodHook(request.league.leagueId, newPeriod.periodId, newPeriod.value, LocalDateTime.now())
           out = Ok(f"Successfully started period $newPeriod")
         } yield out).fold(identity, identity)
       }
