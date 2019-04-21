@@ -453,6 +453,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long] = {
+    println(s"leagueid: $leagueId, statfieldname: $statFieldName")
     SQL(
       "select stat_field_id from stat_field where league_id = {leagueId} and name = {statFieldName}"
     ).on("leagueId" -> leagueId, "statFieldName" -> statFieldName).as(SqlParser.long("stat_field_id").singleOpt)
