@@ -45,15 +45,17 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
                            oldTeamIds: Set[Long], time: LocalDateTime
                          )(implicit c: Connection) = {
       val newPickees: Set[Long] = (oldTeamIds -- toSellIds) ++ toBuyIds
+    if (toSellIds.nonEmpty) {
       val q =
         """update team t set timespan = tstzrange(lower(timespan), {time})
-    where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
+    where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL and t.pickeeId in ({toSellIds});
     """
-      SQL(q).on("leagueUserId" -> leagueUserId, "time" -> time).executeUpdate()
-    println("Ended current team")
+      SQL(q).on("leagueUserId" -> leagueUserId, "time" -> time, "toSellIds" -> toSellIds).executeUpdate()
+    }
+    println(s"""Ended current team pickees: ${toSellIds.mkString(", ")}""")
     SQL("update league_user set change_tstamp = null where league_user_id = {leagueUserId};").on("leagueUserId" -> leagueUserId).executeUpdate()
-    print(newPickees.mkString(", "))
-    newPickees.map(t => {
+    print(s"""Buying: ${toBuyIds.mkString(", ")}""")
+    toBuyIds.map(t => {
       SQL("insert into team(league_user_id, pickee_id, timespan) values({leagueUserId}, {pickeeId}, tstzrange({time}, null)) returning team_id;").
         on("leagueUserId" -> leagueUserId, "pickeeId" -> t, "time" -> time).executeInsert().get
     })
