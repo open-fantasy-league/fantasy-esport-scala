@@ -96,9 +96,10 @@ class TransferController @Inject()(
       Future {
         db.withTransaction { implicit c =>
           (for {
+            // TODO does select for update lock/block other reads?
             _ <- validateDuplicates(input.sell, sell, input.buy, buy)
             leagueStarted = leagueRepo.isStarted(league)
-            validateTransferOpen <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
+            _ <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
             applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, leagueUser.usedWildcard, sell)
             newRemaining <- updatedRemainingTransfers(leagueStarted, leagueUser.remainingTransfers, sell)
             pickees = pickeeRepo.getPickees(league.leagueId).toList
