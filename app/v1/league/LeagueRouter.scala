@@ -9,7 +9,6 @@ import play.api.routing.sird._
 
 class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter {
   val prefix = "/v1/leagues"
-  // TODO have a 'master router' for things like versioning query params
 
   override def routes: Routes = {
 

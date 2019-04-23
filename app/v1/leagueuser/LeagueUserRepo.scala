@@ -47,7 +47,6 @@ object LeagueWithLeagueUser {
   }
 }
 
-// TODO conditional fields
 object Ranking{
   implicit val implicitWrites = new Writes[Ranking] {
     def writes(ranking: Ranking): JsValue = {
@@ -146,7 +145,6 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
         Some(teamRepo.getLeagueUserTeam(leagueUser.leagueUserId))
       }
     }
-    // todo boolean to option?
     val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getLeagueUserTransfer(leagueUser.leagueUserId, Some(false))) else None
     val stats = if (showStats) {
       Some(getLeagueUserStats(
@@ -179,12 +177,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
       """.stripMargin).on(
       "leagueId" -> league.leagueId, "userId" -> userId, "startingMoney" -> league.startingMoney,
       "entered" -> LocalDateTime.now(), "remainingTransfers" -> league.transferLimit,
+      // dont give wildcard to people who join league late
       "usedWildcard" -> (!league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister))
     ).executeInsert().get
     println("executed insert league user")
       getWithUser(league.leagueId, userId).get
-    // dont give wildcard to people who join league late
-    // TODO update query to do returning x
   }
 
   override def insertLeagueUserStat(statFieldId: Long, leagueUserId: Long)(implicit c: Connection): Long = {
@@ -245,7 +242,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
                                    leagueId: Option[Long], leagueUserId: Option[Long], statFieldId: Option[Long],
                                    period: Option[Int], orderByValue: Boolean
                                  )(implicit c: Connection): Iterable[LeagueUserStatDailyRow] = {
-    // todo assert either league or league user id non empty
+    // todo assert either league or league user id non empty XOR
     // they are both nullable so that this func can work for either getting all league-users, or just one
     logger.debug("getLeagueUserStats")
     val periodFilter = if (period.isEmpty) "is null" else s"= ${period.get}"
@@ -273,7 +270,6 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
     println(period)
     val timestampFilter = if (timestamp.isDefined) "t.timespan @> {timestamp}::timestamptz" else "upper(t.timespan) is NULL"
     val periodFilter = if (period.isDefined) "lusd.period = {period}" else "lusd.period is NULL"
-    // TODO nice injection
     val q = secondaryOrdering match {
       case None => s"""select u.external_user_id, u.username, lu.league_user_id, lusd.value, lus.previous_rank,
                   pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, p.price from useru u
@@ -339,10 +335,7 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
   override def joinUsers(userIds: Iterable[Long], league: LeagueRow): Iterable[LeagueUserRow] = {
     db.withConnection { implicit c: Connection =>
       println("in joinusers")
-      // TODO move to league user repo
-      // // can ust pass stat field ids?
       val newLeagueUsers = userIds.map(uid => insertLeagueUser(league, uid))
-      // TODO for yield expression
       val newLeagueUserStatIds = leagueRepo.getStatFields(league.leagueId).flatMap(sf => newLeagueUsers.map({
         nlu => insertLeagueUserStat(sf.statFieldId, nlu.leagueUserId)
       }))
@@ -367,13 +360,11 @@ class LeagueUserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, tea
   }
 
   override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {
-    // TODO this needs to group by the stat field.
-    // currently will do weird ranks
     leagueRepo.getStatFields(leagueId).foreach(sf => {
       val leagueUserStatsOverall = getLeagueUserStats(Some(leagueId), None, Some(sf.statFieldId), None, true)
-      var lastScore = Double.MaxValue // TODO java max num
+      var lastScore = Double.MaxValue
       var lastScoreRank = 0
-      val newLeagueUserStat = leagueUserStatsOverall.zipWithIndex.map({
+      leagueUserStatsOverall.zipWithIndex.map({
         case (row, i) => {
           val value = row.value
           val rank = if (value == lastScore) lastScoreRank else i + 1

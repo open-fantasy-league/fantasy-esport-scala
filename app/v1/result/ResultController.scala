@@ -60,8 +60,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     )
   }
   implicit val parser = parse.default
-  //implicit val db_impl = db
-  //implicit val lr = leagueRepo //TODO can this just go in 2nd constructor args
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
     db.withConnection { implicit c =>processJsonResult(request.league)}

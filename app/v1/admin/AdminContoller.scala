@@ -35,8 +35,6 @@ class AdminController @Inject()(
   }
 
   def allRolloverPeriodReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
-    // // TODO test add leagues, sleep before end transaction, and see how id's turn out
-    // Thread.sleep(2000)
     Future {
       db.withConnection { implicit c =>
         // hacky way to avoid circular dependency

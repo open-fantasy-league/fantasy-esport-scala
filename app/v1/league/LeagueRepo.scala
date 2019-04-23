@@ -174,7 +174,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       params = params :+ NamedParameter("leagueName", input.name.get)
     }
     if (input.isPrivate.isDefined) {
-      setString += ", league_name = {isPrivate}"
+      setString += ", is_private = {isPrivate}"
       params = params :+ NamedParameter("isPrivate", input.isPrivate.get)
     }
     if (input.transferOpen.isDefined) {
@@ -297,23 +297,14 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         }
       }
       case None => {
-        // TODO sort by value
         Right(getPeriods(league.leagueId).toList.minBy(_.value))
       }
     }
   }
 
   override def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow]): LeagueFull = {
-    val head = rows.head
-    // TODO map between them func
-    val league = PublicLeagueRow(
-      head.leagueId, head.leagueName, head.gameId, head.isPrivate, head.tournamentId, head.pickeeDescription, head.periodDescription,
-      head.transferLimit, head.transferWildcard, head.startingMoney, head.teamSize, head.transferDelayMinutes,
-      head.transferOpen, head.forceFullTeams, head.url, head.urlVerified, head.applyPointsAtStartTime,
-      head.noWildcardForLateRegister, head.started, head.ended
-    )
+    val league = PublicLeagueRow.fromDetailedRow(rows.head)
     val statFields = rows.flatMap(_.statFieldName)
-    // TODO add current
     val periods = rows.map(
       r => PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier, r.onStartCloseTransferWindow, r.onEndOpenTransferWindow)
     )

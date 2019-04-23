@@ -11,7 +11,6 @@ class AdminRouter @Inject()(controller: AdminController) extends SimpleRouter {
   val prefix = "/v1/admin"
 
   override def routes: Routes = {
-    // TODO background task continually processing
     case POST(p"/processTransfers") =>
       controller.allProcessTransfersReq
 

@@ -90,6 +90,15 @@ object PublicLeagueRow{
       )
     }
   }
+
+  def fromDetailedRow(row: DetailedLeagueRow): PublicLeagueRow = {
+    PublicLeagueRow(
+      row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
+      row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.transferDelayMinutes,
+      row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
+      row.noWildcardForLateRegister, row.started, row.ended
+    )
+  }
 }
 
 case class LeagueRow(leagueId: Long,

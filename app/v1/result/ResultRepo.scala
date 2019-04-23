@@ -75,21 +75,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         | order by m.targeted_at_tstamp desc, s.value;
       """.stripMargin
     val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullResultParser.*)
-    // TODO period filter
-    // TODO filter by league
-//    val queryRaw = from(matchTable, resultTable, pointsTable, leagueStatFieldTable, pickeeTable)(
-//      (m, r, p, s, pck) => where(r.matchId === m.id and p.resultId === r.id and p.pointsFieldId === s.id and r.pickeeId === pck.id and (m.period === period .?))
-//      select((m, r, p, s, pck))
-//      orderBy(m.targetedAtTstamp desc, p.value asc)
-//    )
-//    val query = queryRaw.map(q => ResultQuery(q._1, q._2, q._3, q._4, q._5))
     resultQueryExtractor(r)
-//    resultQueryExtractor(r.map(q => {
-//      ResultQuery(MatchRow(q.externalMatchId, q.teamOne, q.teamTwo, q.teamOneVictory, q.tournamentId,
-//        q.startTime, q.addedTime,
-//        q.targetedAtTime, q.period), ResultRow(q.resultId, q.isTeamOne), StatsRow(q.pointsValue),
-//        LeagueStatFieldRow(q.statFieldName), PickeeRow(q.externalPickeeId, q.pickeeName, q.pickeeCost, true))
-//    }))
   }
 
   override def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut] = {

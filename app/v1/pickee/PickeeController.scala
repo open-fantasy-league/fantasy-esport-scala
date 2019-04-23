@@ -68,7 +68,6 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
         db.withConnection { implicit c =>
             val leaguePickees = pickeeRepo.getPickees(request.league.leagueId).toList
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
-          // TODO withFIlter
             leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
               pickeeRepo.updatePrice(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).price)
             })
