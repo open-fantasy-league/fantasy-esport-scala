@@ -1,5 +1,7 @@
 package models
 
+import anorm.{Macro, RowParser}
+import anorm.Macro.ColumnNaming
 import play.api.libs.json._
 
 case class GameRow(gameId: Long, gameName: String, code: String, variant: String, description: String)
@@ -16,4 +18,6 @@ object GameRow{
       )
     }
   }
+
+  val parser: RowParser[GameRow] = Macro.namedParser[GameRow](ColumnNaming.SnakeCase)
 }
