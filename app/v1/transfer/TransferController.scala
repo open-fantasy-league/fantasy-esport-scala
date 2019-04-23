@@ -112,7 +112,7 @@ class TransferController @Inject()(
             _ <- validatePickeeIds(if (applyWildcard) Set() else currentTeamIds, pickees, sell, buy)
             newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
             _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
-            _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck)
+            _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
             _ <- validateLimits(newTeamIds, league.leagueId)
             transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
@@ -185,10 +185,10 @@ class TransferController @Inject()(
     }
   }
 
-  private def updatedTeamSize(newTeamIds: Set[Long], leagueTeamSize: Int, isCheck: Boolean): Either[Result, Int] = {
+  private def updatedTeamSize(newTeamIds: Set[Long], leagueTeamSize: Int, isCheck: Boolean, forceFullTeams: Boolean): Either[Result, Int] = {
     newTeamIds.size match {
       case x if x <= leagueTeamSize => Right(x)
-      //case x if x < league.teamSize && !isCheck => Left(BadRequest(f"Cannot confirm transfers as team unfilled (require ${league.teamSize})"))
+      case x if x < leagueTeamSize && !isCheck && forceFullTeams => Left(BadRequest(f"Cannot confirm transfers as team unfilled (require $leagueTeamSize)"))
       case x => Left(BadRequest(
         f"Exceeds maximum team size of $leagueTeamSize"
       ))
