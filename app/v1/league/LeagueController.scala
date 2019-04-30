@@ -289,13 +289,28 @@ class LeagueController @Inject()(
             }
             println(newLeague)
             println(newLeague.leagueId)
+            val limitNamesToIds = leagueRepo.insertLimits(newLeague.leagueId, input.limits)
+            val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
+            pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
 
             val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points")
-            val statFieldIds = List(pointsFieldId) ++ input.extraStats.getOrElse(Nil).map({
-              es => leagueRepo.insertStatField(newLeague.leagueId, es)
+            val statFieldIds = List(pointsFieldId) ++ input.extraStats.map({
+              es => {
+                val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name)
+                if (!input.manuallyCalculatePoints) {
+                  if (es.allFactionPoints.isDefined) {
+                    leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get)
+                  }
+                  else {
+                    es.separateFactionPoints.foreach(
+                      sfp => leagueRepo.insertScoringField(statFieldId, Some(limitNamesToIds(sfp.name)), sfp.value)
+                    )
+                  }
+                }
+                statFieldId
+              }
             })
 
-            val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
             val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
             val newPickeeStatIds = statFieldIds.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
             val newLeagueUserStatIds = statFieldIds.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.leagueUserId)))
@@ -312,8 +327,6 @@ class LeagueController @Inject()(
             }
             })
 
-            val limitNamesToIds = leagueRepo.insertLimits(newLeague.leagueId, input.limits)
-            pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
             Created(Json.toJson(newLeague))
           } catch {case e: Throwable => {        val sw = new StringWriter
             e.printStackTrace(new PrintWriter(sw))

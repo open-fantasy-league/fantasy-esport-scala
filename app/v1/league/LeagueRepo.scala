@@ -64,6 +64,7 @@ trait LeagueRepo{
   def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long
   def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long
+  def insertScoringField(statFieldId: Long, limitId: Option[Long], value: Double): Long
   def getPeriod(periodId: Long)(implicit c: Connection): Option[PeriodRow]
   def getPeriods(leagueId: Long)(implicit c: Connection): Iterable[PeriodRow]
   def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow
@@ -235,6 +236,13 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val out = SQL(q).on("leagueId" -> leagueId, "name" -> name).executeInsert().get
     println("inserted stat field")
     out
+  }
+
+  override def insertScoringField(statFieldId: Long, limitId: Option[Long], value: Double): Long = {
+    println("inserting scoring field")
+    SQL("insert into scoring(stat_field_id, limit_id, value) VALUES ({statFieldId}, {limitId}, {value});").on(
+      "statFieldId" -> statFieldId, "limitId" -> limitId, "value" -> value
+    ).executeInsert()
   }
 
   override def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long = {
