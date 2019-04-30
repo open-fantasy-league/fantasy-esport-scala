@@ -85,6 +85,7 @@ trait LeagueRepo{
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
   def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
   def getStatFieldName(statFieldId: Long)(implicit c: Connection): Option[String]
+  def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Double
 }
 
 @Singleton
@@ -98,7 +99,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       s"""select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register
+        | no_wildcard_for_late_register, manually_apply_points
         | from league where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
 
@@ -461,6 +462,18 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(
       s"select name from stat_field where stat_field_id = $statFieldId"
     ).as(SqlParser.str("name").singleOpt)
+  }
+
+  override def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Double = {
+    // either this stat is faction agnostic, in which case there'll be a null entry
+    // or we should find the faction entry in one of the limits
+    // relies on only one limit type being used to determine points value
+    SQL(
+      """
+        |select value from scoring where stat_field_id = {statFieldId} and (limit_id is null or limit_id in ({limitIds}) limit 1
+        |""".stripMargin).on("statFieldId" -> statFieldId, "limitIds" -> limitIds).as(
+      SqlParser.double("value").single
+    )
   }
 }
 

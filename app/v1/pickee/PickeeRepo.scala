@@ -45,6 +45,7 @@ trait PickeeRepo{
                         )(implicit c: Connection): Unit
   def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow]
   def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut]
+  def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long]
   def getPickeeStat(
                      leagueId: Long, statFieldId: Option[Long], period: Option[Int]
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
@@ -102,6 +103,12 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price
       ), v.map(lim => lim.limitType -> lim.limitName).toMap)
     }})
+  }
+
+  override def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long] = {
+    SQL("""select limit_id from "limit" join pickee using(pickee_id) where pickee_id = {internalPickeeId}""").on(
+      "internalPickeeId" -> internalPickeeId
+    ).as(SqlParser.long("limit_id").*)
   }
 
   override def getPickeeStat(

@@ -129,17 +129,34 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
   private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])
                       (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
     // doing add results, add stats to pickee, and to league user all at once
-    // (was not like this in python)
     // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
     // i.e. avoidss what i was worried about where if user transferred a hero midway through processing, maybe they can
     // score stats from hero they were selling, then also hero they were buying, with rrace condition
     // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
     tryOrResponseRollback(() => {
-      pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
-        val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
-        val statFieldId = leagueRepo.getStatFieldId(league.leagueId, s.field).get
-        (StatsRow(resultRepo.insertStats(resultId, statFieldId, stats), statFieldId, s.value), ip.id)
-      })})
+      // TODO tidy same code in branches
+      if (league.manuallyApplyPoints) {
+        pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
+          val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
+          val statFieldId = leagueRepo.getStatFieldId(league.leagueId, s.field).get
+          (StatsRow(resultRepo.insertStats(resultId, statFieldId, stats), statFieldId, s.value), ip.id)
+        })})
+      }
+      else {
+        pickees.zip(resultIds).flatMap({ case (ip, resultId) =>
+          val pointsStatFieldId = leagueRepo.getStatFieldId(league.leagueId, "points").get
+          var pointsTotal = 0.0
+          ip.stats.map(s => {
+            val statFieldId = leagueRepo.getStatFieldId(league.leagueId, s.field).get
+            val limitIds = pickeeRepo.getPickeeLimitIds(ip.id)
+            pointsTotal += s.value * leagueRepo.getCurrentPeriod(league).get.multiplier * leagueRepo.getPointsForStat(
+              statFieldId, limitIds
+            )
+            (StatsRow(resultRepo.insertStats(resultId, statFieldId, s.value), statFieldId, s.value), ip.id)
+          }) ++ Seq((StatsRow(resultRepo.insertStats(resultId, pointsStatFieldId, pointsTotal), pointsStatFieldId, pointsTotal), ip.id))
+        })
+
+      }
     }, c, InternalServerError("Internal server error adding result"))
   }
 

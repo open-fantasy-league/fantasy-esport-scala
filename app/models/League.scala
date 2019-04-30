@@ -120,7 +120,8 @@ case class LeagueRow(leagueId: Long,
                      urlVerified: Boolean = false,
                      currentPeriodId: Option[Long] = None,
                      applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
-                     noWildcardForLateRegister: Boolean = false // late defined as after league has startd
+                     noWildcardForLateRegister: Boolean = false, // late defined as after league has startd,
+                     manuallyApplyPoints: Boolean = true
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)
