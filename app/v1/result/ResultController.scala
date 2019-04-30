@@ -128,11 +128,6 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])
                       (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
-    // doing add results, add stats to pickee, and to league user all at once
-    // as learnt about postgreq MVCC which means transactions sees teams as they where when transcation started
-    // i.e. avoidss what i was worried about where if user transferred a hero midway through processing, maybe they can
-    // score stats from hero they were selling, then also hero they were buying, with rrace condition
-    // but this isnt actually an issue https://devcenter.heroku.com/articles/postgresql-concurrency
     tryOrResponseRollback(() => {
       // TODO tidy same code in branches
       if (league.manuallyApplyPoints) {
@@ -162,6 +157,9 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
 
   private def updateStats(newStats: List[(StatsRow, Long)], league: LeagueRow, period: Int, targetedAtTstamp: LocalDateTime)
                          (implicit c: Connection): Either[Result, Any] = {
+    // dont need to worry about race conditions, because we use targetat tstamp, so it always updates against a consistent team
+    // i.e. transfer between update calls, cant let it add points for hafl of one team, then half of a another for other update call
+    // TODO can we just remove the transfer table if we're allowing future teams, with future timespans to exist?
     tryOrResponseRollback(() =>
       newStats.foreach({ case (s, pickeeId) => {
         logger.info(s"Updating stats: $s, ${s.value} for internal pickee id: $pickeeId")
