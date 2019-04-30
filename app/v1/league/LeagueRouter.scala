@@ -5,12 +5,10 @@ import javax.inject.Inject
 import play.api.routing.Router.Routes
 import play.api.routing.SimpleRouter
 import play.api.routing.sird._
-import entry.SquerylEntrypointForMyApp._
 
 
 class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter {
   val prefix = "/v1/leagues"
-  // TODO have a 'master router' for things like versioning query params
 
   override def routes: Routes = {
 
@@ -44,11 +42,8 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
     case POST(p"/$id/periods/$periodValue") =>
       controller.updatePeriodReq(id, periodValue)
 
-    case GET(p"/$id/getTeams") =>
-      controller.getCurrentTeamsReq(id)
-
-    case GET(p"/$id/getHistoricTeams/$period") =>
-      controller.getHistoricTeamsReq(id, period)
+//    case GET(p"/$id/getHistoricTeams/$period") =>
+//      controller.getHistoricTeamsReq(id, period)
   }
 
 }

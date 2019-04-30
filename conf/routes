@@ -1,5 +1,3 @@
-GET        /                       controllers.HomeController.index
-
 ->         /api/v1/leagues            v1.league.LeagueRouter
 
 ->         /api/v1/users              v1.user.UserRouter

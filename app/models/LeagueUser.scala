@@ -1,34 +1,23 @@
 package models
 
-import org.squeryl.KeyedEntity
-import java.sql.Timestamp
+import java.time.LocalDateTime
 
 import play.api.libs.json._
-import utils.Formatter.timestampFormatFactory
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-class LeagueUser(
-                  val leagueId: Long,
-                  val userId: Long,
-                  var money: BigDecimal,
-                  var entered: Timestamp,
-                  var remainingTransfers: Option[Int],
-                  var usedWildcard: Boolean,
-                  var changeTstamp: Option[Timestamp] = None
-                ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  //lazy val team = AppDB.leagueUserToTeam.left(this)
-  lazy val league = AppDB.leagueUserTable.leftTable
-  lazy val user = AppDB.leagueUserTable.rightTable
-  //lazy val transfers = AppDB.leagueUserToTransfer.left(this)
-}
+case class LeagueUserRow(
+                          userId: Long, username: String, externalUserId: Long, leagueUserId: Long, money: BigDecimal,
+                          entered: LocalDateTime, remainingTransfers: Option[Int], usedWildcard: Boolean,
+                          changeTstamp: Option[LocalDateTime]
+                        )
 
-object LeagueUser{
-  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
-  implicit val implicitWrites = new Writes[LeagueUser] {
-    def writes(lu: LeagueUser): JsValue = {
+object LeagueUserRow{
+  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  implicit val implicitWrites = new Writes[LeagueUserRow] {
+    def writes(lu: LeagueUserRow): JsValue = {
       Json.obj(
-        "userId" -> lu.userId,
-        "leagueId" -> lu.leagueId,
+        "userId" -> lu.externalUserId,
+        "username" -> lu.username,
         "money" -> lu.money,
         "entered" -> lu.entered,
         "remainingTransfers" -> lu.remainingTransfers,
@@ -37,29 +26,16 @@ object LeagueUser{
       )
     }
   }
+
+  val parser: RowParser[LeagueUserRow] = Macro.namedParser[LeagueUserRow](ColumnNaming.SnakeCase)
 }
 
-class Team(
-          val leagueUserId: Long,
-          val started: Timestamp,
-          var ended: Option[Timestamp] = None,
-          ) extends KeyedEntity[Long] {
-  val id: Long = 0
-}
+case class LeagueUserStatDailyRow(
+                                   leagueUserId: Long, statFieldName: String, previousRank: Int, value: Double,
+                                   period: Option[Int]
+                                 )
 
-class LeagueUserStat(
-                       val statFieldId: Long,
-                       val leagueUserId: Long,
-                       var previousRank: Int = 0
-                     ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  lazy val leagueUser = AppDB.leagueUserToLeagueUserStat.right(this)
-}
+object LeagueUserStatDailyRow{
 
-class LeagueUserStatDaily(
-                       val leagueUserStatId: Long,
-                       val period: Option[Int],
-                       var value: Double = 0.0
-                     ) extends KeyedEntity[Long] {
-  val id: Long = 0
+  val parser: RowParser[LeagueUserStatDailyRow] = Macro.namedParser[LeagueUserStatDailyRow](ColumnNaming.SnakeCase)
 }

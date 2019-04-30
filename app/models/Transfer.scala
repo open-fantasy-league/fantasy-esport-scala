@@ -1,39 +1,32 @@
 package models
 
-import java.sql.Timestamp
+import java.time.LocalDateTime
 
-import org.squeryl.KeyedEntity
 import play.api.libs.json.{JsValue, Json, Writes}
-import utils.Formatter.timestampFormatFactory
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-class Transfer(
-                val leagueUserId: Long,
-                val pickeeId: Long,
-                val isBuy: Boolean,
-                val timeMade: Timestamp,
-                val scheduledFor: Timestamp,
-                var processed: Boolean,
-                val cost: BigDecimal,
-                val wasWildcard: Boolean = false
-              ) extends KeyedEntity[Long] {
-  val id: Long = 0
-  lazy val pickee = AppDB.pickeeToTransfer.right(this).single
-}
+case class TransferRow(
+                        transferId: Long, leagueUserId: Long, internalPickeeId: Long, externalPickeeId: Long,
+                        pickeeName: String, isBuy: Boolean, timeMade: LocalDateTime,
+                        scheduledFor: LocalDateTime, processed: Boolean, price: BigDecimal, wasWildcard: Boolean
+              )
 
-object Transfer{
-  implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
-  implicit val implicitWrites = new Writes[Transfer] {
-    def writes(t: Transfer): JsValue = {
+object TransferRow{
+  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+  implicit val implicitWrites = new Writes[TransferRow] {
+    def writes(t: TransferRow): JsValue = {
       Json.obj(
         "isBuy" -> t.isBuy,
         "timeMade" -> t.timeMade,
         "scheduledFor" -> t.scheduledFor,
         "processed" -> t.processed,
-        "cost" -> t.cost,
+        "price" -> t.price,
         "wasWildcard" -> t.wasWildcard,
-        "pickeeId" -> t.pickee.externalId,
-        "pickeeName" -> t.pickee.name
+        "pickeeId" -> t.externalPickeeId,
+        "pickeeName" -> t.pickeeName
       )
     }
   }
+
+  val parser: RowParser[TransferRow] = Macro.namedParser[TransferRow](ColumnNaming.SnakeCase)
 }

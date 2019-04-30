@@ -2,31 +2,31 @@ package v1.pickee
 
 import javax.inject.Inject
 
-import entry.SquerylEntrypointForMyApp._
-
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
 import play.api.data.format.Formats._
-import models.AppDB._
+import play.api.db.Database
 import utils.TryHelper.tryOrResponse
 import auth.{LeagueAction, AuthAction, Auther}
+import v1.league.LeagueRepo
 
-class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther)(implicit ec: ExecutionContext) extends AbstractController(cc) with play.api.i18n.I18nSupport{
+class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRepo, Auther: Auther)
+                                (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc) with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
-  def getReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
-    Future(inTransaction(Ok(Json.toJson(pickeeRepo.getPickeesWithLimits(request.league.id)))))
+  def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+    Future(db.withConnection { implicit c => Ok(Json.toJson(pickeeRepo.getPickeesLimits(request.league.leagueId)))})
   }
 
   def getStatsReq(leagueId: String) = (new LeagueAction( leagueId)).async { implicit request =>
-    Future{
-      inTransaction {
+    Future {
+      db.withConnection { implicit c =>
         (for {
           period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          out = Ok(Json.toJson(pickeeRepo.getPickeeStats(request.league.id, period)))
+          out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.leagueId, Option.empty[Long], period)))
         } yield out).fold(identity, identity)
       }
     }
@@ -38,7 +38,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       mapping(
         "isInternalId" -> default(boolean, false),
         "pickees" -> list(
-          mapping("id" -> of(longFormat), "cost" -> bigDecimal(10, 1))
+          mapping("id" -> of(longFormat), "price" -> bigDecimal(10, 1))
           (RepricePickeeFormInput.apply)(RepricePickeeFormInput.unapply)
         )
       )(RepricePickeeFormInputList.apply)(RepricePickeeFormInputList.unapply)
@@ -65,15 +65,14 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
 
     def success(inputs: RepricePickeeFormInputList) = {
       Future {
-        inTransaction {
-            val leaguePickees = pickeeRepo.getPickees(request.league.id)
+        db.withConnection { implicit c =>
+            val leaguePickees = pickeeRepo.getPickees(request.league.leagueId).toList
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
-            pickeeTable.update(leaguePickees.filter(p => pickees.contains(p.externalId)).map(p => {
-              p.cost = pickees(p.externalId).cost
-              p
-            }))
+            leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
+              pickeeRepo.updatePrice(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).price)
+            })
             // TODO print out pickees that changed
-            Ok("Successfully updated pickee costs")
+            Ok("Successfully updated pickee prices")
         }
       }
     }
@@ -88,10 +87,10 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
 
     def success(input: PickeeFormInput) = {
       Future {
-        inTransaction {
+        db.withConnection { implicit c =>
             // TODO print out pickees that changed
-            val newPickee = pickeeRepo.insertPickee(request.league.id, input)
-            Created(Json.toJson(newPickee))
+            val newPickeeId = pickeeRepo.insertPickee(request.league.leagueId, input)
+            Created(s"{'id': $newPickeeId}")
         }
       }
     }

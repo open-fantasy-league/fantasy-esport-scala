@@ -1,24 +1,19 @@
 package models
 
-import org.squeryl.KeyedEntity
 import play.api.libs.json._
+import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
-class User(
-            var username: String,
-            val externalId: Long,
-          ) extends KeyedEntity[Long] {
-  val id: Long = 0
+case class UserRow(userId: Long, username: String, externalUserId: Long)
 
-  lazy val leagues = AppDB.leagueUserTable.right(this)
-}
-
-object User{
-  implicit val implicitWrites = new Writes[User] {
-    def writes(user: User): JsValue = {
+object UserRow{
+  implicit val implicitWrites = new Writes[UserRow] {
+    def writes(user: UserRow): JsValue = {
       Json.obj(
-        "id" -> user.externalId,
+        "id" -> user.externalUserId,
         "username" -> user.username
       )
     }
   }
+
+  val parser: RowParser[UserRow] = Macro.namedParser[UserRow](ColumnNaming.SnakeCase)
 }
