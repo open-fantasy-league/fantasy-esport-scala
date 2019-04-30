@@ -52,3 +52,7 @@ curl -X POST http://localhost/api/v1/leagues/1/endDay
 
 
 tstzrange. default tstzrange(now(), null)
+
+create table scoring(scoring_id not null, stat_field_id not null, limit_id);
+
+# error if no pickees in with match

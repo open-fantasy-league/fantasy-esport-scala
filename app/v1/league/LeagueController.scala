@@ -36,10 +36,13 @@ case class TransferInput(
                           forceFullTeams: Boolean, noWildcardForLateRegister: Boolean
                         )
 
+case class FactionSpecificScoring(name: String, value: Double)
+case class StatInput(name: String, allFactionPoints: Option[Double], separateFactionPoints: List[FactionSpecificScoring])
+
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
-                           extraStats: Option[List[String]],
+                           extraStats: List[StatInput], manuallyCalculatePoints: Boolean,
                            pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String,
                            applyPointsAtStartTime: Boolean, url: Option[String]
                           )
@@ -101,14 +104,23 @@ class LeagueController @Inject()(
         "prizeDescription" -> optional(nonEmptyText),
         "prizeEmail" -> optional(nonEmptyText),
         // dont need a list of limits as input, as we just take them from their entry in pickee list
-        "extraStats" -> optional(list(nonEmptyText)), // i.e. picks, wins. extra info to display on leaderboards other than points
+        "extraStats" -> list(mapping(
+          // TODO find how to put dynamic mappings into play input
+          "name" -> nonEmptyText,
+          "allFactionPoints" -> optional(of(doubleFormat)),
+          "separateFactionPoints" -> list(mapping(
+            "name" -> nonEmptyText,
+            "value" -> of(doubleFormat)
+          )(FactionSpecificScoring.apply)(FactionSpecificScoring.unapply))
+        )(StatInput.apply)(StatInput.unapply)),
+        "manuallyCalculatePoints" -> default(boolean, true),
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
           "name" -> nonEmptyText,
           "value" -> bigDecimal(10, 1),
           "active" -> default(boolean, true),
-          "limits" -> list(nonEmptyText),
+          "limits" -> list(nonEmptyText)
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
         "users" -> list(number),
         "apiKey" -> nonEmptyText,
