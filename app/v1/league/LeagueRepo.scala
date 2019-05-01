@@ -99,7 +99,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       s"""select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, manually_apply_points
+        | no_wildcard_for_late_register, manually_calculate_points
         | from league where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
 

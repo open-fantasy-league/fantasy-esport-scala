@@ -121,7 +121,7 @@ case class LeagueRow(leagueId: Long,
                      currentPeriodId: Option[Long] = None,
                      applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
                      noWildcardForLateRegister: Boolean = false, // late defined as after league has startd,
-                     manuallyApplyPoints: Boolean = true
+                     manuallyCalculatePoints: Boolean = true
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)

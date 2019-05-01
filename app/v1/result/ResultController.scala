@@ -130,7 +130,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
                       (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
     tryOrResponseRollback(() => {
       // TODO tidy same code in branches
-      if (league.manuallyApplyPoints) {
+      if (league.manuallyCalculatePoints) {
         pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
           val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value
           val statFieldId = leagueRepo.getStatFieldId(league.leagueId, s.field).get
