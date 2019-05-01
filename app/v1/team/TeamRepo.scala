@@ -11,7 +11,7 @@ import play.api.libs.json._
 
 import javax.inject.{Inject, Singleton}
 
-case class TeamOut(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
+case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
                    end: Option[LocalDateTime], isActive: Boolean, pickees: Iterable[PickeeRow])
 
 object TeamOut {
@@ -20,7 +20,7 @@ object TeamOut {
       Json.obj(
         "userId" -> x.externalUserId,
         "username" -> x.username,
-        "leagueUserId" -> x.leagueUserId,
+        "userId" -> x.userId,
         "start" -> x.start,
         "end" -> x.end,
         "isActive" -> x.isActive,
@@ -33,29 +33,29 @@ object TeamOut {
 class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TeamRepo{
-  def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): Iterable[PickeeRow]
-  def getAllLeagueUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut]
+  def getUserTeam(userId: Long)(implicit c: Connection): Iterable[PickeeRow]
+  def getAllUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut]
 }
 
 @Singleton
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
-  override def getLeagueUserTeam(leagueUserId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
+  override def getUserTeam(userId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
     val q =
       """select p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price from team t join pickee p using(pickee_id)
-    where t.league_user_id = {leagueUserId} and upper(t.timespan) is NULL;
+    where t.user_id = {userId} and upper(t.timespan) is NULL;
     """
     println(q)
-    val out = SQL(q).on("leagueUserId" -> leagueUserId).as(PickeeRow.parser.*)
+    val out = SQL(q).on("userId" -> userId).as(PickeeRow.parser.*)
     println(out.mkString(","))
     out
   }
 
-  override def getAllLeagueUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut] = {
+  override def getAllUserTeam(leagueId: Long)(implicit c: Connection): Iterable[TeamOut] = {
     val q =
-      """select u.external_user_id, u.username, league_user_id, lower(t.timespan) as start, upper(t.timespan) as "end", true, p.pickee_id as internal_pickee_id, p.external_pickee_id,
+      """select u.external_user_id, u.username, user_id, lower(t.timespan) as start, upper(t.timespan) as "end",
+        | true, p.pickee_id as internal_pickee_id, p.external_pickee_id,
         | p.pickee_name, p.price as pickee_price from team t
  |                   join pickee p using(pickee_id)
- |                   join league_user lu using(league_user_id)
  |                   join useru u using(user_id)
     where lu.league_id = {leagueId} and upper(t.timespan) is NULL;
     """
@@ -66,8 +66,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
   }
 
   private def teamRowsToOut(teamRows: Iterable[TeamRow]): Iterable[TeamOut] = {
-    teamRows.groupBy(_.leagueUserId).map({case (leagueUserId, v) =>
-      TeamOut(v.head.externalUserId, v.head.username, leagueUserId, v.head.start,
+    teamRows.groupBy(_.userId).map({case (userId, v) =>
+      TeamOut(v.head.externalUserId, v.head.username, userId, v.head.start,
         v.head.end, v.head.isActive, v.map(p => PickeeRow(p.internalPickeeId, p.externalPickeeId, p.pickeeName, p.pickeePrice)))
     })
   }

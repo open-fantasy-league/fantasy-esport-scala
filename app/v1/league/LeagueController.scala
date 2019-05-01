@@ -15,9 +15,9 @@ import play.api.data.format.Formats._
 import play.api.db._
 import utils.IdParser
 import utils.TryHelper._
-import auth.{LeagueUserAction, _}
+import auth.{UserAction, _}
 import models._
-import v1.leagueuser.LeagueUserRepo
+import v1.user.{UserFormInput, UserRepo}
 import v1.pickee.{PickeeFormInput, PickeeRepo}
 
 case class PeriodInput(
@@ -43,7 +43,7 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
                            extraStats: List[StatInput], manuallyCalculatePoints: Boolean,
-                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[Int], apiKey: String,
+                           pickeeDescription: String, pickees: List[PickeeFormInput], users: List[UserFormInput], apiKey: String,
                            applyPointsAtStartTime: Boolean, url: Option[String]
                           )
 
@@ -60,7 +60,7 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
 
 class LeagueController @Inject()(
                                   cc: ControllerComponents,
-                                  leagueUserRepo: LeagueUserRepo, pickeeRepo: PickeeRepo,
+                                  userRepo: UserRepo, pickeeRepo: PickeeRepo,
                                   auther: Auther
                                 )(implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
@@ -122,7 +122,10 @@ class LeagueController @Inject()(
           "active" -> default(boolean, true),
           "limits" -> list(nonEmptyText)
         )(PickeeFormInput.apply)(PickeeFormInput.unapply)),
-        "users" -> list(number),
+        "users" -> list(mapping(
+          "username" -> nonEmptyText,
+          "userId" -> of(longFormat)
+        )(UserFormInput.apply)(UserFormInput.unapply)),
         "apiKey" -> nonEmptyText,
         "applyPointsAtStartTime" -> default(boolean, true),
         "url" -> optional(nonEmptyText)
@@ -181,20 +184,20 @@ class LeagueController @Inject()(
   def getAllUsersReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
         db.withConnection { implicit c =>
-          val leagueUsers = leagueUserRepo.getAllUsersForLeague(request.league.leagueId)
-          Ok(Json.toJson(leagueUsers))
+          val users = userRepo.getAllUsersForLeague(request.league.leagueId)
+          Ok(Json.toJson(users))
         }
     }
   }
 
-  def showLeagueUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)
-    andThen new LeagueUserAction(leagueUserRepo, db)(userId).apply(Some(leagueUserRepo.joinUsers))).async { implicit request =>
+  def showUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)
+    andThen new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
     Future{
       val showTeam = !request.getQueryString("team").isEmpty
       val showScheduledTransfers = !request.getQueryString("scheduledTransfers").isEmpty
       val stats = !request.getQueryString("stats").isEmpty
       db.withConnection { implicit c =>
-        Ok(Json.toJson(leagueUserRepo.detailedLeagueUser(request.leagueUser, showTeam, showScheduledTransfers, stats)))
+        Ok(Json.toJson(userRepo.detailedUser(request.user, showTeam, showScheduledTransfers, stats)))
       }
     }
   }
@@ -208,7 +211,7 @@ class LeagueController @Inject()(
         (for {
           statFieldId <- leagueRepo.getStatFieldId(request.league.leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          rankings = leagueUserRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering, showTeam)
+          rankings = userRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering, showTeam)
         } yield Ok(Json.toJson(rankings))).fold(identity, identity)
       }
     }
@@ -232,7 +235,7 @@ class LeagueController @Inject()(
     Future {
       // hacky way to avoid circular dependency
       db.withConnection { implicit c =>
-        implicit val implUpdateHistoricRanksFunc: Long => Unit = leagueUserRepo.updateHistoricRanks
+        implicit val implUpdateHistoricRanksFunc: Long => Unit = userRepo.updateHistoricRanks
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league)
           _ = leagueRepo.postStartPeriodHook(request.league.leagueId, newPeriod.periodId, newPeriod.value, LocalDateTime.now())
@@ -311,19 +314,19 @@ class LeagueController @Inject()(
               }
             })
 
-            val newLeagueUsers = input.users.map(leagueUserRepo.insertLeagueUser(newLeague, _))
+            val newUsers = input.users.map(u => userRepo.insertUser(newLeague, u.userId, u.username))
             val newPickeeStatIds = statFieldIds.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
-            val newLeagueUserStatIds = statFieldIds.flatMap(sf => newLeagueUsers.map(nlu => leagueUserRepo.insertLeagueUserStat(sf, nlu.leagueUserId)))
+            val newUserStatIds = statFieldIds.flatMap(sf => newUsers.map(nlu => userRepo.insertUserStat(sf, nlu.userId)))
 
             newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Option.empty[Int]))
-            newLeagueUserStatIds.foreach(nluid => leagueUserRepo.insertLeagueUserStatDaily(nluid, None))
+            newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, None))
             var nextPeriodId: Option[Long] = None
             // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
             input.periods.zipWithIndex.reverse.foreach({ case (p, i) => {
               val newPeriodId = leagueRepo.insertPeriod(newLeague.leagueId, p, i + 1, nextPeriodId)
               nextPeriodId = Some(newPeriodId)
               newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Some(i + 1)))
-              newLeagueUserStatIds.foreach(nluid => leagueUserRepo.insertLeagueUserStatDaily(nluid, Some(i + 1)))
+              newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, Some(i + 1)))
             }
             })
 

@@ -13,11 +13,11 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 import auth._
 import v1.league.LeagueRepo
 import v1.transfer.TransferRepo
-import v1.leagueuser.LeagueUserRepo
+import v1.user.UserRepo
 
 class AdminController @Inject()(
                                  db: Database, cc: ControllerComponents, leagueRepo: LeagueRepo, transferRepo: TransferRepo,
-                                 auther: Auther, adminRepo: AdminRepo, leagueUserRepo: LeagueUserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
+                                 auther: Auther, adminRepo: AdminRepo, userRepo: UserRepo)(implicit ec: ExecutionContext) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{
 
   implicit val parser = parse.default
@@ -27,8 +27,8 @@ class AdminController @Inject()(
     val currentTime = LocalDateTime.now()
       db.withConnection { implicit c =>
         val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-        val q = "select league_user_id from league_user where change_tstamp is not null and change_tstamp <= now();"
-        SQL(q).on().as(SqlParser.long("league_user_id").*).map(transferRepo.processLeagueUserTransfer)
+        val q = "select user_id from useru where change_tstamp is not null and change_tstamp <= now();"
+        SQL(q).on().as(SqlParser.long("user_id").*).foreach(transferRepo.processUserTransfer)
       }
       Ok("Transfer updates processed")
     }
@@ -38,7 +38,7 @@ class AdminController @Inject()(
     Future {
       db.withConnection { implicit c =>
         // hacky way to avoid circular dependency
-        implicit val updateHistoricRanksFunc: Long => Unit = leagueUserRepo.updateHistoricRanks
+        implicit val updateHistoricRanksFunc: Long => Unit = userRepo.updateHistoricRanks
         val currentTime = LocalDateTime.now()
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)

@@ -9,9 +9,8 @@ import javax.inject.Inject
 import utils.IdParser
 import com.typesafe.config.ConfigFactory
 import v1.league.LeagueRepo
-import v1.leagueuser.LeagueUserRepo
+import v1.user.UserRepo
 import play.api.db._
-import anorm._
 
 class AuthRequest[A](val apiKey: Option[String], request: Request[A]) extends WrappedRequest[A](request)
 
@@ -33,11 +32,11 @@ class LeaguePeriodRequest[A](val p: Option[Int], request: LeagueRequest[A]) exte
   def league = request.league
 }
 
-class LeagueUserRequest[A](val leagueUser: LeagueUserRow, request: LeagueRequest[A]) extends WrappedRequest[A](request){
+class UserRequest[A](val user: UserRow, request: LeagueRequest[A]) extends WrappedRequest[A](request){
   def league = request.league
 }
 
-class AuthLeagueUserRequest[A](val lu: LeagueUserRow, request: AuthLeagueRequest[A]) extends LeagueUserRequest[A](lu, request){
+class AuthUserRequest[A](val u: UserRow, request: AuthLeagueRequest[A]) extends UserRequest[A](u, request){
   def apiKey = request.apiKey
 }
 
@@ -76,45 +75,33 @@ class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, db: Data
 //  }
 //}
 
-class LeagueUserAction(leagueUserRepo: LeagueUserRepo, db: Database)(val userId: String){
+class UserAction(userRepo: UserRepo, db: Database)(val userId: String){
 
-  def refineGeneric[A <: LeagueRequest[B], B](
-                                               input: A, insertOnMissing: Option[(Iterable[Long], LeagueRow) => Iterable[LeagueUserRow]]
-                                             ): Either[Result, LeagueUserRow] = {
+  def refineGeneric[A <: LeagueRequest[B], B](input: A): Either[Result, UserRow] = {
       println(userId)
       db.withConnection { implicit c =>
         for {
           userIdLong <- IdParser.parseLongId(userId, "User")
-          maybeLeagueUser = leagueUserRepo.getWithUser(input.league.leagueId, userIdLong)
-          out <- maybeLeagueUser match {
-            case Some(leagueUser) => Right(leagueUser)
-            case None if
-              SQL("select user_id from useru where external_user_id = {externalUserId}").
-                on("leagueId" -> input.league.leagueId, "externalUserId" -> userIdLong).
-                as(SqlParser.long("user_id").*).isEmpty
-              => Left(BadRequest(f"User does not exist on api: $userId. Must add with POST to /api/v1/users"))
-            case None if insertOnMissing.isDefined => {
-              val leagueUser = insertOnMissing.get(List(userIdLong), input.league).head
-              Right(leagueUser)
-            }
+          maybeUser = userRepo.get(input.league.leagueId, userIdLong)
+          out <- maybeUser match {
+            case Some(user) => Right(user)
             case _ => Left(BadRequest(f"User $userId not in league"))
           }
         } yield out
       }
     }
 
-  def apply(insertOnMissing: Option[(Iterable[Long], LeagueRow) => Iterable[LeagueUserRow]] = None)(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, LeagueUserRequest]{
+  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[LeagueRequest, UserRequest]{
     def executionContext = ec
     def refine[A](input: LeagueRequest[A]) = Future.successful{
-      refineGeneric[LeagueRequest[A], A](input, insertOnMissing).map(q => new LeagueUserRequest(q, input))
+      refineGeneric[LeagueRequest[A], A](input).map(q => new UserRequest(q, input))
     }
   }
 
-  def auth(insertOnMissing: Option[(Iterable[Long], LeagueRow) => Iterable[LeagueUserRow]] = None)
-          (implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthLeagueUserRequest]{
+  def auth()(implicit ec: ExecutionContext) = new ActionRefiner[AuthLeagueRequest, AuthUserRequest]{
     def executionContext = ec
     def refine[A](input: AuthLeagueRequest[A]) = Future.successful {
-      refineGeneric[AuthLeagueRequest[A], A](input, insertOnMissing).map(q => new AuthLeagueUserRequest(q, input))
+      refineGeneric[AuthLeagueRequest[A], A](input).map(q => new AuthUserRequest(q, input))
     }
   }
 }

@@ -28,7 +28,7 @@ class LeagueRouter @Inject()(controller: LeagueController) extends SimpleRouter 
       controller.getAllUsersReq(id)
 
     case GET(p"/$leagueId/users/$userId") =>
-      controller.showLeagueUserReq(userId, leagueId)
+      controller.showUserReq(userId, leagueId)
 
     case GET(p"/$id/rankings/$statField") =>
       controller.getRankingsReq(id, statField)

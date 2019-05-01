@@ -175,14 +175,13 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
           "targetedAtTstamp" -> targetedAtTstamp, "leagueId" -> league.leagueId
         ).executeUpdate()
           val q =
-            s"""update league_user_stat_period lusd set value = value + {newStats} from useru u
-         join league_user lu using(user_id)
+            s"""update user_stat_period usp set value = value + {newStats} from useru u
          join league l using(league_id)
-         join team t using(league_user_id)
+         join team t using(user_id)
          join pickee p using(pickee_id)
-         join league_user_stat lus using(league_user_id)
-         where (period is NULL or period = {period}) and lus.league_user_stat_id = lusd.league_user_stat_id and
-                t.timespan @> {targetedAtTstamp}::timestamptz and p.pickee_id = {pickeeId} and lus.stat_field_id = {statFieldId}
+         join user_stat us using(user_id)
+         where (period is NULL or period = {period}) and us.user_stat_id = usp.user_stat_id and
+                t.timespan @> {targetedAtTstamp}::timestamptz and p.pickee_id = {pickeeId} and us.stat_field_id = {statFieldId}
                and l.league_id = {leagueId};
               """
           //(select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;

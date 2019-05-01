@@ -31,7 +31,7 @@ object PickeeRow {
   val parser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
 }
 
-case class TeamRow(externalUserId: Long, username: String, leagueUserId: Long, start: Option[LocalDateTime],
+case class TeamRow(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
                    end: Option[LocalDateTime], isActive: Boolean, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String,
                    pickeePrice: BigDecimal)
 
@@ -41,7 +41,7 @@ object TeamRow {
 //      Json.obj(
 //        "userId" -> x.externalUserId,
 //        "username" -> x.username,
-//        "leagueUserId" -> x.leagueUserId,
+//        "userId" -> x.userId,
 //        "start" -> x.start,
 //        "end" -> x.end,
 //        "isActive" -> x.isActive,

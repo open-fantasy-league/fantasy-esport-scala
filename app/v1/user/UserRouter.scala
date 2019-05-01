@@ -12,17 +12,11 @@ class UserRouter @Inject()(controller: UserController) extends SimpleRouter {
 
   override def routes: Routes = {
 
-    case POST(p"") =>
-      controller.add
+    case POST(p"/$id/leagues/$leagueId") =>
+      controller.update(id, leagueId)
 
-    case POST(p"/$id") =>
-      controller.update(id)
-
-    case GET(p"/$id") =>
-      controller.show(id)
-
-    case GET(p"/$id/leagues") =>
-      controller.showAllLeagueUserReq(id)
+    case GET(p"/$id/leagues/$leagueId") =>
+      controller.show(leagueId, id)
 
     case PUT(p"/$userId/join/$leagueId") =>
       controller.joinLeague(userId, leagueId)
