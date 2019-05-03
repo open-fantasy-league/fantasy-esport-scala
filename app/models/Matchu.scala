@@ -15,6 +15,7 @@ case class MatchRow( // because match is an sql keyword
               teamOne: String,
               teamTwo: String,
               teamOneVictory: Boolean,
+                     outcome: String,
               startTstamp: LocalDateTime,
               addedDbTstamp: LocalDateTime,
               targetedAtTstamp: LocalDateTime // what timestamp do we look up teams for
@@ -33,6 +34,7 @@ object MatchRow{
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
         "teamOneVictory" -> m.teamOneVictory,
+        "outcome" -> m.outcome
       )
     }
   }

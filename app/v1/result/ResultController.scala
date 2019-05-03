@@ -24,6 +24,7 @@ import v1.pickee.PickeeRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
+                            outcome: String,
                             startTstamp: LocalDateTime, targetAtTstamp: Option[LocalDateTime], pickees: List[PickeeFormInput]
                           )
 
@@ -32,6 +33,8 @@ case class PickeeFormInput(id: Long, isTeamOne: Boolean, stats: List[StatsFormIn
 case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
 
 case class StatsFormInput(field: String, value: Double)
+
+case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
 class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
@@ -46,6 +49,8 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         "teamOne" -> nonEmptyText,
         "teamTwo" -> nonEmptyText,
         "teamOneVictory" -> boolean,
+        // TODO only allow HOME, DRAW, AWAY
+        "outcome" -> nonEmptyText,
         "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss")),
         "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "pickees" -> list(mapping(
@@ -59,10 +64,23 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       )(ResultFormInput.apply)(ResultFormInput.unapply)
     )
   }
+  private val fixtureForm: Form[FixtureFormInput] = {
+    Form(mapping(
+      "matchId" -> of(longFormat),
+      "tournamentId" -> of(longFormat),
+      "teamOne" -> nonEmptyText,
+      "teamTwo" -> nonEmptyText,
+      "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))
+    )(FixtureFormInput.apply)(FixtureFormInput.unapply))
+  }
   implicit val parser = parse.default
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
     db.withConnection { implicit c =>processJsonResult(request.league)}
+  }
+
+  def addFixture(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
+    db.withConnection { implicit c => processJsonAddFixture(request.league)}
   }
 
   private def processJsonResult[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
@@ -79,7 +97,7 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
             internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
             now = LocalDateTime.now
             targetTstamp = getTargetedAtTstamp(input, league, now)
-            correctPeriod <- getPeriod(input, league, targetTstamp)
+            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, now)
             insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
             insertedResults <- newResults(input, league, insertedMatch, internalPickee)
             insertedStats <- newStats(league, insertedResults.toList, internalPickee)
@@ -92,15 +110,35 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def getPeriod(input: ResultFormInput, league: LeagueRow, now: LocalDateTime)(implicit c: Connection): Either[Result, Int] = {
-    println(league.applyPointsAtStartTime)
-    println(input.targetAtTstamp)
-    println(now)
-    println(input.startTstamp)
+  private def processJsonAddFixture[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
+    def failure(badForm: Form[FixtureFormInput]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
 
-    val targetedAtTstamp = (input.targetAtTstamp, league.applyPointsAtStartTime) match {
+    def success(input: FixtureFormInput) = {
+      Future {
+        val now = LocalDateTime.now
+        val targetTstamp = input.startTstamp
+        //var error: Option[Result] = None
+        db.withTransaction { implicit c =>
+          (for {
+            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, targetTstamp)
+            insertedMatch <- newFutureMatch(input, league, correctPeriod, targetTstamp, now)
+          } yield Created("Successfully added results")).fold(identity, identity)
+        }
+      }
+    }
+
+    fixtureForm.bindFromRequest().fold(failure, success)
+  }
+
+  private def getPeriod(startTstamp: LocalDateTime, targetAtTstamp: Option[LocalDateTime], league: LeagueRow, now: LocalDateTime)(implicit c: Connection): Either[Result, Int] = {
+    println(league.applyPointsAtStartTime)
+    println(now)
+
+    val targetedAtTstamp = (targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
-      case (_, true) => input.startTstamp
+      case (_, true) => startTstamp
       case _ => now
     }
     tryOrResponse(() => {leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
@@ -119,6 +157,12 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
     tryOrResponse[Long](() => resultRepo.insertMatch(
       league.leagueId, period, input, now, targetAt
     ), InternalServerError("Internal server error adding match"))
+  }
+
+  private def newFutureMatch(input: FixtureFormInput, league: LeagueRow, period: Int, targetAt: LocalDateTime, now: LocalDateTime)(implicit c: Connection): Either[Result, Long] = {
+    tryOrResponse[Long](() => resultRepo.insertFutureMatch(
+      league.leagueId, period, input, now, targetAt
+    ), InternalServerError("Internal server error adding fixture"))
   }
 
   private def newResults(input: ResultFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])

@@ -12,7 +12,6 @@ case class TransferRow(
               )
 
 object TransferRow{
-  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[TransferRow] {
     def writes(t: TransferRow): JsValue = {
       Json.obj(
@@ -29,4 +28,26 @@ object TransferRow{
   }
 
   val parser: RowParser[TransferRow] = Macro.namedParser[TransferRow](ColumnNaming.SnakeCase)
+}
+
+case class CardRow(cardId: Long, userId: Long, pickeeId: Long, colour: String)
+
+object CardRow{
+//  //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
+//  implicit val implicitWrites = new Writes[CardRow] {
+//    def writes(t: CardRow): JsValue = {
+//      Json.obj(
+//        "isBuy" -> t.isBuy,
+//        "timeMade" -> t.timeMade,
+//        "scheduledFor" -> t.scheduledFor,
+//        "processed" -> t.processed,
+//        "price" -> t.price,
+//        "wasWildcard" -> t.wasWildcard,
+//        "pickeeId" -> t.externalPickeeId,
+//        "pickeeName" -> t.pickeeName
+//      )
+//    }
+//  }
+
+  val parser: RowParser[CardRow] = Macro.namedParser[CardRow](ColumnNaming.SnakeCase)
 }

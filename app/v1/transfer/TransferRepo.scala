@@ -26,6 +26,8 @@ trait TransferRepo{
               scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
             )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
+  def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow
+  def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
 }
 
 @Singleton
@@ -107,6 +109,40 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
 
   override def setProcessed(transferId: Long)(implicit c: Connection): Long = {
     SQL(s"update transfer set processed = true where transfer_id = $transferId").executeUpdate()
+  }
+
+  override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow = {
+    val rnd = scala.util.Random
+    val newCard = SQL(
+      "insert into card(user_id, pickeeId, colour) values({userId},{pickeeId},{colour})"
+    ).on("userId" -> userId, "pickeeId" -> pickeeId, "colour" -> colour).executeInsert(CardRow.parser.single)
+    val statFieldIds = leagueRepo.getStatFields(leagueId).map(_.statFieldId)
+    var randomStatFieldIds = Set[Int]()
+    colour match {
+      case "GOLD" => {
+        while (randomStatFieldIds.size < 2){
+          randomStatFieldIds += rnd.nextInt(statFieldIds.size+1)  // TODO check this +1
+        }
+        randomStatFieldIds.foreach(sfid => {
+          // leads to random from 1.15, 1.20, 1.25
+          val multiplier = (((rnd.nextInt(3) + 3) * 5).toDouble / 100.0) + 1.0
+          insertCardBonus(newCard.cardId, sfid, multiplier)
+        })
+      }
+      case "SILVER" => {
+        // leads to random from 1.05, 1.10, 1.15
+        val multiplier = (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
+        insertCardBonus(newCard.cardId, rnd.nextInt(statFieldIds.size+1), multiplier)
+      }
+      case _ => ()
+    }
+    newCard
+  }
+
+  override def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection) = {
+    SQL (
+      "insert into card_bonus_multiplier(card_id, stat_field_id, multiplier) values({cardId},{statFieldId},{multiplier})"
+    ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert ()
   }
 }
 
