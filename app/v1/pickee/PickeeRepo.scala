@@ -21,6 +21,8 @@ case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[Repri
 
 case class PickeeLimitsOut(pickee: PickeeRow, limits: Map[String, String])
 
+case class DistinctPickee(pickeeId: Long, limitId: Long, pickeeName: String)
+
 object PickeeLimitsOut {
   implicit val implicitWrites = new Writes[PickeeLimitsOut] {
     def writes(x: PickeeLimitsOut): JsValue = {
@@ -51,6 +53,7 @@ trait PickeeRepo{
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
   def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
   def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long
+  def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long]
 }
 
 @Singleton
@@ -145,6 +148,15 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   // TODO bulk func
   override def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long = {
     SQL(s"update pickee set price = $price where league_id = $leagueId and external_pickee_id = $externalPickeeId").executeUpdate()
+  }
+
+  override def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
+    val parser: RowParser[DistinctPickee] = Macro.namedParser[DistinctPickee](ColumnNaming.SnakeCase)
+    SQL(
+      """select pickee_id, distinct limit_id, distinct pickee_name from pickee
+        |join pickee_limit pl using(pickee_id)
+        |where league_id = {leagueId} order by RANDOM limit 7""".stripMargin
+    ).on("leagueId" -> leagueId).as(parser.*).map(_.pickeeId)
   }
 }
 

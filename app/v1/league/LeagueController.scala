@@ -33,7 +33,7 @@ case class LimitTypeInput(name: String, description: Option[String], max: Option
 
 case class TransferInput(
                           transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
-                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean
+                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean, cardSystem: Boolean
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
@@ -42,7 +42,7 @@ case class StatInput(name: String, allFactionPoints: Option[Double], separateFac
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
-                           extraStats: List[StatInput], manuallyCalculatePoints: Boolean,
+                           stats: List[StatInput], manuallyCalculatePoints: Boolean,
                            pickeeDescription: String, pickees: List[PickeeFormInput], users: List[UserFormInput], apiKey: String,
                            applyPointsAtStartTime: Boolean, url: Option[String]
                           )
@@ -86,9 +86,10 @@ class LeagueController @Inject()(
         "transferInfo" -> mapping(
           "transferLimit" -> optional(number),
           "transferDelayMinutes" -> default(number, 0),
-          "transferWildcard" -> boolean,
+          "transferWildcard" -> default(boolean, false),
           "forceFullTeams" -> default(boolean, false),
           "noWildcardForLateRegister" -> default(boolean, false),
+          "cardSystem" -> default(boolean, false)
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
           "name" -> nonEmptyText,
@@ -104,7 +105,7 @@ class LeagueController @Inject()(
         "prizeDescription" -> optional(nonEmptyText),
         "prizeEmail" -> optional(nonEmptyText),
         // dont need a list of limits as input, as we just take them from their entry in pickee list
-        "extraStats" -> list(mapping(
+        "stats" -> list(mapping(
           // TODO find how to put dynamic mappings into play input
           "name" -> nonEmptyText,
           "allFactionPoints" -> optional(of(doubleFormat)),
@@ -113,7 +114,7 @@ class LeagueController @Inject()(
             "value" -> of(doubleFormat)
           )(FactionSpecificScoring.apply)(FactionSpecificScoring.unapply))
         )(StatInput.apply)(StatInput.unapply)),
-        "manuallyCalculatePoints" -> default(boolean, true),
+        "manuallyCalculatePoints" -> default(boolean, false),
         "pickeeDescription" -> nonEmptyText, //i.e. Hero for dota, Champion for lol, player for regular fantasy styles
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
@@ -297,7 +298,7 @@ class LeagueController @Inject()(
             pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
 
             val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points")
-            val statFieldIds = List(pointsFieldId) ++ input.extraStats.map({
+            val statFieldIds = List(pointsFieldId) ++ input.stats.map({
               es => {
                 val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name)
                 if (!input.manuallyCalculatePoints) {

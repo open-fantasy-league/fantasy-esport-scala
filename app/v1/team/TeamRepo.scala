@@ -12,7 +12,7 @@ import play.api.libs.json._
 import javax.inject.{Inject, Singleton}
 
 case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
-                   end: Option[LocalDateTime], isActive: Boolean, pickees: Iterable[PickeeRow])
+                   end: Option[LocalDateTime], isActive: Boolean, pickees: Iterable[])
 
 object TeamOut {
   implicit val implicitWrites = new Writes[TeamOut] {

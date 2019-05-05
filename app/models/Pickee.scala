@@ -11,6 +11,14 @@ case class StatDailyRow(
 
 case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal)
 
+case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, multiplier: Double)
+
+case class CardWithBonusRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+                   statFieldId: Long, statFieldName: String, multiplier: Double)
+
+case class CardOut(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+                   bonuses: Iterable[CardBonusMultiplierRow])
+
 case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(

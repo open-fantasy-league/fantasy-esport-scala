@@ -10,6 +10,7 @@ import anorm._
 import play.api.db._
 import models._
 import v1.league.LeagueRepo
+import v1.pickee.PickeeRepo
 
 
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -27,11 +28,12 @@ trait TransferRepo{
             )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
   def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow
+  def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
 }
 
 @Singleton
-class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
+class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
   override def getUserTransfer(userId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow] = {
     val processedFilter = if (processed.isEmpty) "" else s"and processed = ${processed.get}"
     SQL(
@@ -116,7 +118,7 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
     val newCard = SQL(
       "insert into card(user_id, pickeeId, colour) values({userId},{pickeeId},{colour})"
     ).on("userId" -> userId, "pickeeId" -> pickeeId, "colour" -> colour).executeInsert(CardRow.parser.single)
-    val statFieldIds = leagueRepo.getStatFields(leagueId).map(_.statFieldId)
+    val statFieldIds = leagueRepo.getScoringStatFieldsForPickee(leagueId).map(_.statFieldId)
     var randomStatFieldIds = Set[Int]()
     colour match {
       case "GOLD" => {
@@ -137,6 +139,20 @@ class TransferRepoImpl @Inject()()(implicit ec: TransferExecutionContext, league
       case _ => ()
     }
     newCard
+  }
+
+  override def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow] = {
+    val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId)
+    for {
+        i <- 0 to 7
+        colour = scala.util.Random.nextInt(10) match {
+          case x if x < 6 => "GREY"
+          case x if x < 9 => "SILVER"
+          case x if x < 10 => "GOLD"
+          case _ => "GREY"
+        }
+      }
+      yield generateCard(leagueId, userId, pickeeIds(i), colour)
   }
 
   override def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection) = {

@@ -60,6 +60,7 @@ trait LeagueRepo{
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
   def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
   def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
+  def getScoringStatFieldsForPickee(pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def isStarted(league: LeagueRow): Boolean
   def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long
   def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
@@ -133,17 +134,31 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).as(lsfParser.*)
   }
 
+  override def getScoringStatFieldsForPickee(pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
+    // Because we dont want to give card bonus for stat fields which that pickee doesnt score on!!!
+    val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
+    // todo handle safely for if people do put 0.0 values in?
+    val q = """
+           select stat_field_id, league_id, name from stat_field join scoring s using(stat_field_id)
+           left join "limit" lim using(limit_id)
+           left join pickee_limit using(lim.limit_id)
+           left join pickee using(pickee_id)
+           where (s.limit_id is null or s.limit_id = lim.limit_id) and (pickee_id = {pickeeId} or pickee_id is null)
+            """
+    SQL(q).as(lsfParser.*)
+  }
+
   override def insert(input: LeagueFormInput)(implicit c: Connection): LeagueRow = {
     println("Inserting new league")
     val q = SQL(
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description, transfer_limit,
         |transfer_wildcard, starting_money, team_size, force_full_teams, transfer_open,
         |transfer_delay_minutes, url, url_verified, current_period_id, apply_points_at_start_time,
-        |no_wildcard_for_late_register) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
+        |no_wildcard_for_late_register, card_system) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription}, {transferLimit}, {transferWildcard},
         | {startingMoney}, {teamSize}, {forceFullTeams}, false, {transferDelayMinutes}, {url}, false, null,
         |  {applyPointsAtStartTime},
-        | {noWildcardForLateRegister}) returning league_id;""".stripMargin
+        | {noWildcardForLateRegister}, {cardSystem}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
       "periodDescription" -> input.periodDescription, "transferLimit" -> input.transferInfo.transferLimit,
@@ -151,7 +166,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams,
       "transferDelayMinutes" -> input.transferInfo.transferDelayMinutes, "url" -> input.url.getOrElse(""),
       "applyPointsAtStartTime" -> input.applyPointsAtStartTime,
-      "noWildcardForLateRegister" -> input.transferInfo.noWildcardForLateRegister)
+      "noWildcardForLateRegister" -> input.transferInfo.noWildcardForLateRegister, "cardSystem" -> input.transferInfo.cardSystem
+    )
     println(q.sql)
     println(q)
     val newLeagueId: Option[Long]= q.executeInsert()
