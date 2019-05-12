@@ -223,10 +223,10 @@ class TransferController @Inject()(
 
   private def validateLimits(newTeamIds: Set[Long], leagueId: Long)(implicit c: Connection): Either[Result, Any] = {
     // TODO errrm this is a bit messy
-    transferRepo.pickeeLimitsValid(leagueId, newTeamIds) match {
-        case true => Right(true)
-        case false => Left(BadRequest(
-          f"Exceeds limit limit"  // TODO what limit does it exceed
+    transferRepo.pickeeLimitsInvalid(leagueId, newTeamIds) match {
+        case None => Right(true)
+        case Some((name, max_)) => Left(BadRequest(
+          f"Exceeds $name limit: max $max_ allowed"  // TODO what limit does it exceed
         ))
       }
   }

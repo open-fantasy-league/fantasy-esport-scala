@@ -21,7 +21,7 @@ class GameController @Inject()(cc: ControllerComponents, auther: Auther, db: Dat
     extends AbstractController(cc) with play.api.i18n.I18nSupport{
   implicit val parser = parse.default
 
-  private val logger = Logger(getClass)
+  private val logger = Logger("application")
 
   private val form = Form(
       mapping(

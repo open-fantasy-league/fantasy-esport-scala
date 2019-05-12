@@ -12,7 +12,6 @@ import models._
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
-
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TransferRepo{
@@ -20,7 +19,7 @@ trait TransferRepo{
   def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
                  oldTeamCardIds: Set[Long], time: LocalDateTime
                 )(implicit c: Connection): Unit
-  def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean
+  def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)]
   def insert(
               userId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
               scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
@@ -64,16 +63,23 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     println("Inserted new team")
   }
 
-  override def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean = {
+  override def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)] = {
     // TODO need to check this againbst something. doesnt work right now
-    if (newTeamIds.isEmpty) return true
+    val parser =
+      (SqlParser.str("name") ~ SqlParser.int("limmax")).map {
+        case name ~ max_ => name -> max_
+      }
+    if (newTeamIds.isEmpty) return None
     val q =
-      """select not exists (select 1 from pickee p
-        | join limit_type lt using(league_id)
-        | join "limit" l using(limit_type_id)
-        | where p.league_id = {leagueId} and p.pickee_id in ({newTeamIds}) group by (lt."max", l.limit_id) having count(*) > lt."max");
+      """select l.name, coalesce(lt.max, l.max) as limmax from pickee p
+        | join pickee_limit pl using(pickee_id)
+        | join "limit" l using(limit_id)
+        | join limit_type lt using(limit_type_id)
+        | where p.league_id = {leagueId} and p.pickee_id in ({newTeamIds})
+        | group by (lt."max", l.limit_id) having count(*) > coalesce(lt."max", l.max)
+        | limit 1;
       """.stripMargin
-    SQL(q).on("leagueId" -> leagueId, "newTeamIds" -> newTeamIds).as(SqlParser.scalar[Boolean].single)
+    SQL(q).on("leagueId" -> leagueId, "newTeamIds" -> newTeamIds).as(parser.singleOpt)
   }
 
   override def insert(

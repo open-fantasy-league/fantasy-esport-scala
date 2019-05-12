@@ -39,7 +39,7 @@ case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, 
 class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
-  private val logger = Logger(getClass)
+  private val logger = Logger("application")
   private val form: Form[ResultFormInput] = {
 
     Form(

@@ -127,7 +127,7 @@ trait UserRepo{
 
 @Singleton
 class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)(implicit ec: UserExecutionContext, leagueRepo: LeagueRepo) extends UserRepo{
-  private val logger = Logger(getClass)
+  private val logger = Logger("application")
 
   override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
     val setString = (input.username, input.externalUserId) match {
