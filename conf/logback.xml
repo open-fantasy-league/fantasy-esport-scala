@@ -55,7 +55,7 @@
   <logger name="application" level="DEBUG" />
   <logger name="v1.post" level="TRACE" />
 
-  <root level="WARN">
+  <root level="TRACE">
     <appender-ref ref="ASYNCFILE" />
     <appender-ref ref="ASYNCJSON" />
     <appender-ref ref="ASYNCSTDOUT" />

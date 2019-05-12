@@ -13,17 +13,57 @@ case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName:
 
 case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, multiplier: Double)
 
-case class CardWithBonusRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
-                   statFieldId: Long, statFieldName: String, multiplier: Double)
+case class CardWithBonusRow(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double])
 
-case class CardOut(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+object CardWithBonusRow{
+  val parser: RowParser[CardWithBonusRow] = Macro.namedParser[CardWithBonusRow](ColumnNaming.SnakeCase)
+}
+
+object CardBonusMultiplierRow{
+  implicit val implicitWrites = new Writes[CardBonusMultiplierRow] {
+    def writes(t: CardBonusMultiplierRow): JsValue = {
+      Json.obj(
+        // TODO conditionally dont print colour/price if/not-if card
+        "statFieldId" -> t.statFieldId,
+        "name" -> t.statFieldName,
+        "multiplier" -> t.multiplier,
+      )
+    }
+  }
+}
+
+case class CardOut(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                    bonuses: Iterable[CardBonusMultiplierRow])
+
+object CardOut{
+    implicit val implicitWrites = new Writes[CardOut] {
+      def writes(t: CardOut): JsValue = {
+        Json.obj(
+          // TODO conditionally dont print colour/price if/not-if card
+          "cardId" -> t.cardId,
+          "name" -> t.pickeeName,
+          "pickeeId" -> t.externalPickeeId,
+          "price" -> t.price,
+          "price" -> t.price,
+          "pickeeId" -> t.externalPickeeId,
+          "bonuses" -> t.bonuses
+        )
+      }
+    }
+}
 
 case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String, limitName: String, max: Int)
 
 case class PickeeLimitsAndStatsRow(
                                     internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: Option[String],
                                     limitName: Option[String], max: Option[Int], statFieldName: String, value: Double, previousRank: Int)
+case class CardRow(cardId: Long, userId: Long, pickeeId: Long, colour: String)
+
+object CardRow{
+  val parser: RowParser[CardRow] = Macro.namedParser[CardRow](ColumnNaming.SnakeCase)
+}
+
 
 object PickeeRow {
   implicit val implicitWrites = new Writes[PickeeRow] {
@@ -40,8 +80,11 @@ object PickeeRow {
 }
 
 case class TeamRow(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
-                   end: Option[LocalDateTime], isActive: Boolean, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String,
-                   pickeePrice: BigDecimal)
+                   end: Option[LocalDateTime], isActive: Boolean, cardId: Long, internalPickeeId: Long,
+                   externalPickeeId: Long, pickeeName: String,
+                   pickeePrice: BigDecimal, colour: String,
+                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double])
+
 
 object TeamRow {
 //  implicit val implicitWrites = new Writes[TeamRow] {

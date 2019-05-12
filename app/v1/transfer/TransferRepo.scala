@@ -17,9 +17,8 @@ class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends Custo
 
 trait TransferRepo{
   def getUserTransfer(userId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow]
-  def processUserTransfer(userId: Long)(implicit c: Connection): Unit
-  def changeTeam(userId: Long, toBuyIds: Set[Long], toSellIds: Set[Long],
-                 oldTeamIds: Set[Long], time: LocalDateTime
+  def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
+                 oldTeamCardIds: Set[Long], time: LocalDateTime
                 )(implicit c: Connection): Unit
   def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean
   def insert(
@@ -45,41 +44,24 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
       """.stripMargin).as(TransferRow.parser.*)
   }
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
-  override def changeTeam(userId: Long, toBuyIds: Set[Long], toSellIds: Set[Long],
-                           oldTeamIds: Set[Long], time: LocalDateTime
+  override def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
+                           oldTeamCardIds: Set[Long], time: LocalDateTime
                          )(implicit c: Connection) = {
-      val newPickees: Set[Long] = (oldTeamIds -- toSellIds) ++ toBuyIds
-    if (toSellIds.nonEmpty) {
+    if (toSellCardIds.nonEmpty) {
       val q =
         """update team t set timespan = tstzrange(lower(timespan), {time})
-    where t.user_id = {userId} and upper(t.timespan) is NULL and t.pickeeId in ({toSellIds});
+    where upper(t.timespan) is NULL and t.card_id in ({toSellIds});
     """
-      SQL(q).on("userId" -> userId, "time" -> time, "toSellIds" -> toSellIds).executeUpdate()
+      SQL(q).on("time" -> time, "toSellIds" -> toSellCardIds).executeUpdate()
     }
-    println(s"""Ended current team pickees: ${toSellIds.mkString(", ")}""")
+    println(s"""Ended current team pickees: ${toSellCardIds.mkString(", ")}""")
     SQL("update useru set change_tstamp = null where user_id = {userId};").on("userId" -> userId).executeUpdate()
-    print(s"""Buying: ${toBuyIds.mkString(", ")}""")
-    toBuyIds.map(t => {
-      SQL("insert into team(user_id, pickee_id, timespan) values({userId}, {pickeeId}, tstzrange({time}, null)) returning team_id;").
-        on("userId" -> userId, "pickeeId" -> t, "time" -> time).executeInsert().get
+    print(s"""Buying: ${toBuyCardIds.mkString(", ")}""")
+    toBuyCardIds.map(t => {
+      SQL("insert into team(card_id, timespan) values({cardId}, tstzrange({time}, null)) returning team_id;").
+        on("cardId" -> t, "time" -> time).executeInsert().get
     })
     println("Inserted new team")
-  }
-
-  override def processUserTransfer(userId: Long)(implicit c: Connection)  = {
-    val now = LocalDateTime.now()
-    // TODO need to lock here?
-    // TODO map and filter together
-    val transfers = getUserTransfer(userId, Some(false))
-    // TODO single iteration
-    val toSellIds = transfers.filter(!_.isBuy).map(_.internalPickeeId).toSet
-    val toBuyIds = transfers.filter(_.isBuy).map(_.internalPickeeId).toSet
-      val q =
-        """select pickee_id from team t where t.user_id = {userId} and upper(t.timespan) is NULL;
-              """
-      val oldTeamIds = SQL(q).on("userId" -> userId).as(SqlParser.scalar[Long].*).toSet
-      changeTeam(userId, toBuyIds, toSellIds, oldTeamIds, now)
-      transfers.map(t => setProcessed(t.transferId))
   }
 
   override def pickeeLimitsValid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Boolean = {
@@ -116,14 +98,15 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow = {
     val rnd = scala.util.Random
     val newCard = SQL(
-      "insert into card(user_id, pickeeId, colour) values({userId},{pickeeId},{colour})"
+      """insert into card(user_id, pickee_id, colour) values({userId},{pickeeId},{colour})
+        |returning card_id, user_id, pickee_id, colour""".stripMargin
     ).on("userId" -> userId, "pickeeId" -> pickeeId, "colour" -> colour).executeInsert(CardRow.parser.single)
-    val statFieldIds = leagueRepo.getScoringStatFieldsForPickee(leagueId).map(_.statFieldId)
-    var randomStatFieldIds = Set[Int]()
+    val statFieldIds = leagueRepo.getScoringStatFieldsForPickee(leagueId, pickeeId).map(_.statFieldId).toArray
+    var randomStatFieldIds = scala.collection.mutable.Set[Long]()
     colour match {
       case "GOLD" => {
         while (randomStatFieldIds.size < 2){
-          randomStatFieldIds += rnd.nextInt(statFieldIds.size+1)  // TODO check this +1
+          randomStatFieldIds += statFieldIds(rnd.nextInt(statFieldIds.length))  // TODO check this +1
         }
         randomStatFieldIds.foreach(sfid => {
           // leads to random from 1.15, 1.20, 1.25
@@ -134,7 +117,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
       case "SILVER" => {
         // leads to random from 1.05, 1.10, 1.15
         val multiplier = (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
-        insertCardBonus(newCard.cardId, rnd.nextInt(statFieldIds.size+1), multiplier)
+        insertCardBonus(newCard.cardId, statFieldIds(rnd.nextInt(statFieldIds.length)), multiplier)
       }
       case _ => ()
     }
@@ -142,9 +125,9 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   }
 
   override def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow] = {
-    val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId)
+    val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId).toArray
     for {
-        i <- 0 to 7
+        i <- 0 until 7
         colour = scala.util.Random.nextInt(10) match {
           case x if x < 6 => "GREY"
           case x if x < 9 => "SILVER"
@@ -158,7 +141,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   override def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection) = {
     SQL (
       "insert into card_bonus_multiplier(card_id, stat_field_id, multiplier) values({cardId},{statFieldId},{multiplier})"
-    ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert ()
+    ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert()
   }
 }
 

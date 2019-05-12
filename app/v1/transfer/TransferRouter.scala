@@ -11,12 +11,12 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
   val prefix = "/v1/transfers"
 
   override def routes: Routes = {
-    // TODO background task continually processing
-    case POST(p"/$leagueId/process") =>
-      controller.processTransfersReq(leagueId)
 
     case POST(p"/leagues/$leagueId/users/$userId") =>
-      controller.scheduleTransferReq(userId, leagueId)
+      controller.transferReq(userId, leagueId)
+
+    case POST(p"/leagues/$leagueId/users/$userId/newPack") =>
+      controller.generateCardPackReq(userId, leagueId)
 
     case GET(p"/leagues/$leagueId/users/$userId") =>
       controller.getUserTransfersReq(userId, leagueId)

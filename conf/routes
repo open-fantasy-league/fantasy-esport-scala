@@ -4,6 +4,9 @@
 
 ->         /api/v1/transfers            v1.transfer.TransferRouter
 
+->         /api/v1/teams            v1.team.TeamRouter
+
+
 ->         /api/v1/results            v1.result.ResultRouter
 
 ->         /api/v1/pickees            v1.pickee.PickeeRouter

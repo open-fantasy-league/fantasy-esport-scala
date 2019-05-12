@@ -24,6 +24,7 @@ case class DetailedLeagueRow(
                              urlVerified: Boolean,
                              applyPointsAtStartTime: Boolean,
                              noWildcardForLateRegister: Boolean,
+                            cardSystem: Boolean,
                              started: Boolean,
                              ended: Boolean,
                              periodValue: Int,
@@ -59,6 +60,7 @@ case class PublicLeagueRow(
                           urlVerified: Boolean,
                           applyPointsAtStartTime: Boolean,
                           noWildcardForLateRegister: Boolean,
+                          cardSystem: Boolean,
                           started: Boolean,
                           ended: Boolean
 )
@@ -85,6 +87,7 @@ object PublicLeagueRow{
         "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister,
+        "cardSystem" -> league.cardSystem,
         "started" -> league.started,
         "ended" -> league.ended
       )
@@ -96,7 +99,7 @@ object PublicLeagueRow{
       row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.transferDelayMinutes,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
-      row.noWildcardForLateRegister, row.started, row.ended
+      row.noWildcardForLateRegister, row.cardSystem, row.started, row.ended
     )
   }
 }
@@ -121,7 +124,8 @@ case class LeagueRow(leagueId: Long,
                      currentPeriodId: Option[Long] = None,
                      applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
                      noWildcardForLateRegister: Boolean = false, // late defined as after league has startd,
-                     manuallyCalculatePoints: Boolean = true
+                     manuallyCalculatePoints: Boolean = true,
+                     cardSystem: Boolean = false
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)

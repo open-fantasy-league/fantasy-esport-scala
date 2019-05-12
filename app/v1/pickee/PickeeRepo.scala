@@ -1,14 +1,16 @@
 package v1.pickee
 
 import java.sql.Connection
+
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
-
 import models._
 import anorm._
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.{Macro, RowParser}
+import Macro.ColumnNaming
+import play.api.Logger
 import utils.GroupByOrderedImplicit._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -54,10 +56,12 @@ trait PickeeRepo{
   def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
   def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long
   def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long]
+  def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
 }
 
 @Singleton
 class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends PickeeRepo{
+  private val logger = Logger("application")
 
   override def insertPickee(leagueId: Long, pickee: PickeeFormInput)(implicit c: Connection): Long = {
     SQL(
@@ -152,11 +156,32 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
   override def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
     val parser: RowParser[DistinctPickee] = Macro.namedParser[DistinctPickee](ColumnNaming.SnakeCase)
+    var seenLimits = Set[Long]()
+    var chosenOnes = Set[Long]()
+    // TODO dont need get all rows
+    val pickees = SQL(
+      """select limit_id, pickee_id, pickee_name, random() as rando from pickee
+        |left join pickee_limit pl using(pickee_id)
+        |where league_id = {leagueId} order by rando""".stripMargin
+    ).on("leagueId" -> leagueId).as(parser.*).iterator
+    while (chosenOnes.size < 7){
+      val nextPickee = pickees.next()
+      logger.info(s"pickee: ${nextPickee.pickeeId}, limit: ${nextPickee.limitId}")
+      if (!seenLimits.contains(nextPickee.limitId)){
+        chosenOnes = chosenOnes + nextPickee.pickeeId
+        seenLimits = seenLimits + nextPickee.limitId
+      }
+    }
+    chosenOnes
+  }
+
+  override def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow] = {
+    // TODO kind of overlap with team repo
     SQL(
-      """select pickee_id, distinct limit_id, distinct pickee_name from pickee
-        |join pickee_limit pl using(pickee_id)
-        |where league_id = {leagueId} order by RANDOM limit 7""".stripMargin
-    ).on("leagueId" -> leagueId).as(parser.*).map(_.pickeeId)
+      """
+        |select card_id, user_id, pickee_id, colour from card
+        |join pickee using(pickee_id) where user_id = {userId} and league_id = {leagueId}
+      """.stripMargin).on("userId" -> userId, "leagueId" -> leagueId).as(CardRow.parser.*)
   }
 }
 

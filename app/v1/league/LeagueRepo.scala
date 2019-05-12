@@ -4,6 +4,8 @@ import java.sql.Connection
 
 import javax.inject.{Inject, Singleton}
 import java.time.LocalDateTime
+
+import play.api.Logger
 //import java.math.BigDecimal
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
@@ -46,6 +48,7 @@ object LeagueFull{
         "pickeeDescription" -> league.league.pickeeDescription,
         "periodDescription" -> league.league.periodDescription,
         "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
+        "cardSystem" -> league.league.cardSystem,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
         "url" -> {if (league.league.urlVerified) league.league.url else ""}
       )
@@ -60,7 +63,7 @@ trait LeagueRepo{
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
   def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
   def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
-  def getScoringStatFieldsForPickee(pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
+  def getScoringStatFieldsForPickee(leagueId: Long, pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def isStarted(league: LeagueRow): Boolean
   def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long
   def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
@@ -91,7 +94,7 @@ trait LeagueRepo{
 
 @Singleton
 class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends LeagueRepo{
-
+  private val logger = Logger("application")
   private val leagueParser: RowParser[LeagueRow] = Macro.namedParser[LeagueRow](ColumnNaming.SnakeCase)
   private val detailedLeagueParser: RowParser[DetailedLeagueRow] = Macro.namedParser[DetailedLeagueRow](ColumnNaming.SnakeCase)
 
@@ -100,7 +103,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       s"""select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, manually_calculate_points
+        | no_wildcard_for_late_register, card_system, manually_calculate_points
         | from league where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
 
@@ -108,7 +111,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull = {
     val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
           transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open, force_full_teams,
-          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register,
+          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, card_system,
            (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
            p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
            p.on_start_close_transfer_window, p.on_end_open_transfer_window,
@@ -134,18 +137,18 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).as(lsfParser.*)
   }
 
-  override def getScoringStatFieldsForPickee(pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
+  override def getScoringStatFieldsForPickee(leagueId: Long, pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
     // Because we dont want to give card bonus for stat fields which that pickee doesnt score on!!!
+    logger.debug(s"getScoringStatFieldsForPickee: $pickeeId")
     val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
     // todo handle safely for if people do put 0.0 values in?
-    val q = """
-           select stat_field_id, league_id, name from stat_field join scoring s using(stat_field_id)
+    SQL"""
+           select stat_field_id, stat_field.league_id, stat_field.name from stat_field join scoring s using(stat_field_id)
            left join "limit" lim using(limit_id)
-           left join pickee_limit using(lim.limit_id)
+           left join pickee_limit using(limit_id)
            left join pickee using(pickee_id)
-           where (s.limit_id is null or s.limit_id = lim.limit_id) and (pickee_id = {pickeeId} or pickee_id is null)
-            """
-    SQL(q).as(lsfParser.*)
+           where (s.limit_id is null or (s.limit_id = lim.limit_id and pickee_id = $pickeeId)) and stat_field.league_id = $leagueId
+            """.as(lsfParser.*)
   }
 
   override def insert(input: LeagueFormInput)(implicit c: Connection): LeagueRow = {
@@ -179,7 +182,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       input.transferInfo.transferWildcard, input.startingMoney,
       input.teamSize, input.transferInfo.transferDelayMinutes, false, input.transferInfo.forceFullTeams,
       input.url.getOrElse(""), false, null,
-      input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister)
+      input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister, input.transferInfo.cardSystem)
   }
 
   override def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow = {
@@ -454,13 +457,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long] = {
     // TODO bulk insert
     limits.toList.map(ft => {
+      println(s"inserting limit type ${ft.name}: ${ft.max}")
       // = leagueRepo.insertLimits
-      val newLimitTypeId: Long = SQL(
-        """insert into limit_type(league_id, name, description, "max") values({leagueId}, {name}, {description}, {max});""").on(
+      val sql = SQL(
+        """
+          |insert into limit_type(name, description, league_id, "max") values({name}, {description}, {leagueId}, {max})
+          |returning limit_type_id""".stripMargin
+      ).on(
         "leagueId" -> leagueId, "name" -> ft.name, "description" -> ft.description.getOrElse(ft.name), "max" -> ft.max
-      ).executeInsert().get
+      )
+      println(sql.sql)
+      val newLimitTypeId: Long = sql.executeInsert().get
       ft.types.iterator.map(f => {
-        val newLimitId = SQL("""insert into "limit"(faction_type_id, name, "max") values({factionTypeId}, {name}, {max});""").on(
+        println(s"inserting limit ${f.name}: ${f.max}")
+        val newLimitId = SQL(
+          """
+            |insert into "limit"(limit_type_id, name, "max") values({factionTypeId}, {name}, {max}) returning limit_id""".stripMargin).on(
           "factionTypeId" -> newLimitTypeId, "name" -> f.name, "max" -> ft.max.getOrElse(f.max.get)
         ).executeInsert().get
         f.name -> newLimitId

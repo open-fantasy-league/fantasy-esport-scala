@@ -71,7 +71,7 @@ object LeagueRankings{
   }
 }
 
-case class DetailedUser(user: UserRow, team: Option[Iterable[PickeeRow]], scheduledTransfers: Option[Iterable[TransferRow]], stats: Option[Map[String, Double]])
+case class DetailedUser(user: UserRow, team: Option[Iterable[CardOut]], scheduledTransfers: Option[Iterable[TransferRow]], stats: Option[Map[String, Double]])
 
 object DetailedUser{
   implicit val implicitWrites = new Writes[DetailedUser] {

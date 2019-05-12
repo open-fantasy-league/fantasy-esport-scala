@@ -22,18 +22,6 @@ class AdminController @Inject()(
 
   implicit val parser = parse.default
 
-  def allProcessTransfersReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
-    Future {
-    val currentTime = LocalDateTime.now()
-      db.withConnection { implicit c =>
-        val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-        val q = "select user_id from useru where change_tstamp is not null and change_tstamp <= now();"
-        SQL(q).on().as(SqlParser.long("user_id").*).foreach(transferRepo.processUserTransfer)
-      }
-      Ok("Transfer updates processed")
-    }
-  }
-
   def allRolloverPeriodReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
