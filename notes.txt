@@ -56,3 +56,29 @@ tstzrange. default tstzrange(now(), null)
 create table scoring(scoring_id not null, stat_field_id not null, limit_id);
 
 # error if no pickees in with match
+
+
+# card carousel
+# gold/silver/bronze backgrounds
+# player images
+# sort team by position
+# remove confirm needed
+# predictions page
+# check buy pack decreases credits
+# recycle card button
+# leaderboard page
+# some test matches
+# bias packs to midfielders and defenders, not gkeepers
+# check the combination faction stuff when preventing dupes
+
+
+------- next weeks fixtures
+------- this weeks fixtures (with result)
+
+
+
+DOTA:
+# do average points per period
+# check open dota api call has fantasy points breakdown
+# be able to pick team for any period not just next
+# rework transfers so isnt hacked about targetting transfer at period start

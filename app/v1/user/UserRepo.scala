@@ -95,7 +95,7 @@ trait UserRepo{
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
   def detailedUser(
                           user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                          stats: Boolean)(implicit c: Connection): DetailedUser
+                          stats: Boolean, time: Option[LocalDateTime])(implicit c: Connection): DetailedUser
   def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
@@ -150,11 +150,11 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def detailedUser(
                                    user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                                   showStats: Boolean)(implicit c: Connection): DetailedUser = {
+                                   showStats: Boolean, time: Option[LocalDateTime])(implicit c: Connection): DetailedUser = {
     val team = showTeam match {
       case false => None
       case true => {
-        Some(teamRepo.getUserTeam(user.userId))
+        Some(teamRepo.getUserTeam(user.userId, time))
       }
     }
     val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getUserTransfer(user.userId, Some(false))) else None
@@ -177,7 +177,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
     SQL(
       """
         |insert into useru(league_id, external_user_id, username, money, entered, remaining_transfers, used_wildcard) values
-        |({leagueId}, {externalUserId}, {startingMoney}, {entered},
+        |({leagueId}, {externalUserId}, {username}, {startingMoney}, {entered},
         | {remainingTransfers}, {usedWildcard}) returning user_id;
       """.stripMargin).on(
       "leagueId" -> league.leagueId, "externalUserId" -> externalUserId, "startingMoney" -> league.startingMoney,

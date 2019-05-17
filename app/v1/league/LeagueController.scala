@@ -33,7 +33,8 @@ case class LimitTypeInput(name: String, description: Option[String], max: Option
 
 case class TransferInput(
                           transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
-                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean, cardSystem: Boolean
+                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean, cardSystem: Boolean,
+                          recycleValue: Option[Double]
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
@@ -55,7 +56,8 @@ case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean
                                  transferWildcard: Option[Boolean],
                                  periodDescription: Option[String],
                                  pickeeDescription: Option[String],
-                                 applyPointsAtStartTime: Option[Boolean], noWildcardForLateRegister: Option[Boolean]
+                                 applyPointsAtStartTime: Option[Boolean], noWildcardForLateRegister: Option[Boolean],
+                                 recycleValue: Option[Double]
                                  )
 
 class LeagueController @Inject()(
@@ -89,7 +91,8 @@ class LeagueController @Inject()(
           "transferWildcard" -> default(boolean, false),
           "forceFullTeams" -> default(boolean, false),
           "noWildcardForLateRegister" -> default(boolean, false),
-          "cardSystem" -> default(boolean, false)
+          "cardSystem" -> default(boolean, false),
+          "recycleValue" -> optional(of(doubleFormat))
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
           "name" -> nonEmptyText,
@@ -150,6 +153,7 @@ class LeagueController @Inject()(
         "pickeeDescription" -> optional(nonEmptyText),
         "applyPointsAtStartTime" -> optional(boolean),
         "noWildcardForLateRegister" -> optional(boolean),
+        "recycleValue" -> optional(of(doubleFormat))
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
@@ -193,12 +197,19 @@ class LeagueController @Inject()(
 
   def showUserReq(userId: String, leagueId: String) = (new LeagueAction(leagueId)
     andThen new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
-    Future{
-      val showTeam = !request.getQueryString("team").isEmpty
-      val showScheduledTransfers = !request.getQueryString("scheduledTransfers").isEmpty
-      val stats = !request.getQueryString("stats").isEmpty
-      db.withConnection { implicit c =>
-        Ok(Json.toJson(userRepo.detailedUser(request.user, showTeam, showScheduledTransfers, stats)))
+    Future {
+      val showTeam = request.getQueryString("team").isDefined
+      val timeResult = IdParser.parseTimestamp(request.getQueryString("time"))
+      timeResult match {
+        case Left(bad) => bad
+        case Right(time) => {
+          val showScheduledTransfers = request.getQueryString("scheduledTransfers").isDefined
+          val stats = request.getQueryString("stats").isDefined
+          db.withConnection {
+            implicit c =>
+              Ok(Json.toJson(userRepo.detailedUser(request.user, showTeam, showScheduledTransfers, stats, time)))
+          }
+        }
       }
     }
   }

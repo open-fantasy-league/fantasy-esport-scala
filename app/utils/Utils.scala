@@ -8,6 +8,7 @@ import play.api.mvc.Result
 import play.api.mvc.Results.BadRequest
 import java.io._
 import java.sql.Connection
+import java.time.format.DateTimeFormatter
 
 object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {
@@ -15,6 +16,11 @@ object IdParser {
   }
   def parseIntId(id: String, idName: String): Either[Result, Int] = {
     Try(id.toInt).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
+  }
+
+  def parseTimestamp(tstamp: Option[String]): Either[Result, Option[LocalDateTime]] = {
+    val format = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+    Try(tstamp.map(t => LocalDateTime.parse(t, format))).toOption.toRight(BadRequest(f"Invalid time format: $tstamp"))
   }
 }
 

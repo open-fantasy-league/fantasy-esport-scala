@@ -2,18 +2,20 @@ package v1.transfer
 
 import java.sql.Connection
 import java.time.LocalDateTime
-import javax.inject.Inject
 
+import javax.inject.Inject
 import play.api.mvc._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.data.format.Formats._
 import play.api.libs.json._
+
 import scala.concurrent.{ExecutionContext, Future}
 import utils.TryHelper.{tryOrResponse, tryOrResponseRollback}
 import models._
 import play.api.db._
 import auth._
+import utils.IdParser
 import v1.user.UserRepo
 import v1.team.TeamRepo
 import v1.league.LeagueRepo
@@ -82,6 +84,20 @@ class TransferController @Inject()(
     }
   }
 
+  def recycleCardReq(userId: String, leagueId: String, cardId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      (for {
+        cardIdLong <- IdParser.parseLongId(cardId, "card id")
+        succeeded = db.withConnection { implicit c =>
+          transferRepo.recycleCard(request.league.leagueId, request.user.userId, cardIdLong)
+        }
+        out <- if(succeeded) Right(Ok("generated card pack")) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
+      } yield out).fold(identity, identity)
+    }
+  }
+
   private def makeTransfer[A](league: LeagueRow, user: UserRow)(implicit request: Request[A]): Future[Result] = {
     val isCard = league.cardSystem
     def failure(badForm: Form[TransferFormInput]) = {
@@ -114,7 +130,7 @@ class TransferController @Inject()(
               _ <- updatedTeamSize(newTeamPickeeIdsSet.toSet, league.teamSize, input.isCheck, league.forceFullTeams)
               _ <- validateLimits(newTeamPickeeIdsSet, league.leagueId)
               currentPeriod = leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0)
-              out <- if (input.isCheck) Right(Ok("Team OK")) else
+              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(user.money, None)))) else
                 updateDBCardTransfer(
                   sell, buy, currentTeamIds, user, currentPeriod, leagueRepo.getPeriodFromValue(league.leagueId, currentPeriod + 1).start
                 )
@@ -297,7 +313,8 @@ class TransferController @Inject()(
         transferRepo.changeTeam(
           user.userId, toBuy, toSell, currentTeamIds, nextPeriodStartTime
         )
-      Ok("Successfully transferred")
+      val newMoney = 10.0 // TODO actual new credits
+      Ok(Json.toJson(TransferSuccess(newMoney, None)))
     }, c, InternalServerError("Unexpected error whilst processing transfer")
     )
   }

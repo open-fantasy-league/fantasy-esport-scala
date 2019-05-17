@@ -16,8 +16,16 @@ case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, mult
 case class CardWithBonusRow(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                    statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double])
 
+case class CardWithBonusRowAndLimits(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+                            statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
+                                     limitName: Option[String], limitTypeName: Option[String])
+
 object CardWithBonusRow{
   val parser: RowParser[CardWithBonusRow] = Macro.namedParser[CardWithBonusRow](ColumnNaming.SnakeCase)
+}
+
+object CardWithBonusRowAndLimits{
+  val parser: RowParser[CardWithBonusRowAndLimits] = Macro.namedParser[CardWithBonusRowAndLimits](ColumnNaming.SnakeCase)
 }
 
 object CardBonusMultiplierRow{
@@ -34,7 +42,7 @@ object CardBonusMultiplierRow{
 }
 
 case class CardOut(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
-                   bonuses: Iterable[CardBonusMultiplierRow])
+                   bonuses: Iterable[CardBonusMultiplierRow], limits: Map[String, String])
 
 object CardOut{
     implicit val implicitWrites = new Writes[CardOut] {
@@ -45,9 +53,10 @@ object CardOut{
           "name" -> t.pickeeName,
           "pickeeId" -> t.externalPickeeId,
           "price" -> t.price,
-          "price" -> t.price,
+          "colour" -> t.colour,
           "pickeeId" -> t.externalPickeeId,
-          "bonuses" -> t.bonuses
+          "bonuses" -> t.bonuses,
+          "limitTypes" -> t.limits
         )
       }
     }
@@ -83,7 +92,9 @@ case class TeamRow(externalUserId: Long, username: String, userId: Long, start: 
                    end: Option[LocalDateTime], isActive: Boolean, cardId: Long, internalPickeeId: Long,
                    externalPickeeId: Long, pickeeName: String,
                    pickeePrice: BigDecimal, colour: String,
-                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double])
+                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
+                   limitName: Option[String], limitTypeName: Option[String]
+                  )
 
 
 object TeamRow {

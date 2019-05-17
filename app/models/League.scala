@@ -25,6 +25,7 @@ case class DetailedLeagueRow(
                              applyPointsAtStartTime: Boolean,
                              noWildcardForLateRegister: Boolean,
                             cardSystem: Boolean,
+                            recycleValue: Option[Double],
                              started: Boolean,
                              ended: Boolean,
                              periodValue: Int,
@@ -38,7 +39,7 @@ case class DetailedLeagueRow(
                              limitTypeName: Option[String],
                              description: Option[String],
                              limitName: Option[String],
-                             limitMax: Option[Int]
+                             limitMax: Option[Int],
                             )
 
 case class PublicLeagueRow(
@@ -61,6 +62,7 @@ case class PublicLeagueRow(
                           applyPointsAtStartTime: Boolean,
                           noWildcardForLateRegister: Boolean,
                           cardSystem: Boolean,
+                          recycleValue: Option[Double],
                           started: Boolean,
                           ended: Boolean
 )
@@ -88,6 +90,7 @@ object PublicLeagueRow{
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister,
         "cardSystem" -> league.cardSystem,
+        "recycleValue" -> league.recycleValue,
         "started" -> league.started,
         "ended" -> league.ended
       )
@@ -99,7 +102,7 @@ object PublicLeagueRow{
       row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.transferDelayMinutes,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
-      row.noWildcardForLateRegister, row.cardSystem, row.started, row.ended
+      row.noWildcardForLateRegister, row.cardSystem, row.recycleValue, row.started, row.ended
     )
   }
 }
@@ -125,7 +128,8 @@ case class LeagueRow(leagueId: Long,
                      applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
                      noWildcardForLateRegister: Boolean = false, // late defined as after league has startd,
                      manuallyCalculatePoints: Boolean = true,
-                     cardSystem: Boolean = false
+                     cardSystem: Boolean = false,
+                     recycleValue: Option[Double] = None
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)
@@ -198,3 +202,32 @@ object LeagueRow{
     }
   }
 }
+
+case class ScoringRow(statFieldName: String, limitName: Option[String], points: Double)
+
+object ScoringRow{
+
+  def rowsToOut(rows: Iterable[ScoringRow]): Map[String, Map[String, Double]] = {
+    rows.groupBy(_.statFieldName).mapValues({rows2 => {
+      if (rows2.head.limitName.isDefined){
+        rows2.map(r => r.limitName.get -> r.points).toMap
+      } else{
+        Map[String, Double]("any" -> rows2.head.points)
+      }
+    }
+    })
+  }
+
+  implicit val implicitWrites = new Writes[ScoringRow] {
+    def writes(x: ScoringRow): JsValue = {
+      Json.obj(
+        "statFieldName" -> x.statFieldName,
+        "limitName" -> x.limitName,
+        "points" -> x.points,
+      )
+    }
+  }
+
+  val parser: RowParser[ScoringRow] = Macro.namedParser[ScoringRow](ColumnNaming.SnakeCase)
+}
+

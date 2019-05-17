@@ -28,6 +28,7 @@ trait TransferRepo{
   def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow
   def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
+  def recycleCard(leagueId: Long, userId: Long, cardId: Long)(implicit c: Connection): Boolean
 }
 
 @Singleton
@@ -65,11 +66,11 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
 
   override def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)] = {
     // TODO need to check this againbst something. doesnt work right now
+    if (newTeamIds.isEmpty) return None
     val parser =
       (SqlParser.str("name") ~ SqlParser.int("limmax")).map {
         case name ~ max_ => name -> max_
       }
-    if (newTeamIds.isEmpty) return None
     val q =
       """select l.name, coalesce(lt.max, l.max) as limmax from pickee p
         | join pickee_limit pl using(pickee_id)
@@ -148,6 +149,15 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     SQL (
       "insert into card_bonus_multiplier(card_id, stat_field_id, multiplier) values({cardId},{statFieldId},{multiplier})"
     ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert()
+  }
+
+  override def recycleCard(leagueId: Long, userId: Long, cardId: Long)(implicit c: Connection): Boolean = {
+    val updatedCount = SQL"""update card set recycled = true where card_id = $cardId and user_id = $userId;""".executeUpdate()
+    if (updatedCount == 0){
+      return false
+    }
+    SQL"""update useru set money = money + league.recycle_value from league where useru.league_id = league.league_id""".executeUpdate()
+    true
   }
 }
 
