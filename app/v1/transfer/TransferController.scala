@@ -79,7 +79,7 @@ class TransferController @Inject()(
     Future {
       db.withConnection { implicit c =>
         transferRepo.generateCardPack(request.league.leagueId, request.user.userId)
-        Ok("generated card pack")
+        Ok(Json.toJson("success" -> true))
       }
     }
   }
@@ -93,7 +93,7 @@ class TransferController @Inject()(
         succeeded = db.withConnection { implicit c =>
           transferRepo.recycleCard(request.league.leagueId, request.user.userId, cardIdLong)
         }
-        out <- if(succeeded) Right(Ok("generated card pack")) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
+        out <- if(succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
       } yield out).fold(identity, identity)
     }
   }

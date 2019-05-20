@@ -83,7 +83,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
           left join pickee_limit pl using(pickee_id)
           left join "limit" l using(limit_id)
           left join limit_type lt using(limit_type_id)
-    where c.user_id = {userId};
+    where c.user_id = {userId} and not c.recycled;
     """
     println(q)
     val rows = SQL(q).on("userId" -> userId, "now" -> now).as(CardWithBonusRowAndLimits.parser.*)

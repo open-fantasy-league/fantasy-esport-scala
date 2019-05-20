@@ -57,6 +57,8 @@ trait ResultRepo{
                  )(implicit c: Connection): Long
   def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
   def insertStats(resultId: Long, statFieldId: Long, stats: Double)(implicit c: Connection): Long
+  def getUserPredictions(userId: Long, periodValue: Int)(implicit c: Connection): Iterable[PredictionRow]
+  def upsertUserPredictions(userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection): PredictionRow
 }
 
 @Singleton
@@ -127,6 +129,19 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
       "insert into stat(result_id, stat_field_id, value) values({resultId}, {statFieldId}, {stats}) returning stat_id"
     ).on("resultId" -> resultId, "statFieldId" -> statFieldId, "stats" -> stats).executeInsert().get
   }
+
+  override def getUserPredictions(userId: Long, periodVal: Int)(implicit c: Connection): Iterable[PredictionRow] = {
+    SQL"""select match_id, team_one_score, team_two_score, user_id, paid_out from prediction
+         join matchu m using(match_id)
+         where user_id = $userId and period = $periodVal"""
+  }.as(PredictionRow.parser.*)
+
+  override def upsertUserPredictions(
+                                      userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int
+                                    )(implicit c: Connection): PredictionRow = {
+    SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
+         VALUES ($matchId, $teamOneScore, $teamTwoScore, $userId) returning match_id, team_one_score, team_two_score, user_id, paid_out"""
+  }.executeInsert(PredictionRow.parser.single)
 
 }
 

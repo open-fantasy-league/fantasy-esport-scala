@@ -180,7 +180,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     SQL(
       """
         |select card_id, user_id, pickee_id, colour from card
-        |join pickee using(pickee_id) where user_id = {userId} and league_id = {leagueId}
+        |join pickee using(pickee_id) where user_id = {userId} and league_id = {leagueId} and not recycled
       """.stripMargin).on("userId" -> userId, "leagueId" -> leagueId).as(CardRow.parser.*)
   }
 }

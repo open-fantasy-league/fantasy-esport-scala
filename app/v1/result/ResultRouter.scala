@@ -12,16 +12,16 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
 
   override def routes: Routes = {
 
-    case POST(p"/leagues/$leagueId") =>
-      controller.add(leagueId)
-    case POST(p"/leagues/$leagueId/fixture") =>
-      controller.addFixture(leagueId)
+    case POST(p"/leagues/$leagueId") => controller.add(leagueId)
+    case POST(p"/leagues/$leagueId/fixture") => controller.addFixture(leagueId)
 
-    case GET(p"/leagues/$leagueId") =>
-      controller.getReq(leagueId)
+    case GET(p"/leagues/$leagueId") => controller.getReq(leagueId)
 
-    case GET(p"/$id") =>
-      controller.getReq(id)
+    case GET(p"/$id") => controller.getReq(id)
+
+    case GET(p"/leagues/$leagueId/predictions/$userId") => controller.getPredictionsReq(leagueId, userId)
+
+    case POST(p"/leagues/$leagueId/predictions/$userId") => controller.upsertPredictionsReq(leagueId, userId)
   }
 
 }

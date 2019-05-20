@@ -21,6 +21,7 @@ import auth._
 import play.api.Logger
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
+import v1.user.UserRepo
 
 case class ResultFormInput(
                             matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
@@ -36,7 +37,9 @@ case class StatsFormInput(field: String, value: Double)
 
 case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
-class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
+case class PredictionFormInput(userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int)
+
+class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
   private val logger = Logger("application")
@@ -72,6 +75,15 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
       "teamTwo" -> nonEmptyText,
       "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))
     )(FixtureFormInput.apply)(FixtureFormInput.unapply))
+  }
+
+  private val predictionForm: Form[PredictionFormInput] = {
+    Form(mapping(
+      "userId" -> of(longFormat),
+      "matchId" -> of(longFormat),
+      "teamOneScore" -> of(intFormat),
+      "teamTwoScore" -> of(intFormat)
+    )(PredictionFormInput.apply)(PredictionFormInput.unapply))
   }
   implicit val parser = parse.default
 
@@ -249,5 +261,33 @@ class ResultController @Inject()(cc: ControllerComponents, resultRepo: ResultRep
         } yield success).fold(identity, identity)
       }
     }
+  }
+
+  def getPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+    implicit request =>
+      Future{
+        (for {
+          // TODO getOrElse next period?
+          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          results = db.withConnection { implicit c => resultRepo.getUserPredictions(request.user.userId, period.getOrElse(1)).toList}
+          success = Ok(Json.toJson(results))
+        } yield success).fold(identity, identity)
+      }
+  }
+
+  def upsertPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+    implicit request =>
+
+      def failure(badForm: Form[PredictionFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
+
+      def success(input: PredictionFormInput) = {
+        Future {
+            val results = db.withConnection { implicit c => resultRepo.upsertUserPredictions(
+              request.user.userId, input.matchId, input.teamOneScore, input.teamTwoScore
+            )}
+              Ok(Json.toJson(results))
+        }
+      }
+      predictionForm.bindFromRequest().fold(failure, success)
   }
 }

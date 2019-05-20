@@ -41,3 +41,22 @@ object MatchRow{
 
   val parser: RowParser[MatchRow] = Macro.namedParser[MatchRow](ColumnNaming.SnakeCase)
 }
+
+case class PredictionRow(matchId: Long, teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)
+
+object PredictionRow{
+
+  implicit val implicitWrites = new Writes[PredictionRow] {
+    def writes(x: PredictionRow): JsValue = {
+      Json.obj(
+        "matchId" -> x.matchId,
+        "teamOneScore" -> x.teamOneScore,
+        "teamTwoScore" -> x.teamTwoScore,
+        "userId" -> x.userId,
+        "paidOut" -> x.paidOut
+      )
+    }
+  }
+
+  val parser: RowParser[PredictionRow] = Macro.namedParser[PredictionRow](ColumnNaming.SnakeCase)
+}
