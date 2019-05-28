@@ -37,7 +37,10 @@ case class StatsFormInput(field: String, value: Double)
 
 case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
-case class PredictionFormInput(userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int)
+case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
+case class PredictionsFormInput(predictions: List[PredictionFormInput])
+
+case class MatchIdMaybeResultId(matchId: Long, resultId: Option[Long])
 
 class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
@@ -79,12 +82,19 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
   private val predictionForm: Form[PredictionFormInput] = {
     Form(mapping(
-      "userId" -> of(longFormat),
       "matchId" -> of(longFormat),
       "teamOneScore" -> of(intFormat),
       "teamTwoScore" -> of(intFormat)
     )(PredictionFormInput.apply)(PredictionFormInput.unapply))
   }
+  private val predictionsForm: Form[PredictionsFormInput] = {
+    Form(mapping("predictions" -> list(mapping(
+      "matchId" -> of(longFormat),
+      "teamOneScore" -> of(intFormat),
+      "teamTwoScore" -> of(intFormat)
+    )(PredictionFormInput.apply)(PredictionFormInput.unapply)))(PredictionsFormInput.apply)(PredictionsFormInput.unapply))
+  }
+
   implicit val parser = parse.default
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
@@ -94,6 +104,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   def addFixture(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
     db.withConnection { implicit c => processJsonAddFixture(request.league)}
   }
+
+//  def addResultsToFixture(leagueId: String, externalMatchId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
+//    db.withConnection { implicit c => processJsonAddResultsToFixture(request.league, externalMatchId)}
+//  }
 
   private def processJsonResult[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[ResultFormInput]) = {
@@ -105,15 +119,17 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         //var error: Option[Result] = None
         db.withTransaction { implicit c =>
           (for {
-            validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
-            internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
+            existingMatchId <- isExistingMatch(league.leagueId, input.matchId)
+            validateStarted <- if (leagueRepo.isStarted (league)) Right (true) else Left (BadRequest ("Cannot add results before league started"))
+            internalPickee = input.pickees.map (p => InternalPickee (pickeeRepo.getInternalId (league.leagueId, p.id).get, p.isTeamOne, p.stats))
             now = LocalDateTime.now
             targetTstamp = getTargetedAtTstamp(input, league, now)
-            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, now)
-            insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
-            insertedResults <- newResults(input, league, insertedMatch, internalPickee)
-            insertedStats <- newStats(league, insertedResults.toList, internalPickee)
-            updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
+            correctPeriod <- getPeriod (input.startTstamp, Some(targetTstamp), league, now)
+            insertedMatchId <- if (existingMatchId.isDefined) Right(existingMatchId.get) else newMatch(input, league, correctPeriod, targetTstamp, now)
+            _ = if (existingMatchId.isDefined) updatedMatch(league.leagueId, existingMatchId.get, input)
+            insertedResults <- newResults(input, league, insertedMatchId, internalPickee)
+            insertedStats <- newStats (league, insertedResults.toList, internalPickee)
+            updatedStats <- updateStats (insertedStats, league, correctPeriod, targetTstamp)
           } yield Created("Successfully added results")).fold(identity, identity)
         }
       }
@@ -121,6 +137,49 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
     form.bindFromRequest().fold(failure, success)
   }
+
+  private def isExistingMatch(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Either[Result, Option[Long]] = {
+    val parser: RowParser[MatchIdMaybeResultId] = Macro.namedParser[MatchIdMaybeResultId](ColumnNaming.SnakeCase)
+    val existing = SQL"""
+         select m.match_id, result_id from matchu m left join resultu where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1
+       """.as(parser.singleOpt)
+    existing match{
+      case Some(x) if x.resultId.isDefined => Left(BadRequest("Cannot add results for same match twice"))
+      case Some(x) => Right(Some(x.matchId))
+      case None => Right(None)
+    }
+  }
+
+  private def updatedMatch(leagueId: Long, matchId: Long, input: ResultFormInput) = {
+    println("cat")
+  }
+
+//  private def processJsonAddResultsToFixture[A](league: LeagueRow, externalMatchId: String)(implicit request: Request[A]): Future[Result] = {
+//    def failure(badForm: Form[ResultFormInput]) = {
+//      Future.successful(BadRequest(badForm.errorsAsJson))
+//    }
+//
+//    def success(input: ResultFormInput) = {
+//      Future {
+//        //var error: Option[Result] = None
+//        db.withTransaction { implicit c =>
+//          (for {
+//            validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
+//            internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
+//            now = LocalDateTime.now
+//            targetTstamp = getTargetedAtTstamp(input, league, now)
+//            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, now)
+//            insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
+//            insertedResults <- newResults(input, league, insertedMatch, internalPickee)
+//            insertedStats <- newStats(league, insertedResults.toList, internalPickee)
+//            updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
+//          } yield Created("Successfully added results")).fold(identity, identity)
+//        }
+//      }
+//    }
+//
+//    form.bindFromRequest().fold(failure, success)
+//  }
 
   private def processJsonAddFixture[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
     def failure(badForm: Form[FixtureFormInput]) = {
@@ -263,6 +322,18 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     }
   }
 
+  def getMatchesReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+    Future{
+      db.withConnection { implicit c =>
+        (for {
+          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          results = resultRepo.getMatches(request.league.leagueId, period).toList
+          success = Ok(Json.toJson(results))
+        } yield success).fold(identity, identity)
+      }
+    }
+  }
+
   def getPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
     implicit request =>
       Future{
@@ -275,19 +346,35 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       }
   }
 
-  def upsertPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+  def upsertPredictionReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
     implicit request =>
 
       def failure(badForm: Form[PredictionFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
 
       def success(input: PredictionFormInput) = {
         Future {
-            val results = db.withConnection { implicit c => resultRepo.upsertUserPredictions(
-              request.user.userId, input.matchId, input.teamOneScore, input.teamTwoScore
+            val results = db.withConnection { implicit c => resultRepo.upsertUserPrediction(
+              request.user.userId, request.league.leagueId, input.matchId, input.teamOneScore, input.teamTwoScore
             )}
               Ok(Json.toJson(results))
         }
       }
       predictionForm.bindFromRequest().fold(failure, success)
+  }
+
+  def upsertPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+    implicit request =>
+
+      def failure(badForm: Form[PredictionsFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
+
+      def success(input: PredictionsFormInput) = {
+        Future {
+          val results = db.withConnection { implicit c => resultRepo.upsertUserPredictions(
+            request.user.userId, request.league.leagueId, input.predictions
+          )}
+          Ok(Json.toJson(results))
+        }
+      }
+      predictionsForm.bindFromRequest().fold(failure, success)
   }
 }

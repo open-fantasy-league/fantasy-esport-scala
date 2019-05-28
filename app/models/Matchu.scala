@@ -14,8 +14,9 @@ case class MatchRow( // because match is an sql keyword
               tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
               teamOne: String,
               teamTwo: String,
-              teamOneVictory: Boolean,
-                     outcome: String,
+              teamOneVictory: Option[Boolean],
+                     teamOneScore: Option[Int],
+                     teamTwoScore: Option[Int],
               startTstamp: LocalDateTime,
               addedDbTstamp: LocalDateTime,
               targetedAtTstamp: LocalDateTime // what timestamp do we look up teams for
@@ -34,7 +35,6 @@ object MatchRow{
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
         "teamOneVictory" -> m.teamOneVictory,
-        "outcome" -> m.outcome
       )
     }
   }
@@ -42,14 +42,14 @@ object MatchRow{
   val parser: RowParser[MatchRow] = Macro.namedParser[MatchRow](ColumnNaming.SnakeCase)
 }
 
-case class PredictionRow(matchId: Long, teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)
+case class PredictionRow(externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)
 
 object PredictionRow{
 
   implicit val implicitWrites = new Writes[PredictionRow] {
     def writes(x: PredictionRow): JsValue = {
       Json.obj(
-        "matchId" -> x.matchId,
+        "matchId" -> x.externalMatchId,
         "teamOneScore" -> x.teamOneScore,
         "teamTwoScore" -> x.teamTwoScore,
         "userId" -> x.userId,

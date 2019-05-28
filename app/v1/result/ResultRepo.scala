@@ -14,7 +14,8 @@ import javax.inject.{Inject, Singleton}
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean, outcome: String,
+case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String, teamOneVictory: Option[Boolean],
+                         teamOneScore: Option[Int], teamTwoScore: Option[Int],
                          tournamentId: Long,
                          startTstamp: LocalDateTime, addedDbTstamp: LocalDateTime,
                          targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
@@ -48,6 +49,7 @@ object ResultsOut{
 
 trait ResultRepo{
   def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut]
+  def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow]
   def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut]
   def insertMatch(
                    leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
@@ -58,7 +60,10 @@ trait ResultRepo{
   def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
   def insertStats(resultId: Long, statFieldId: Long, stats: Double)(implicit c: Connection): Long
   def getUserPredictions(userId: Long, periodValue: Int)(implicit c: Connection): Iterable[PredictionRow]
-  def upsertUserPredictions(userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection): PredictionRow
+  def upsertUserPrediction(userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int)(
+    implicit c: Connection): PredictionRow
+  def upsertUserPredictions(userId: Long, leagueId: Long, predictions: List[PredictionFormInput])(
+    implicit c: Connection): Iterable[PredictionRow]
 }
 
 @Singleton
@@ -69,7 +74,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   override def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut] = {
     val q =
       """
-        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.outcome, m.tournament_id, m.start_tstamp, m.added_db_tstamp,
+        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.team_one_score, m.team_two_score, m.tournament_id, m.start_tstamp, m.added_db_tstamp,
         | m.targeted_at_tstamp, m.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
         |  pck.external_pickee_id,
         |  pck.pickee_name, pck.price as pickee_price
@@ -84,6 +89,19 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     resultQueryExtractor(r)
   }
 
+  override def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow] = {
+    val q =
+      """
+        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.team_one_score, m.team_two_score,
+        |  m.tournament_id, m.start_tstamp, m.added_db_tstamp,
+        | m.targeted_at_tstamp, m.period
+        |  from matchu m
+        | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
+        | order by m.targeted_at_tstamp desc;
+      """.stripMargin
+    SQL(q).on("leagueId" -> leagueId, "period" -> period).as(MatchRow.parser.*)
+  }
+
   override def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut] = {
     val grouped = query.groupByOrdered(_.externalMatchId)
     grouped.map({case (externalMatchId, v) =>
@@ -91,7 +109,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne, x.head.pickeeName, x.map(y => y.statFieldName -> y.statsValue).toMap)
       })//(collection.breakOut): List[SingleResult]
       ResultsOut(MatchRow(externalMatchId, v.head.period, v.head.tournamentId, v.head.teamOne, v.head.teamTwo,
-        v.head.teamOneVictory, v.head.outcome,
+        v.head.teamOneVictory, v.head.teamOneScore, v.head.teamTwoScore,
         v.head.startTstamp, v.head.addedDbTstamp, v.head.targetedAtTstamp), results)
     })
   }
@@ -131,17 +149,36 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   }
 
   override def getUserPredictions(userId: Long, periodVal: Int)(implicit c: Connection): Iterable[PredictionRow] = {
-    SQL"""select match_id, team_one_score, team_two_score, user_id, paid_out from prediction
+    SQL"""select m.external_match_id, p.team_one_score, p.team_two_score, user_id, paid_out from prediction p
          join matchu m using(match_id)
          where user_id = $userId and period = $periodVal"""
   }.as(PredictionRow.parser.*)
 
-  override def upsertUserPredictions(
-                                      userId: Long, matchId: Long, teamOneScore: Int, teamTwoScore: Int
+  override def upsertUserPrediction(
+                                      userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int
                                     )(implicit c: Connection): PredictionRow = {
     SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
-         VALUES ($matchId, $teamOneScore, $teamTwoScore, $userId) returning match_id, team_one_score, team_two_score, user_id, paid_out"""
+         VALUES ((SELECT match_id from matchu where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
+       $teamOneScore, $teamTwoScore, $userId)
+       on conflict (user_id, match_id) do update
+       set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
+       returning $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
   }.executeInsert(PredictionRow.parser.single)
+
+  override def upsertUserPredictions(
+                                      userId: Long, leagueId: Long, predictions: List[PredictionFormInput]
+                                    )(implicit c: Connection): Iterable[PredictionRow] = {
+    predictions.map(p => {
+      SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
+         VALUES ((SELECT match_id from matchu where external_match_id = ${p.matchId} and league_id = $leagueId LIMIT 1),
+       ${p.teamOneScore}, ${p.teamTwoScore}, $userId)
+       on conflict (user_id, match_id) do update
+       set team_one_score = ${p.teamOneScore}, team_two_score = ${p.teamTwoScore}
+       returning ${p.matchId} as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
+        .executeInsert(PredictionRow.parser.single)
+    }
+    )
+  }
 
 }
 

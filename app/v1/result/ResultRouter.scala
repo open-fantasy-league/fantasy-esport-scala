@@ -17,10 +17,12 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
 
     case GET(p"/leagues/$leagueId") => controller.getReq(leagueId)
 
-    case GET(p"/$id") => controller.getReq(id)
+    // TODO this feels clunky
+    case GET(p"/matches/leagues/$leagueId") => controller.getMatchesReq(leagueId)
 
     case GET(p"/leagues/$leagueId/predictions/$userId") => controller.getPredictionsReq(leagueId, userId)
 
+    case POST(p"/leagues/$leagueId/prediction/$userId") => controller.upsertPredictionReq(leagueId, userId)
     case POST(p"/leagues/$leagueId/predictions/$userId") => controller.upsertPredictionsReq(leagueId, userId)
   }
 
