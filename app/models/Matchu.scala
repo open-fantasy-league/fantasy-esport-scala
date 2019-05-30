@@ -26,8 +26,10 @@ object MatchRow{
 
   implicit val implicitWrites = new Writes[MatchRow] {
     def writes(m: MatchRow): JsValue = {
+      val started = m.startTstamp.isBefore(LocalDateTime.now())
       Json.obj(
         "startTime" -> m.startTstamp,
+        "started" -> started,
         "addedTime" -> m.addedDbTstamp,
         "targetedAtTime" -> m.targetedAtTstamp,
         "tournamentId" -> m.tournamentId,

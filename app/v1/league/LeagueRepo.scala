@@ -353,7 +353,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     )).headOption
     // TODO think this filter before group by inefficient
     val limits: Map[String, Iterable[LimitRow]] = rows.filter(_.limitTypeName.isDefined).groupBy(_.limitTypeName.get).mapValues(
-      v => v.map(x => LimitRow(x.limitName.get, x.limitMax.get))
+      v => v.groupBy(_.limitName.get).map({case(_, x2) => LimitRow(x2.head.limitName.get, x2.head.limitMax.get)})
     )
     LeagueFull(league, limits, periods, currentPeriod, statFields, scoringRules)
   }

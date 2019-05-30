@@ -49,6 +49,7 @@ trait PickeeRepo{
                         )(implicit c: Connection): Unit
   def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow]
   def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut]
+  def getPickeeLimits(pickeeId: Long)(implicit c: Connection): PickeeLimitsOut
   def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long]
   def getPickeeStat(
                      leagueId: Long, statFieldId: Option[Long], period: Option[Int]
@@ -101,7 +102,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   override def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut] = {
     val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
     SQL(
-      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max)
+      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+         |coalesce(lt.max, l.max) as "max"
         |from pickee p
         |left join limit_type lt using(league_id)
         |left join "limit" l using(limit_type_id)
@@ -110,6 +112,20 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price
       ), v.map(lim => lim.limitType -> lim.limitName).toMap)
     }})
+  }
+
+  override def getPickeeLimits(pickeeId: Long)(implicit c: Connection): PickeeLimitsOut = {
+    val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
+    val rows = SQL(
+      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+         | coalesce(lt.max, l.max) as "max"
+         |from pickee p
+         |left join limit_type lt using(league_id)
+         |left join "limit" l using(limit_type_id)
+         |where pickee_id = $pickeeId;""".stripMargin).as(rowParser.*)
+      PickeeLimitsOut(PickeeRow(
+        rows.head.internalPickeeId, rows.head.externalPickeeId, rows.head.pickeeName, rows.head.price
+      ), rows.map(lim => lim.limitType -> lim.limitName).toMap)
   }
 
   override def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long] = {
@@ -125,7 +141,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     //order by p.price desc
     SQL(
       """
-        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name, coalesce(lt.max, l.max) as "max",
+        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+        |coalesce(lt.max, l.max) as "max",
         |sf.name as stat_field_name, psd.value, ps.previous_rank
         |from pickee p join pickee_stat ps using(pickee_id) join pickee_stat_period psd using(pickee_stat_id)
         | join stat_field sf using(stat_field_id)

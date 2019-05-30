@@ -82,3 +82,19 @@ DOTA:
 # check open dota api call has fantasy points breakdown
 # be able to pick team for any period not just next
 # rework transfers so isnt hacked about targetting transfer at period start
+
+
+
+ROLLBACK buy card if fail   ...........DONE
+negative points multipliers make worse  ............. corrected
+period should default to next week for predicts   ..............done
+sort out infinity fields in league info
+am i using scoring for diff positions correctly ..............YYYYYYYYESSS
+
+
+ready for a proper test run
+check scoring system, and other score metrics
+make predictions look nice
+grey out too late predictions
+predictions dropdown
+other social auth

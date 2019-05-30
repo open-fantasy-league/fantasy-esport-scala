@@ -9,6 +9,7 @@ import play.api.libs.concurrent.CustomExecutionContext
 import anorm._
 import play.api.db._
 import models._
+import play.api.mvc.Result
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
@@ -25,8 +26,10 @@ trait TransferRepo{
               scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
             )(implicit c: Connection): Long
   def setProcessed(transferId: Long)(implicit c: Connection): Long
-  def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow
-  def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
+  def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut
+  def moneyAfterPack(userId: Long)(implicit c: Connection): Double
+  def buyCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Either[String, Iterable[CardOut]]
+  def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardOut]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
   def recycleCard(leagueId: Long, userId: Long, cardId: Long)(implicit c: Connection): Boolean
 }
@@ -102,7 +105,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     SQL(s"update transfer set processed = true where transfer_id = $transferId").executeUpdate()
   }
 
-  override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardRow = {
+  override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut= {
     val rnd = scala.util.Random
     val newCard = SQL(
       """insert into card(user_id, pickee_id, colour) values({userId},{pickeeId},{colour})
@@ -110,28 +113,62 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     ).on("userId" -> userId, "pickeeId" -> pickeeId, "colour" -> colour).executeInsert(CardRow.parser.single)
     val statFieldIds = leagueRepo.getScoringStatFieldsForPickee(leagueId, pickeeId).map(_.statFieldId).toArray
     var randomStatFieldIds = scala.collection.mutable.Set[Long]()
-    colour match {
+    val pickeeWithLimits = pickeeRepo.getPickeeLimits(pickeeId)
+    var bonuses = colour match {
       case "GOLD" => {
         while (randomStatFieldIds.size < 2){
           randomStatFieldIds += statFieldIds(rnd.nextInt(statFieldIds.length))  // TODO check this +1
         }
-        randomStatFieldIds.foreach(sfid => {
+        randomStatFieldIds.map(sfid => {
           // leads to random from 1.15, 1.20, 1.25
-          val multiplier = (((rnd.nextInt(3) + 3) * 5).toDouble / 100.0) + 1.0
+          val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)) < 0.0
+          val multiplier = if (isNegative) (rnd.nextInt(3) + 1).toDouble * 0.25 else {
+            (((rnd.nextInt(3) + 3) * 5).toDouble / 100.0) + 1.0
+          }
           insertCardBonus(newCard.cardId, sfid, multiplier)
-        })
+          CardBonusMultiplierRow(sfid, leagueRepo.getStatFieldName(sfid).get, multiplier)
+        }).toList
       }
       case "SILVER" => {
         // leads to random from 1.05, 1.10, 1.15
-        val multiplier = (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
-        insertCardBonus(newCard.cardId, statFieldIds(rnd.nextInt(statFieldIds.length)), multiplier)
+        val sfid = statFieldIds(rnd.nextInt(statFieldIds.length))
+        val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)) < 0.0
+        val multiplier = if (isNegative) rnd.nextInt(3).toDouble * 0.25 else {
+          (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
+        }
+        insertCardBonus(newCard.cardId, sfid, multiplier)
+        List(CardBonusMultiplierRow(sfid, leagueRepo.getStatFieldName(sfid).get, multiplier))
       }
-      case _ => ()
+      case _ => List[CardBonusMultiplierRow]()
     }
-    newCard
+
+    CardOut(
+      newCard.cardId, pickeeWithLimits.pickee.internalPickeeId, pickeeWithLimits.pickee.externalPickeeId,
+      pickeeWithLimits.pickee.pickeeName, pickeeWithLimits.pickee.price, newCard.colour,
+      // if have multiple limits, get the bonus for each row, so need to filter them out of map to not get dupes
+      bonuses, pickeeWithLimits.limits
+    )
   }
 
-  override def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow] = {
+  override def moneyAfterPack(userId: Long)(implicit c: Connection): Double = {
+    SQL"""
+         select (money - card_pack_cost) as new_money from useru join league using(league_id) where user_id = $userId
+      """.as(SqlParser.double("new_money").single)
+  }
+
+  override def buyCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Either[String, Iterable[CardOut]] = {
+    // relies on contrainst not letting user money negative
+    if (moneyAfterPack(userId) < -0.001) Left("Not enought money to buy pack")
+    else {
+      SQL"""
+         update useru set money = money - card_pack_cost
+         from league where useru.league_id = league.league_id AND user_id = $userId
+       """.executeUpdate()
+      Right(generateCardPack(leagueId, userId))
+    }
+  }
+
+  override def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardOut] = {
     val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId).toArray
     for {
         i <- 0 until 7

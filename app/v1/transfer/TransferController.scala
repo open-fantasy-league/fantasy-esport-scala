@@ -77,9 +77,10 @@ class TransferController @Inject()(
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
-      db.withConnection { implicit c =>
-        transferRepo.generateCardPack(request.league.leagueId, request.user.userId)
-        Ok(Json.toJson("success" -> true))
+      db.withTransaction { implicit c =>
+        tryOrResponseRollback(() => {transferRepo.buyCardPack(request.league.leagueId, request.user.userId).fold(
+          l => BadRequest(l), r => Ok(Json.toJson("success" -> true, "cards" -> r.toList))
+        )}, c, InternalServerError("Something went wrong buying card")).fold(identity, identity)
       }
     }
   }
@@ -90,8 +91,9 @@ class TransferController @Inject()(
     Future {
       (for {
         cardIdLong <- IdParser.parseLongId(cardId, "card id")
-        succeeded = db.withConnection { implicit c =>
-          transferRepo.recycleCard(request.league.leagueId, request.user.userId, cardIdLong)
+        succeeded <- db.withTransaction { implicit c =>
+          tryOrResponseRollback(() => transferRepo.recycleCard(request.league.leagueId, request.user.userId, cardIdLong), c,
+            InternalServerError("Something went wrong recycling card"))
         }
         out <- if(succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
       } yield out).fold(identity, identity)

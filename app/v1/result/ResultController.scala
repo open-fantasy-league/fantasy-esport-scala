@@ -24,9 +24,9 @@ import v1.pickee.PickeeRepo
 import v1.user.UserRepo
 
 case class ResultFormInput(
-                            matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, teamOneVictory: Boolean,
-                            outcome: String,
-                            startTstamp: LocalDateTime, targetAtTstamp: Option[LocalDateTime], pickees: List[PickeeFormInput]
+                            matchId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
+                            teamOneScore: Int, teamTwoScore: Int,
+                            startTstamp: Option[LocalDateTime], targetAtTstamp: Option[LocalDateTime], pickees: List[PickeeFormInput]
                           )
 
 case class PickeeFormInput(id: Long, isTeamOne: Boolean, stats: List[StatsFormInput])
@@ -51,13 +51,12 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     Form(
       mapping(
         "matchId" -> of(longFormat),
-        "tournamentId" -> of(longFormat),
-        "teamOne" -> nonEmptyText,
-        "teamTwo" -> nonEmptyText,
-        "teamOneVictory" -> boolean,
-        // TODO only allow HOME, DRAW, AWAY
-        "outcome" -> nonEmptyText,
-        "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss")),
+        "tournamentId" -> optional(of(longFormat)),
+        "teamOne" -> optional(nonEmptyText),
+        "teamTwo" -> optional(nonEmptyText),
+        "teamOneScore" -> number,
+        "teamTwoScore" -> number,
+        "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "pickees" -> list(mapping(
           "id" -> of(longFormat),
@@ -124,10 +123,12 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
             internalPickee = input.pickees.map (p => InternalPickee (pickeeRepo.getInternalId (league.leagueId, p.id).get, p.isTeamOne, p.stats))
             now = LocalDateTime.now
             targetTstamp = getTargetedAtTstamp(input, league, now)
-            correctPeriod <- getPeriod (input.startTstamp, Some(targetTstamp), league, now)
-            insertedMatchId <- if (existingMatchId.isDefined) Right(existingMatchId.get) else newMatch(input, league, correctPeriod, targetTstamp, now)
-            _ = if (existingMatchId.isDefined) updatedMatch(league.leagueId, existingMatchId.get, input)
-            insertedResults <- newResults(input, league, insertedMatchId, internalPickee)
+            // TODO is this getorlese now sensible?
+            correctPeriod <- getPeriod (input.startTstamp.getOrElse(now), Some(targetTstamp), league, now)
+            matchId <- if (existingMatchId.isDefined) Right(existingMatchId.get) else newMatch(input, league, correctPeriod, targetTstamp, now)
+            _ = if (existingMatchId.isDefined) updatedMatch(matchId, input)
+            _ = awardPredictions(matchId, input.teamOneScore, input.teamTwoScore)
+            insertedResults <- newResults(input, league, matchId, internalPickee)
             insertedStats <- newStats (league, insertedResults.toList, internalPickee)
             updatedStats <- updateStats (insertedStats, league, correctPeriod, targetTstamp)
           } yield Created("Successfully added results")).fold(identity, identity)
@@ -141,7 +142,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   private def isExistingMatch(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Either[Result, Option[Long]] = {
     val parser: RowParser[MatchIdMaybeResultId] = Macro.namedParser[MatchIdMaybeResultId](ColumnNaming.SnakeCase)
     val existing = SQL"""
-         select m.match_id, result_id from matchu m left join resultu where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1
+         select m.match_id, result_id from matchu m left join resultu using(match_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1
        """.as(parser.singleOpt)
     existing match{
       case Some(x) if x.resultId.isDefined => Left(BadRequest("Cannot add results for same match twice"))
@@ -150,8 +151,21 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     }
   }
 
-  private def updatedMatch(leagueId: Long, matchId: Long, input: ResultFormInput) = {
-    println("cat")
+  private def updatedMatch(matchId: Long, input: ResultFormInput)(implicit c: Connection) = {
+    SQL"""update matchu set team_one_score = ${input.teamOneScore}, team_two_score = ${input.teamTwoScore}
+         where match_id = $matchId
+       """.executeUpdate()
+  }
+
+  private def awardPredictions(matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
+    val winningUsers = SQL"""select user_id, prediction_id from prediction where match_id = $matchId AND team_one_score = $teamOneScore AND team_two_score = $teamTwoScore
+         AND paid_out = false FOR UPDATE
+       """.as((SqlParser.long("user_id") ~ SqlParser.long("prediction_id")).*)
+    winningUsers.map({case userId ~ predictionId =>
+      SQL"""update useru u set money = money + prediction_win_money from league l
+           where u.league_id = l.league_id AND u.user_id = $userId""".executeUpdate()
+      SQL"""update prediction set paid_out = true where prediction_id = $predictionId""".executeUpdate()
+    })
   }
 
 //  private def processJsonAddResultsToFixture[A](league: LeagueRow, externalMatchId: String)(implicit request: Request[A]): Future[Result] = {
@@ -212,13 +226,16 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       case (_, true) => startTstamp
       case _ => now
     }
-    tryOrResponse(() => {leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
+    logger.info("oOOooooooOOOOoooOOOooo")
+    logger.info(targetedAtTstamp.toString)
+    tryOrResponse(() => {
+      leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
   }
 
   private def getTargetedAtTstamp(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): LocalDateTime = {
     (input.targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
-      case (_, true) => input.startTstamp
+      case (_, true) => input.startTstamp.getOrElse(now)  // TODO check this getOrElse
       case _ => now
     }
   }
@@ -290,9 +307,11 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
           "targetedAtTstamp" -> targetedAtTstamp, "leagueId" -> league.leagueId
         ).executeUpdate()
           val q =
-            s"""update user_stat_period usp set value = value + {newStats} from useru u
+            s"""update user_stat_period usp set value = value + ({newStats} * coalesce(cbm.multiplier, 1.0)) from useru u
          join league l using(league_id)
-         join team t using(user_id)
+         join card c using(user_id)
+         join team t using(card_id)
+         left join card_bonus_multiplier cbm on (cbm.card_id = c.card_id AND cbm.stat_field_id = {statFieldId})
          join pickee p using(pickee_id)
          join user_stat us using(user_id)
          where (period is NULL or period = {period}) and us.user_stat_id = usp.user_stat_id and
@@ -353,10 +372,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
       def success(input: PredictionFormInput) = {
         Future {
-            val results = db.withConnection { implicit c => resultRepo.upsertUserPrediction(
-              request.user.userId, request.league.leagueId, input.matchId, input.teamOneScore, input.teamTwoScore
-            )}
-              Ok(Json.toJson(results))
+          val results = db.withConnection { implicit c => resultRepo.upsertUserPrediction(
+            request.user.userId, request.league.leagueId, input.matchId, input.teamOneScore, input.teamTwoScore
+          )}
+          results.fold(l => BadRequest(l), r => Ok(Json.toJson(r)))
         }
       }
       predictionForm.bindFromRequest().fold(failure, success)
@@ -372,7 +391,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
           val results = db.withConnection { implicit c => resultRepo.upsertUserPredictions(
             request.user.userId, request.league.leagueId, input.predictions
           )}
-          Ok(Json.toJson(results))
+          results.fold(l => BadRequest(l), r => Ok(Json.toJson(r)))
         }
       }
       predictionsForm.bindFromRequest().fold(failure, success)

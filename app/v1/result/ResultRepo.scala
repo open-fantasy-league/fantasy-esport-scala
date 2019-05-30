@@ -61,9 +61,10 @@ trait ResultRepo{
   def insertStats(resultId: Long, statFieldId: Long, stats: Double)(implicit c: Connection): Long
   def getUserPredictions(userId: Long, periodValue: Int)(implicit c: Connection): Iterable[PredictionRow]
   def upsertUserPrediction(userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int)(
-    implicit c: Connection): PredictionRow
+    implicit c: Connection): Either[String, PredictionRow]
   def upsertUserPredictions(userId: Long, leagueId: Long, predictions: List[PredictionFormInput])(
-    implicit c: Connection): Iterable[PredictionRow]
+    implicit c: Connection): Either[String, Iterable[PredictionRow]]
+  def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean
 }
 
 @Singleton
@@ -119,10 +120,10 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                           )(implicit c: Connection): Long = {
     SQL(
       s"""
-        |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_victory, outcome,
+        |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_score, team_two_score,
         |start_tstamp, added_db_tstamp, targeted_at_tstamp)
         |VALUES($leagueId, ${input.matchId}, $period, ${input.tournamentId}, '${input.teamOne}', '${input.teamTwo}',
-        | ${input.teamOneVictory}, '${input.outcome}', '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
+        | ${input.teamOneScore}, '${input.teamTwoScore}', '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
       """.stripMargin).executeInsert().get
   }
 
@@ -131,8 +132,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                           )(implicit c: Connection): Long = {
     SQL(
       s"""
-         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_victory,
-         |outcome, start_tstamp, added_db_tstamp, targeted_at_tstamp)
+         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_score,
+         |team_two_score, start_tstamp, added_db_tstamp, targeted_at_tstamp)
          |VALUES($leagueId, ${input.matchId}, $period, ${input.tournamentId}, '${input.teamOne}', '${input.teamTwo}',
          | null, null, '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
       """.stripMargin).executeInsert().get
@@ -156,19 +157,26 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 
   override def upsertUserPrediction(
                                       userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int
-                                    )(implicit c: Connection): PredictionRow = {
-    SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
-         VALUES ((SELECT match_id from matchu where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
-       $teamOneScore, $teamTwoScore, $userId)
-       on conflict (user_id, match_id) do update
-       set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
-       returning $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
-  }.executeInsert(PredictionRow.parser.single)
+                                    )(implicit c: Connection): Either[String, PredictionRow] = {
+    if (isMatchStarted(leagueId, externalMatchId)) Left(s"Match $externalMatchId already started. Prediction closed")
+    else {
+      Right {
+        SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
+           VALUES ((SELECT match_id from matchu where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
+         $teamOneScore, $teamTwoScore, $userId)
+         on conflict (user_id, match_id) do update
+         set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
+         returning $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
+          .executeInsert(PredictionRow.parser.single)
+      }
+    }
+  }
 
   override def upsertUserPredictions(
                                       userId: Long, leagueId: Long, predictions: List[PredictionFormInput]
-                                    )(implicit c: Connection): Iterable[PredictionRow] = {
-    predictions.map(p => {
+                                    )(implicit c: Connection): Either[String, Iterable[PredictionRow]] = {
+    Right(predictions.map(p => {
+      if (isMatchStarted(leagueId, p.matchId)) return Left(s"Match ${p.matchId} already started. Prediction closed")
       SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
          VALUES ((SELECT match_id from matchu where external_match_id = ${p.matchId} and league_id = $leagueId LIMIT 1),
        ${p.teamOneScore}, ${p.teamTwoScore}, $userId)
@@ -177,7 +185,13 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
        returning ${p.matchId} as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
         .executeInsert(PredictionRow.parser.single)
     }
-    )
+    ))
+  }
+
+  override def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean = {
+    SQL"""
+         select now() > start_tstamp as started from matchu where league_id = $leagueId AND external_match_id = $externalMatchId limit 1
+      """.as(SqlParser.bool("started").single)
   }
 
 }
