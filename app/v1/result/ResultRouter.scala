@@ -16,6 +16,7 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
     case POST(p"/leagues/$leagueId/fixture") => controller.addFixture(leagueId)
 
     case GET(p"/leagues/$leagueId") => controller.getReq(leagueId)
+    case POST(p"/leagues/$leagueId/findByTeams") => controller.findByTeams(leagueId)
 
     // TODO this feels clunky
     case GET(p"/matches/leagues/$leagueId") => controller.getMatchesReq(leagueId)

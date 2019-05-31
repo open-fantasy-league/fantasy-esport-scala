@@ -37,6 +37,8 @@ case class StatsFormInput(field: String, value: Double)
 
 case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
+case class FindByTeamsFormInput(teamOne: String, teamTwo: String)
+
 case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
 case class PredictionsFormInput(predictions: List[PredictionFormInput])
 
@@ -92,6 +94,13 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       "teamOneScore" -> of(intFormat),
       "teamTwoScore" -> of(intFormat)
     )(PredictionFormInput.apply)(PredictionFormInput.unapply)))(PredictionsFormInput.apply)(PredictionsFormInput.unapply))
+  }
+
+  private val findByTeamsForm: Form[FindByTeamsFormInput] = {
+    Form(mapping(
+      "teamOne" -> nonEmptyText,
+      "teamTwo" -> nonEmptyText
+    )(FindByTeamsFormInput.apply)(FindByTeamsFormInput.unapply))
   }
 
   implicit val parser = parse.default
@@ -395,5 +404,20 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         }
       }
       predictionsForm.bindFromRequest().fold(failure, success)
+  }
+
+  def findByTeams(leagueId: String) = (new LeagueAction(leagueId)).async{
+    implicit request =>
+      def failure(badForm: Form[FindByTeamsFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
+
+      def success(input: FindByTeamsFormInput) = {
+        Future {
+          val match_ = db.withConnection { implicit c => resultRepo.findMatchByTeams(
+            request.league.leagueId, input.teamOne, input.teamTwo
+          )}
+          Ok(Json.toJson(match_))
+        }
+      }
+      findByTeamsForm.bindFromRequest().fold(failure, success)
   }
 }

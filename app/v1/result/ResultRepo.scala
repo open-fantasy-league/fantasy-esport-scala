@@ -65,6 +65,7 @@ trait ResultRepo{
   def upsertUserPredictions(userId: Long, leagueId: Long, predictions: List[PredictionFormInput])(
     implicit c: Connection): Either[String, Iterable[PredictionRow]]
   def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean
+  def findMatchByTeams(leagueId: Long, teamOne: String, teamTwo: String)(implicit c: Connection): Iterable[MatchRow]
 }
 
 @Singleton
@@ -192,6 +193,22 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     SQL"""
          select now() > start_tstamp as started from matchu where league_id = $leagueId AND external_match_id = $externalMatchId limit 1
       """.as(SqlParser.bool("started").single)
+  }
+
+  override def findMatchByTeams(leagueId: Long, teamOne: String, teamTwo: String)(implicit c: Connection): Iterable[MatchRow] = {
+    // iterable as maybe there are 2 home and 2 away fixtures in the season?
+    // TODO uses pretty much same query as getMatches
+    val q =
+      """
+        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.team_one_score, m.team_two_score,
+        |  m.tournament_id, m.start_tstamp, m.added_db_tstamp,
+        | m.targeted_at_tstamp, m.period
+        |  from matchu m
+        | where m.league_id = {leagueId} and m.team_one = {teamOne} and m.team_two = {teamTwo}
+        | order by m.targeted_at_tstamp;
+      """.stripMargin
+    SQL(q).on("leagueId" -> leagueId, "teamOne" -> teamOne, "teamTwo" -> teamTwo).as(MatchRow.parser.*)
+
   }
 
 }
