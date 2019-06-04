@@ -129,7 +129,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long] = {
-    SQL("""select limit_id from "limit" join pickee using(pickee_id) where pickee_id = {internalPickeeId}""").on(
+    SQL("""select limit_id from pickee join pickee_limit using(pickee_id) join "limit" using(limit_id) where pickee_id = {internalPickeeId}""").on(
       "internalPickeeId" -> internalPickeeId
     ).as(SqlParser.long("limit_id").*)
   }

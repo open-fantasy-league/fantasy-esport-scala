@@ -42,7 +42,7 @@ case class FindByTeamsFormInput(teamOne: String, teamTwo: String)
 case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
 case class PredictionsFormInput(predictions: List[PredictionFormInput])
 
-case class MatchIdMaybeResultId(matchId: Long, resultId: Option[Long])
+case class MatchIdMaybeResultId(matchId: Long, resultId: Option[Long], startTstamp: LocalDateTime)
 
 class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
@@ -127,15 +127,16 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         //var error: Option[Result] = None
         db.withTransaction { implicit c =>
           (for {
-            existingMatchId <- isExistingMatch(league.leagueId, input.matchId)
+            existingMatch <- existingMatchInfo(league.leagueId, input.matchId)
+            startTstamp = input.startTstamp.orElse(existingMatch.map(_._2))
             validateStarted <- if (leagueRepo.isStarted (league)) Right (true) else Left (BadRequest ("Cannot add results before league started"))
             internalPickee = input.pickees.map (p => InternalPickee (pickeeRepo.getInternalId (league.leagueId, p.id).get, p.isTeamOne, p.stats))
             now = LocalDateTime.now
-            targetTstamp = getTargetedAtTstamp(input, league, now)
-            // TODO is this getorlese now sensible?
-            correctPeriod <- getPeriod (input.startTstamp.getOrElse(now), Some(targetTstamp), league, now)
-            matchId <- if (existingMatchId.isDefined) Right(existingMatchId.get) else newMatch(input, league, correctPeriod, targetTstamp, now)
-            _ = if (existingMatchId.isDefined) updatedMatch(matchId, input)
+            targetTstamp = getTargetedAtTstamp(input.targetAtTstamp, startTstamp, league, now)
+            correctPeriod <- getPeriod (startTstamp.get, Some(targetTstamp), league, now)
+            matchId <- if (existingMatch.isDefined) Right(existingMatch.get._1) else
+              newMatch(input, league, correctPeriod, targetTstamp, now)
+            _ = if (existingMatch.isDefined) updatedMatch(matchId, input)
             _ = awardPredictions(matchId, input.teamOneScore, input.teamTwoScore)
             insertedResults <- newResults(input, league, matchId, internalPickee)
             insertedStats <- newStats (league, insertedResults.toList, internalPickee)
@@ -148,14 +149,16 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     form.bindFromRequest().fold(failure, success)
   }
 
-  private def isExistingMatch(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Either[Result, Option[Long]] = {
+  private def existingMatchInfo(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Either[Result, Option[(Long, LocalDateTime)]] = {
     val parser: RowParser[MatchIdMaybeResultId] = Macro.namedParser[MatchIdMaybeResultId](ColumnNaming.SnakeCase)
     val existing = SQL"""
-         select m.match_id, result_id from matchu m left join resultu using(match_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1
+         select m.match_id, result_id, start_tstamp from matchu m
+         left join resultu using(match_id) where external_match_id = $externalMatchId and league_id = $leagueId
+          LIMIT 1
        """.as(parser.singleOpt)
     existing match{
       case Some(x) if x.resultId.isDefined => Left(BadRequest("Cannot add results for same match twice"))
-      case Some(x) => Right(Some(x.matchId))
+      case Some(x) => Right(Some(x.matchId, x.startTstamp))
       case None => Right(None)
     }
   }
@@ -241,10 +244,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
   }
 
-  private def getTargetedAtTstamp(input: ResultFormInput, league: LeagueRow, now: LocalDateTime): LocalDateTime = {
-    (input.targetAtTstamp, league.applyPointsAtStartTime) match {
+  private def getTargetedAtTstamp(targetAtTstamp: Option[LocalDateTime], startTstamp: Option[LocalDateTime], league: LeagueRow, now: LocalDateTime): LocalDateTime = {
+    (targetAtTstamp, league.applyPointsAtStartTime) match {
       case (Some(x), _) => x
-      case (_, true) => input.startTstamp.getOrElse(now)  // TODO check this getOrElse
+      case (_, true) => startTstamp.getOrElse(now)  // TODO check this getOrElse
       case _ => now
     }
   }

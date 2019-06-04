@@ -511,7 +511,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     // relies on only one limit type being used to determine points value
     SQL(
       """
-        |select value from scoring where stat_field_id = {statFieldId} and (limit_id is null or limit_id in ({limitIds}) limit 1
+        |select value from scoring where stat_field_id = {statFieldId} and (limit_id is null or limit_id in ({limitIds})) limit 1
         |""".stripMargin).on("statFieldId" -> statFieldId, "limitIds" -> limitIds.toList).as(
       SqlParser.double("value").single
     )

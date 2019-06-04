@@ -79,7 +79,7 @@ class TransferController @Inject()(
     Future {
       db.withTransaction { implicit c =>
         tryOrResponseRollback(() => {transferRepo.buyCardPack(request.league.leagueId, request.user.userId).fold(
-          l => BadRequest(l), r => Ok(Json.toJson("success" -> true, "cards" -> r.toList))
+          l => BadRequest(l), r => Ok(Json.toJson(r.toList))
         )}, c, InternalServerError("Something went wrong buying card")).fold(identity, identity)
       }
     }

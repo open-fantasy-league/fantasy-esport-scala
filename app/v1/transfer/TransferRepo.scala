@@ -173,10 +173,10 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     for {
         i <- 0 until 7
         colour = scala.util.Random.nextInt(10) match {
-          case x if x < 6 => "GREY"
+          case x if x < 6 => "BRONZE"
           case x if x < 9 => "SILVER"
           case x if x < 10 => "GOLD"
-          case _ => "GREY"
+          case _ => "BRONZE"
         }
       }
       yield generateCard(leagueId, userId, pickeeIds(i), colour)
