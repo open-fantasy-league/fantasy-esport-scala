@@ -185,8 +185,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
        set team_one_score = ${p.teamOneScore}, team_two_score = ${p.teamTwoScore}
        returning ${p.matchId} as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
         .executeInsert(PredictionRow.parser.single)
-    }
-    ))
+    }))
   }
 
   override def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean = {

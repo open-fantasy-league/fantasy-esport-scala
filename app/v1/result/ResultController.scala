@@ -377,7 +377,9 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       }
   }
 
-  def upsertPredictionReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+  def upsertPredictionReq(leagueId: String, userId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async{
     implicit request =>
 
       def failure(badForm: Form[PredictionFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
@@ -393,7 +395,9 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       predictionForm.bindFromRequest().fold(failure, success)
   }
 
-  def upsertPredictionsReq(leagueId: String, userId: String) = (new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async{
+  def upsertPredictionsReq(leagueId: String, userId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async{
     implicit request =>
 
       def failure(badForm: Form[PredictionsFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
