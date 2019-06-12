@@ -26,8 +26,8 @@ class TeamController @Inject()(cc: ControllerComponents, userRepo: UserRepo, tea
     new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
       Future {
           (for {
-            time <- IdParser.parseTimestamp(request.getQueryString("time"))
-            out = db.withConnection { implicit c =>Json.toJson(teamRepo.getUserTeam(request.user.userId, time))}
+            period <- IdParser.parseIntId(request.getQueryString("period"), "period")
+            out = db.withConnection { implicit c =>Json.toJson(teamRepo.getUserTeam(request.user.userId, period))}
           } yield Ok(out)).fold(identity, identity)
         }
   }
@@ -42,8 +42,8 @@ class TeamController @Inject()(cc: ControllerComponents, userRepo: UserRepo, tea
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future {
       (for {
-        time <- IdParser.parseTimestamp(request.getQueryString("time"))
-        out = db.withConnection { implicit c =>Json.toJson(teamRepo.getAllUserTeam(request.league.leagueId, time))}
+        period <- IdParser.parseIntId(request.getQueryString("period"), "period")
+        out = db.withConnection { implicit c =>Json.toJson(teamRepo.getAllUserTeam(request.league.leagueId, period))}
       } yield Ok(out)).fold(identity, identity)
     }
   }

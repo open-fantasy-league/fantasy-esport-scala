@@ -91,11 +91,10 @@ class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 
 trait UserRepo{
   def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
-  /////
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
   def detailedUser(
                           user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                          stats: Boolean, time: Option[LocalDateTime])(implicit c: Connection): DetailedUser
+                          stats: Boolean, period: Option[Int])(implicit c: Connection): DetailedUser
   def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
@@ -108,21 +107,21 @@ trait UserRepo{
                    league: LeagueRow, statFieldId: Long, period: Option[Int], userIds: Option[Array[Long]],
                    secondaryOrdering: Option[List[Long]], showTeam: Boolean
                  )(implicit c: Connection): LeagueRankings
-  def userStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int],
-                                  timestamp: Option[LocalDateTime], secondaryOrdering: Option[List[Long]]
+  def userStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int], secondaryOrdering: Option[List[Long]]
                                  )(implicit c: Connection): Iterable[RankingRow]
   def getUserStats(
                           leagueId: Option[Long], userId: Option[Long], statFieldId: Option[Long], period: Option[Int],
                           orderByValue: Boolean
                         )(implicit c: Connection): Iterable[UserStatDailyRow]
   def getUserStatsAndTeam(
-                                 league: LeagueRow, statFieldId: Long, period: Option[Int], timestamp: Option[LocalDateTime],
+                                 league: LeagueRow, statFieldId: Long, period: Option[Int],
                                  secondaryOrdering: Option[List[Long]])(implicit c: Connection): Iterable[RankingRow]
   def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
   def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
+  def setLateStartLockTs(userId: Long)(implicit c: Connection): Int
 }
 
 @Singleton
@@ -144,17 +143,18 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def get(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[UserRow] = {
-    SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp
+    SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp,
+            late_start_lock_ts
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
   }
 
   override def detailedUser(
                                    user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                                   showStats: Boolean, time: Option[LocalDateTime])(implicit c: Connection): DetailedUser = {
+                                   showStats: Boolean, period: Option[Int])(implicit c: Connection): DetailedUser = {
     val team = showTeam match {
       case false => None
       case true => {
-        Some(teamRepo.getUserTeam(user.userId, time))
+        Some(teamRepo.getUserTeam(user.userId, period))
       }
     }
     val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getUserTransfer(user.userId, Some(false))) else None
@@ -168,7 +168,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp" +
+    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp, late_start_lock_ts" +
       "from useru where league_id = $leagueId").as(UserRow.parser.*)
   }
 
@@ -216,7 +216,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
                             userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]], showTeam: Boolean
                           )(implicit c: Connection): LeagueRankings = {
     println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
-    val qResult = getUserStatsAndTeam(league, statFieldId, period, None, secondaryOrdering).toList
+    val qResult = getUserStatsAndTeam(league, statFieldId, period, secondaryOrdering).toList
     val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
     val stats = filteredByUsers.groupByOrdered(_.externalUserId).toList
     var lastScore = Double.MaxValue
@@ -268,12 +268,11 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def userStatsAndTeamQuery(
                                             leagueId: Long, statFieldId: Long, period: Option[Int],
-                                            timestamp: Option[LocalDateTime], secondaryOrdering: Option[List[Long]]
+                                            secondaryOrdering: Option[List[Long]]
                                           )(implicit c: Connection): Iterable[RankingRow] = {
     val rankingParser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
-    println(timestamp)
     println(period)
-    val timestampFilter = if (timestamp.isDefined) "t.timespan @> {timestamp}::timestamptz" else "upper(t.timespan) is NULL"
+    val timestampFilter = if (period.isDefined) "t.timespan @> {period}" else "upper(t.timespan) is NULL"
     val periodFilter = if (period.isDefined) "usp.period = {period}" else "usp.period is NULL"
     val q = secondaryOrdering match {
       case None => s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank,
@@ -302,30 +301,19 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
       }
     }
     println(q)
-    SQL(q).on("timestamp" -> timestamp, "period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
+    SQL(q).on("period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
   }
 
   override def getUserStatsAndTeam(
-                                          league: LeagueRow, statFieldId: Long, period: Option[Int],
-                                          timestamp: Option[LocalDateTime], secondaryOrdering: Option[List[Long]]
+                                          league: LeagueRow, statFieldId: Long, period: Option[Int], secondaryOrdering: Option[List[Long]]
                                         )(implicit c: Connection):
   Iterable[RankingRow] = {
     // hahaha. rofllwefikl!s
-    (period, leagueRepo.getCurrentPeriod(league), timestamp) match {
-      case (None, _, None) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, None, secondaryOrdering)
-      case (_, None, _) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, None, secondaryOrdering)
-      case (Some(periodVal), Some(currentPeriod), None) if periodVal == currentPeriod.value =>
-        this.userStatsAndTeamQuery(league.leagueId, statFieldId, Some(periodVal), None,secondaryOrdering)
-      case (Some(_), _, Some(_)) => throw new Exception("Specify period, or timestamp. not both")
-      case (None, _, Some(t)) => {
-        val period = leagueRepo.getPeriodFromTimestamp(league.leagueId, t).get
-        userStatsAndTeamQuery(league.leagueId, statFieldId, Some(period.value), Some(t), secondaryOrdering)
-      }
-      case (Some(pVal), _, None) => {
-        println("cat")
-        val endPeriodTstamp = leagueRepo.getPeriodFromValue(league.leagueId, pVal).end
-        userStatsAndTeamQuery(league.leagueId, statFieldId, Some(pVal), Some(endPeriodTstamp), secondaryOrdering)
-      }
+    (period, leagueRepo.getCurrentPeriod(league)) match {
+      case (None, _) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, secondaryOrdering)
+      case (_, None) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, secondaryOrdering)
+      case (Some(periodVal), Some(currentPeriod)) if periodVal == currentPeriod.value =>
+        this.userStatsAndTeamQuery(league.leagueId, statFieldId, Some(periodVal),secondaryOrdering)
     }
   }
 
@@ -386,6 +374,10 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
       //      // can do all update in one call if append then update outside loop
       //      pickeeStatTable.update(newPickeeStat)
     })
+  }
+
+  override def setLateStartLockTs(userId: Long)(implicit c: Connection): Int = {
+    SQL"""update useru set late_start_lock_ts = now() where user_id = $userId""".executeUpdate()
   }
 }
 

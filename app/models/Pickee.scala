@@ -88,8 +88,8 @@ object PickeeRow {
   val parser: RowParser[PickeeRow] = Macro.namedParser[PickeeRow](ColumnNaming.SnakeCase)
 }
 
-case class TeamRow(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
-                   end: Option[LocalDateTime], isActive: Boolean, cardId: Long, internalPickeeId: Long,
+case class TeamRow(externalUserId: Long, username: String, userId: Long, start: Option[Int],
+                   end: Option[Int], isActive: Boolean, cardId: Long, internalPickeeId: Long,
                    externalPickeeId: Long, pickeeName: String,
                    pickeePrice: BigDecimal, colour: String,
                    statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],

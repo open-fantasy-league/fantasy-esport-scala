@@ -18,7 +18,7 @@ class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends Custo
 trait TransferRepo{
   def getUserTransfer(userId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow]
   def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
-                 oldTeamCardIds: Set[Long], time: LocalDateTime
+                 oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]
                 )(implicit c: Connection): Unit
   def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)]
   def insert(
@@ -48,21 +48,20 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   }
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
   override def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
-                           oldTeamCardIds: Set[Long], time: LocalDateTime
+                           oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]
                          )(implicit c: Connection) = {
     if (toSellCardIds.nonEmpty) {
       val q =
-        """update team t set timespan = tstzrange(lower(timespan), {time})
-    where upper(t.timespan) is NULL and t.card_id in ({toSellIds});
-    """
-      SQL(q).on("time" -> time, "toSellIds" -> toSellCardIds).executeUpdate()
+        """delete from team where card_id in ({toSellIds}) AND timespan = int4range({periodStart}, {periodEnd})"""
+      SQL(q).on("periodStart" -> periodStart, "periodEnd" -> periodEnd, "toSellIds" -> toSellCardIds)
+        .executeUpdate()
     }
     println(s"""Ended current team pickees: ${toSellCardIds.mkString(", ")}""")
     SQL("update useru set change_tstamp = null where user_id = {userId};").on("userId" -> userId).executeUpdate()
     print(s"""Buying: ${toBuyCardIds.mkString(", ")}""")
     toBuyCardIds.map(t => {
-      SQL("insert into team(card_id, timespan) values({cardId}, tstzrange({time}, null)) returning team_id;").
-        on("cardId" -> t, "time" -> time).executeInsert().get
+      SQL("insert into team(card_id, timespan) values({cardId}, int4range({periodStart}, {periodEnd})) returning team_id;").
+        on("cardId" -> t, "periodStart" -> periodStart, "periodEnd" -> periodEnd).executeInsert().get
     })
     println("Inserted new team")
   }

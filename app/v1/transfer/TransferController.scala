@@ -21,7 +21,8 @@ import v1.team.TeamRepo
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
-case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean)
+case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean, applyStart: Option[LocalDateTime],
+                             applyEnd: Option[LocalDateTime], applyStartPeriod: Option[Int], applyEndPeriod: Option[Int])
 
 case class TransferSuccess(updatedMoney: BigDecimal, remainingTransfers: Option[Int])
 
@@ -49,7 +50,11 @@ class TransferController @Inject()(
     "buy" -> default(list(of(longFormat)), List()),
     "sell" -> default(list(of(longFormat)), List()),
     "isCheck" -> boolean,
-    "wildcard" -> default(boolean, false)
+    "wildcard" -> default(boolean, false),
+      "applyStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
+      "applyEnd" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
+      "applyStartPeriod" -> optional(number),
+      "applyEndPeriod" -> optional(number)
     //  "delaySeconds" -> optional(number)
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
@@ -119,22 +124,31 @@ class TransferController @Inject()(
             (for {
               // TODO does select for update lock/block other reads?
               _ <- validateDuplicates(input.sell, sell, input.buy, buy)
+              // TODO what about last week of season
+              currentPeriod = leagueRepo.getCurrentPeriod(league)
+              userIsLateStart = currentPeriod.isDefined && user.entered.isAfter(currentPeriod.get.start)
+              defaultPeriod <- if (userIsLateStart)
+                currentPeriod.toRight(InternalServerError("Couldnt find current period")) else
+                leagueRepo.getNextPeriod(league)
+              periodStart = input.applyStartPeriod.getOrElse(defaultPeriod.value)
+              periodEnd = input.applyEndPeriod
               userCards = pickeeRepo.getUserCards(league.leagueId, user.userId).toList
-              currentTeamIds <- tryOrResponse(() => teamRepo.getUserTeam(user.userId).map(_.cardId).toSet
+              currentTeamIds <- tryOrResponse(
+                () => teamRepo.getUserTeamForPeriod(user.userId, periodStart, periodEnd).map(_.cardId).toSet
                 , InternalServerError("Missing pickee externalPickeeId"))
               _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
               _ = println(s"sellOrWildcard: ${sell.mkString(",")}")
+              _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateStartLockTs, input.isCheck)
               _ <- validateIds(currentTeamIds, userCards.map(_.cardId).toSet, sell, buy)
               newTeamCardIds = (currentTeamIds -- sell) ++ buy
               newTeamPickeeIdsList = userCards.withFilter(c => newTeamCardIds.contains(c.cardId)).map(_.pickeeId)
               _ = println(s"newTeamCardIds: ${newTeamCardIds.mkString(",")}")
               newTeamPickeeIdsSet <- validateUniquePickees(newTeamPickeeIdsList)
-              _ <- updatedTeamSize(newTeamPickeeIdsSet.toSet, league.teamSize, input.isCheck, league.forceFullTeams)
+              _ <- updatedTeamSize(newTeamPickeeIdsSet, league.teamSize, input.isCheck, league.forceFullTeams)
               _ <- validateLimits(newTeamPickeeIdsSet, league.leagueId)
-              currentPeriod = leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(user.money, None)))) else
                 updateDBCardTransfer(
-                  sell, buy, currentTeamIds, user, currentPeriod, leagueRepo.getPeriodFromValue(league.leagueId, currentPeriod + 1).start
+                  sell, buy, currentTeamIds, user, periodStart, periodEnd, userIsLateStart
                 )
             } yield out).fold(identity, identity)
           } else{
@@ -159,10 +173,18 @@ class TransferController @Inject()(
             _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
             _ <- validateLimits(newTeamIds, league.leagueId)
             transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
+            currentPeriod = leagueRepo.getCurrentPeriod(league)
+            userIsNew = currentPeriod.isEmpty || user.entered.isAfter(currentPeriod.get.start)
+            defaultPeriod <- if (userIsNew)
+              currentPeriod.toRight(InternalServerError("Couldnt find current period")) else
+              leagueRepo.getNextPeriod(league)
+            periodStart = input.applyStartPeriod.getOrElse(defaultPeriod.value)
+            periodEnd = input.applyEndPeriod
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
               updateDBTransfer(
-                league.leagueId, sellOrWildcard, buy, pickees, user, leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
-                newRemaining, transferDelay, applyWildcard)
+                league.leagueId, sellOrWildcard, buy, pickees, user,
+                leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
+                newRemaining, transferDelay, applyWildcard, periodStart, periodEnd)
           } yield out).fold(identity, identity) }
         }
       }
@@ -255,10 +277,19 @@ class TransferController @Inject()(
     else Right(setIds)
   }
 
+  private def validateNewUserCantChangeDuringPeriod(
+                                                     userIsLateStart: Boolean, lateStartLockTs: Option[LocalDateTime],
+                                                     isCheck: Boolean
+                                                   ): Either[Result, Any] = {
+    // TODO but new user should be able to pick team for next period
+    if (userIsLateStart && lateStartLockTs.isDefined) Left(BadRequest("Have already locked team for this period"))
+    else Right(true)
+  }
+
   private def updateDBTransfer(
                                 leagueId: Long, toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[PickeeRow], user: UserRow,
                                 period: Int, newMoney: BigDecimal, newRemaining: Option[Int], transferDelay: Option[Int],
-                                applyWildcard: Boolean
+                                applyWildcard: Boolean, periodStart: Int, periodEnd: Option[Int]
                               )(implicit c: Connection): Either[Result, Result] = {
     tryOrResponseRollback(() => {
       val currentTime = LocalDateTime.now()
@@ -282,7 +313,7 @@ class TransferController @Inject()(
       val toBuyCardIds = toBuyPickees.map(b => transferRepo.generateCard(leagueId, user.userId, b.internalPickeeId, "").cardId)
       val toSellCardIds = toSell.map(ts => ct.find(c => ts == c.externalPickeeId).get).map(_.cardId)
       transferRepo.changeTeam(
-        user.userId, toBuyCardIds, toSellCardIds, currentTeam, activeTime
+        user.userId, toBuyCardIds, toSellCardIds, currentTeam, periodStart, periodEnd
       )
       userRepo.updateFromTransfer(
         user.userId, newMoney, newRemaining, scheduledUpdateTime, applyWildcard
@@ -294,27 +325,13 @@ class TransferController @Inject()(
 
   private def updateDBCardTransfer(
                                         toSell: Set[Long], toBuy: Set[Long], currentTeamIds: Set[Long], user: UserRow,
-                                        period: Int, nextPeriodStartTime: LocalDateTime
+                                        periodStart: Int, periodEnd: Option[Int], userIsLateStart: Boolean
                                       )(implicit c: Connection): Either[Result, Result] = {
     tryOrResponseRollback(() => {
-      val currentTime = LocalDateTime.now()
-//      val toSellPickees = toSell.map(ts => pickees.find(_.externalPickeeId == ts).get)
-//      toSellPickees.map(
-//        p => transferRepo.insert(
-//          user.userId, p.internalPickeeId, false, currentTime, currentTime,
-//          true, p.price, false
-//        )
-//      )
-//      val toBuyPickees = toBuy.map(tb => pickees.find(_.externalPickeeId == tb).get)
-//      toBuyPickees.map(
-//        p => transferRepo.insert(
-//          user.userId, p.internalPickeeId, true, currentTime, currentTime,
-//          true, p.price, false
-//        ))
-      val currentTeam = teamRepo.getUserTeam(user.userId).map(_.cardId).toSet
         transferRepo.changeTeam(
-          user.userId, toBuy, toSell, currentTeamIds, nextPeriodStartTime
+          user.userId, toBuy, toSell, currentTeamIds, periodStart, periodEnd
         )
+      if (userIsLateStart) userRepo.setLateStartLockTs(user.userId)
       val newMoney = 10.0 // TODO actual new credits
       Ok(Json.toJson(TransferSuccess(newMoney, None)))
     }, c, InternalServerError("Unexpected error whilst processing transfer")

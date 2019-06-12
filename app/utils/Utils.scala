@@ -14,8 +14,11 @@ object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {
     Try(id.toLong).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
   }
-  def parseIntId(id: String, idName: String): Either[Result, Int] = {
-    Try(id.toInt).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
+  def parseIntId(id: Option[String], idName: String, required: Boolean = false): Either[Result, Option[Int]] = {
+    if (id.isEmpty && required) Left(BadRequest(f"$idName parameter required"))
+    else {
+      Try(id.map(_.toInt)).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
+    }
   }
 
   def parseTimestamp(tstamp: Option[String]): Either[Result, Option[LocalDateTime]] = {

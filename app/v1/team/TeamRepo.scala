@@ -11,8 +11,8 @@ import play.api.libs.json._
 
 import javax.inject.{Inject, Singleton}
 
-case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[LocalDateTime],
-                   end: Option[LocalDateTime], isActive: Boolean, pickees: Iterable[CardOut])
+case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[Int],
+                   end: Option[Int], isActive: Boolean, pickees: Iterable[CardOut])
 
 object TeamOut {
   implicit val implicitWrites = new Writes[TeamOut] {
@@ -33,16 +33,19 @@ object TeamOut {
 class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TeamRepo{
-  def getUserTeam(userId: Long, tstamp: Option[LocalDateTime]=Option.empty[LocalDateTime])(implicit c: Connection): Iterable[CardOut]
+  def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut]
   def getUserCards(userId: Long)(implicit c: Connection): Iterable[CardOut]
-  def getAllUserTeam(leagueId: Long, tstamp: Option[LocalDateTime]=Option.empty[LocalDateTime])(implicit c: Connection): Iterable[TeamOut]
+  def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut]
+  def getUserTeamForPeriod(
+                            userId: Long, startPeriod: Int,
+                            endPeriod: Option[Int]
+                          )(implicit c: Connection): Iterable[CardOut]
 }
 
 @Singleton
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
-  override def getUserTeam(userId: Long, tstamp: Option[LocalDateTime]=Option.empty[LocalDateTime])(implicit c: Connection): Iterable[CardOut] = {
-    val time = tstamp.getOrElse(LocalDateTime.now())
-    println(s"TIIIIIIIIIIME: $time")
+  override def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut] = {
+    println(s"TIIIIIIIIIIME: $period")
     val q =
       """select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
           c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
@@ -55,10 +58,44 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
           left join pickee_limit pl using(pickee_id)
           left join "limit" l using(limit_id)
           left join limit_type lt using(limit_type_id)
-    where c.user_id = {userId} and timespan @> {time}::timestamptz;
+    where c.user_id = {userId} and timespan @> {period};
     """
     println(q)
-    val rows = SQL(q).on("userId" -> userId, "time" -> time).as(CardWithBonusRowAndLimits.parser.*)
+    val rows = SQL(q).on("userId" -> userId, "period" -> period).as(CardWithBonusRowAndLimits.parser.*)
+    rows.groupBy(_.cardId).map({case (cardId, v) => {
+      val head = v.head
+      val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).map(row => row.limitTypeName.get -> row.limitName.get).toMap
+      CardOut(
+        cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
+        v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
+          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
+        ), limits
+      )
+    }})
+  }
+
+  override def getUserTeamForPeriod(
+                             userId: Long, startPeriod: Int,
+                             endPeriod: Option[Int]
+                           )(implicit c: Connection): Iterable[CardOut] = {
+    //todo check this efficient
+    // TODO transfer delay for in-period new users
+    val q =
+      """select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
+          c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+          l.name as limit_name, lt.name as limit_type_name
+           from team t
+         join card c using(card_id)
+          join pickee p using(pickee_id)
+          left join card_bonus_multiplier cbm using(card_id)
+          left join stat_field sf using(stat_field_id)
+          left join pickee_limit pl using(pickee_id)
+          left join "limit" l using(limit_id)
+          left join limit_type lt using(limit_type_id)
+    where c.user_id = {userId} and timespan = int4range({startPeriod}, {endPeriod});
+    """
+    println(q)
+    val rows = SQL(q).on("userId" -> userId, "start" -> startPeriod, "end" -> endPeriod).as(CardWithBonusRowAndLimits.parser.*)
     rows.groupBy(_.cardId).map({case (cardId, v) => {
       val head = v.head
       val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).map(row => row.limitTypeName.get -> row.limitName.get).toMap
@@ -100,8 +137,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
     }})
   }
 
-  override def getAllUserTeam(leagueId: Long, tstamp: Option[LocalDateTime]=Option.empty[LocalDateTime])(implicit c: Connection): Iterable[TeamOut] = {
-    val time = tstamp.getOrElse(LocalDateTime.now())
+  override def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut] = {
     val q =
       """select c.card_id, u.external_user_id, u.username, user_id, lower(t.timespan) as start, upper(t.timespan) as "end",
         true, p.pickee_id as internal_pickee_id, p.external_pickee_id, c.colour,
@@ -116,10 +152,10 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
                               left join pickee_limit pl using(pickee_id)
            left join "limit" l using(limit_id)
            left join limit_type lt using(limit_type_id)
-    where lu.league_id = {leagueId} and timespan @> {time}::timestamptz;
+    where lu.league_id = {leagueId} and timespan @> {period};
     """
     println(q)
-    val out = SQL(q).on("leagueId" -> leagueId, "time" -> time).as(TeamRow.parser.*)
+    val out = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(TeamRow.parser.*)
     println(out.mkString(","))
     teamRowsToOut(out)
   }
