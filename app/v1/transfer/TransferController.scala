@@ -138,7 +138,7 @@ class TransferController @Inject()(
                 , InternalServerError("Missing pickee externalPickeeId"))
               _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
               _ = println(s"sellOrWildcard: ${sell.mkString(",")}")
-              _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateStartLockTs, input.isCheck)
+              _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateEntryLockTs, input.isCheck)
               _ <- validateIds(currentTeamIds, userCards.map(_.cardId).toSet, sell, buy)
               newTeamCardIds = (currentTeamIds -- sell) ++ buy
               newTeamPickeeIdsList = userCards.withFilter(c => newTeamCardIds.contains(c.cardId)).map(_.pickeeId)
@@ -278,11 +278,11 @@ class TransferController @Inject()(
   }
 
   private def validateNewUserCantChangeDuringPeriod(
-                                                     userIsLateStart: Boolean, lateStartLockTs: Option[LocalDateTime],
+                                                     userIsLateStart: Boolean, lateEntryLockTs: Option[LocalDateTime],
                                                      isCheck: Boolean
                                                    ): Either[Result, Any] = {
     // TODO but new user should be able to pick team for next period
-    if (userIsLateStart && lateStartLockTs.isDefined) Left(BadRequest("Have already locked team for this period"))
+    if (userIsLateStart && lateEntryLockTs.isDefined) Left(BadRequest("Have already locked team for this period"))
     else Right(true)
   }
 
@@ -331,7 +331,7 @@ class TransferController @Inject()(
         transferRepo.changeTeam(
           user.userId, toBuy, toSell, currentTeamIds, periodStart, periodEnd
         )
-      if (userIsLateStart) userRepo.setLateStartLockTs(user.userId)
+      if (userIsLateStart) userRepo.setlateEntryLockTs(user.userId)
       val newMoney = 10.0 // TODO actual new credits
       Ok(Json.toJson(TransferSuccess(newMoney, None)))
     }, c, InternalServerError("Unexpected error whilst processing transfer")

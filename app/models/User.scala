@@ -8,7 +8,7 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 case class UserRow(
                           userId: Long, username: String, externalUserId: Long, money: BigDecimal,
                           entered: LocalDateTime, remainingTransfers: Option[Int], usedWildcard: Boolean,
-                          changeTstamp: Option[LocalDateTime], lateStartLockTs: Option[LocalDateTime]
+                          changeTstamp: Option[LocalDateTime], lateEntryLockTs: Option[LocalDateTime]
                         )
 
 object UserRow{
@@ -23,7 +23,7 @@ object UserRow{
         "remainingTransfers" -> u.remainingTransfers,
         "usedWildcard" -> u.usedWildcard,
         "transferScheduledTime" -> u.changeTstamp,
-        "lateStartLockTime" -> u.lateStartLockTs
+        "lateStartLockTime" -> u.lateEntryLockTs
       )
     }
   }

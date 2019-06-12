@@ -121,7 +121,7 @@ trait UserRepo{
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
   def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
-  def setLateStartLockTs(userId: Long)(implicit c: Connection): Int
+  def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int
 }
 
 @Singleton
@@ -144,7 +144,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   override def get(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[UserRow] = {
     SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp,
-            late_start_lock_ts
+            late_entry_lock_ts
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
   }
 
@@ -168,7 +168,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp, late_start_lock_ts" +
+    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp, late_entry_lock_ts" +
       "from useru where league_id = $leagueId").as(UserRow.parser.*)
   }
 
@@ -376,8 +376,8 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
     })
   }
 
-  override def setLateStartLockTs(userId: Long)(implicit c: Connection): Int = {
-    SQL"""update useru set late_start_lock_ts = now() where user_id = $userId""".executeUpdate()
+  override def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int = {
+    SQL"""update useru set late_entry_lock_ts = now() where user_id = $userId""".executeUpdate()
   }
 }
 
