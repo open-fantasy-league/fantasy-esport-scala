@@ -38,7 +38,10 @@ case class TransferInput(
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
-case class StatInput(name: String, allFactionPoints: Option[Double], separateFactionPoints: List[FactionSpecificScoring])
+case class StatInput(
+                      name: String, allFactionPoints: Option[Double], noCardBonus: Boolean,
+                      separateFactionPoints: List[FactionSpecificScoring]
+                    )
 
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
@@ -112,6 +115,7 @@ class LeagueController @Inject()(
           // TODO find how to put dynamic mappings into play input
           "name" -> nonEmptyText,
           "allFactionPoints" -> optional(of(doubleFormat)),
+          "noCardBonus" -> default(boolean, value=false),
           "separateFactionPoints" -> list(mapping(
             "name" -> nonEmptyText,
             "value" -> of(doubleFormat)
@@ -314,11 +318,11 @@ class LeagueController @Inject()(
                 val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name)
                 if (!input.manuallyCalculatePoints) {
                   if (es.allFactionPoints.isDefined) {
-                    leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get)
+                    leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get, es.noCardBonus)
                   }
                   else {
                     es.separateFactionPoints.foreach(
-                      sfp => leagueRepo.insertScoringField(statFieldId, Some(limitNamesToIds(sfp.name)), sfp.value)
+                      sfp => leagueRepo.insertScoringField(statFieldId, Some(limitNamesToIds(sfp.name)), sfp.value, es.noCardBonus)
                     )
                   }
                 }
