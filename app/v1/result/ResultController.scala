@@ -23,6 +23,20 @@ import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 import v1.user.UserRepo
 
+
+case class MatchFormInput(
+                         matchId: Long, teamOneMatchScore: Option[Int],
+                         teamTwoMatchScore: Option[Int], startTstamp: Option[LocalDateTime],
+                         targetAtTstamp: Option[LocalDateTime],
+                         pickeeResults: List[PickeeFormInput]
+                         )
+
+case class SeriesFormInput(
+                            seriesId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
+                            teamOneSeriesScore: Option[Int], teamTwoSeriesScore: Option[Int],
+                            startTstamp: Option[LocalDateTime], matches: List[MatchFormInput]
+                          )
+
 case class ResultFormInput(
                             matchId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
                             teamOneScore: Int, teamTwoScore: Int,
@@ -42,43 +56,38 @@ case class FindByTeamsFormInput(teamOne: String, teamTwo: String)
 case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
 case class PredictionsFormInput(predictions: List[PredictionFormInput])
 
-case class MatchIdMaybeResultId(matchId: Long, resultId: Option[Long], startTstamp: LocalDateTime)
+case class InternalIdMaybeChildId(internalId: Long, childId: Option[Long], startTstamp: LocalDateTime)
 
 class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, resultRepo: ResultRepo, pickeeRepo: PickeeRepo, Auther: Auther)
                                 (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
   private val logger = Logger("application")
-  private val form: Form[ResultFormInput] = {
-
+  private val seriesForm: Form[SeriesFormInput] = {
     Form(
       mapping(
-        "matchId" -> of(longFormat),
+        "seriesId" -> of(longFormat),
         "tournamentId" -> optional(of(longFormat)),
         "teamOne" -> optional(nonEmptyText),
         "teamTwo" -> optional(nonEmptyText),
-        "teamOneScore" -> number,
-        "teamTwoScore" -> number,
+        "teamOneSeriesScore" -> optional(number),
+        "teamTwoSeriesScore" -> optional(number),
         "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
-        "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
-        "pickees" -> list(mapping(
-          "id" -> of(longFormat),
-          "isTeamOne" -> boolean,
-          "stats" -> list(mapping(
-            "field" -> nonEmptyText,
-            "value" -> of(doubleFormat)
-          )(StatsFormInput.apply)(StatsFormInput.unapply))
-        )(PickeeFormInput.apply)(PickeeFormInput.unapply))
-      )(ResultFormInput.apply)(ResultFormInput.unapply)
-    )
-  }
-  private val fixtureForm: Form[FixtureFormInput] = {
-    Form(mapping(
-      "matchId" -> of(longFormat),
-      "tournamentId" -> of(longFormat),
-      "teamOne" -> nonEmptyText,
-      "teamTwo" -> nonEmptyText,
-      "startTstamp" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))
-    )(FixtureFormInput.apply)(FixtureFormInput.unapply))
+        "matches" -> list(mapping(
+          "matchId" -> of(longFormat),
+          "teamOneMatchScore" -> optional(number),
+          "teamTwoMatchScore" -> optional(number),
+          "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
+          "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
+          "pickeeResults" -> list(mapping(
+            "id" -> of(longFormat),
+            "isTeamOne" -> boolean,
+            "stats" -> list(mapping(
+              "field" -> nonEmptyText,
+              "value" -> of(doubleFormat)
+            )(StatsFormInput.apply)(StatsFormInput.unapply))
+          )(PickeeFormInput.apply)(PickeeFormInput.unapply))
+        )(MatchFormInput.apply)(MatchFormInput.unapply))
+      )(SeriesFormInput.apply)(SeriesFormInput.unapply))
   }
 
   private val predictionForm: Form[PredictionFormInput] = {
@@ -106,67 +115,84 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   implicit val parser = parse.default
 
   def add(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
-    db.withConnection { implicit c =>processJsonResult(request.league)}
+    db.withConnection { implicit c => processSeriesInput(request.league)}
   }
 
-  def addFixture(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
-    db.withConnection { implicit c => processJsonAddFixture(request.league)}
-  }
-
-//  def addResultsToFixture(leagueId: String, externalMatchId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async{ implicit request =>
-//    db.withConnection { implicit c => processJsonAddResultsToFixture(request.league, externalMatchId)}
-//  }
-
-  private def processJsonResult[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
-    def failure(badForm: Form[ResultFormInput]) = {
+  private def processSeriesInput[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
+    def failure(badForm: Form[SeriesFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: ResultFormInput) = {
+    def success(input: SeriesFormInput) = {
       Future {
+        val now = LocalDateTime.now
         //var error: Option[Result] = None
         db.withTransaction { implicit c =>
           (for {
-            existingMatch <- existingMatchInfo(league.leagueId, input.matchId)
-            startTstamp = input.startTstamp.orElse(existingMatch.map(_._2))
-            validateStarted <- if (leagueRepo.isStarted (league)) Right (true) else Left (BadRequest ("Cannot add results before league started"))
-            internalPickee = input.pickees.map (p => InternalPickee (pickeeRepo.getInternalId (league.leagueId, p.id).get, p.isTeamOne, p.stats))
-            now = LocalDateTime.now
-            targetTstamp = getTargetedAtTstamp(input.targetAtTstamp, startTstamp, league, now)
-            correctPeriod <- getPeriod (startTstamp.get, Some(targetTstamp), league, now)
-            matchId <- if (existingMatch.isDefined) Right(existingMatch.get._1) else
-              newMatch(input, league, correctPeriod, targetTstamp, now)
-            _ = if (existingMatch.isDefined) updatedMatch(matchId, input)
-            _ = awardPredictions(matchId, input.teamOneScore, input.teamTwoScore)
-            insertedResults <- newResults(input, league, matchId, internalPickee)
-            insertedStats <- newStats (league, insertedResults.toList, internalPickee)
-            updatedStats <- updateStats (insertedStats, league, correctPeriod, targetTstamp)
+            existingSeries <- existingSeriesInfo(league.leagueId, input.seriesId)
+            startTstamp = input.startTstamp.orElse(existingSeries.map(_._2))
+            correctPeriod <- getPeriod(startTstamp.get, None, league, now)
+            seriesId <- if (existingSeries.isDefined) Right(existingSeries.get._1) else
+              newSeries(input, league, correctPeriod, startTstamp.getOrElse(now))
+            // TODO ideally would bail on first error
+//            _ <- input.matches.map(m => for {
+              matchu: MatchFormInput <- input.matches
+              existingMatch <- existingMatchInfo(league.leagueId, matchu.matchId)
+              startTstamp = matchu.startTstamp.orElse(existingMatch.map(_._2))
+              targetTstamp = getTargetedAtTstamp(matchu.targetAtTstamp, startTstamp, league, now)
+              matchId <- if (existingMatch.isDefined) Right(existingMatch.get._1) else
+                newMatch(matchu, league, seriesId, correctPeriod, targetTstamp, now)
+              internalPickee = matchu.pickeeResults.map(
+                p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats)
+              )
+              _ = if (existingMatch.isDefined) updatedMatch(matchId, matchu)
+              _ = if (matchu.teamOneMatchScore.isDefined) awardPredictions(matchId, matchu.teamOneMatchScore.get, matchu.teamTwoMatchScore.get)
+              insertedResults <- newResults(matchu, league, matchId, internalPickee)
+              insertedStats <- newStats(league, insertedResults.toList, internalPickee)
+              updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
+            //} yield "Added match").foldRight()
           } yield Created("Successfully added results")).fold(identity, identity)
         }
       }
     }
 
-    form.bindFromRequest().fold(failure, success)
+    seriesForm.bindFromRequest().fold(failure, success)
   }
 
   private def existingMatchInfo(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Either[Result, Option[(Long, LocalDateTime)]] = {
-    val parser: RowParser[MatchIdMaybeResultId] = Macro.namedParser[MatchIdMaybeResultId](ColumnNaming.SnakeCase)
+    val parser: RowParser[InternalIdMaybeChildId] = Macro.namedParser[InternalIdMaybeChildId](ColumnNaming.SnakeCase)
     val existing = SQL"""
-         select m.match_id, result_id, start_tstamp from matchu m
+         select m.match_id as internal_id, result_id as child_id, start_tstamp from matchu m
          left join resultu using(match_id) where external_match_id = $externalMatchId and league_id = $leagueId
           LIMIT 1
        """.as(parser.singleOpt)
     existing match{
-      case Some(x) if x.resultId.isDefined => Left(BadRequest("Cannot add results for same match twice"))
-      case Some(x) => Right(Some(x.matchId, x.startTstamp))
+      case Some(x) if x.childId.isDefined => Left(BadRequest("Cannot add results for same match twice"))
+      case Some(x) => Right(Some(x.internalId, x.startTstamp))
       case None => Right(None)
     }
   }
 
-  private def updatedMatch(matchId: Long, input: ResultFormInput)(implicit c: Connection) = {
-    SQL"""update matchu set team_one_score = ${input.teamOneScore}, team_two_score = ${input.teamTwoScore}
+  private def existingSeriesInfo(leagueId: Long, externalSeriesId: Long)(implicit c: Connection): Either[Result, Option[(Long, LocalDateTime)]] = {
+    val parser: RowParser[InternalIdMaybeChildId] = Macro.namedParser[InternalIdMaybeChildId](ColumnNaming.SnakeCase)
+    // TODO some junk here
+    val existing = SQL"""
+         select series_id as internal_id, match_id as child_id, start_tstamp from series s
+         left join matchu using(series_id) where external_series_id = $externalSeriesId and league_id = $leagueId
+          LIMIT 1
+       """.as(parser.singleOpt)
+    existing match{
+      case Some(x) => Right(Some(x.internalId, x.startTstamp))
+      case None => Right(None)
+    }
+  }
+
+  private def updatedMatch(matchId: Long, input: MatchFormInput)(implicit c: Connection) = {
+    if (input.teamOneMatchScore.isDefined) {
+      SQL"""update matchu set team_one_score = ${input.teamOneMatchScore}, team_two_score = ${input.teamTwoMatchScore}
          where match_id = $matchId
        """.executeUpdate()
+    }
   }
 
   private def awardPredictions(matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
@@ -178,55 +204,6 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
            where u.league_id = l.league_id AND u.user_id = $userId""".executeUpdate()
       SQL"""update prediction set paid_out = true where prediction_id = $predictionId""".executeUpdate()
     })
-  }
-
-//  private def processJsonAddResultsToFixture[A](league: LeagueRow, externalMatchId: String)(implicit request: Request[A]): Future[Result] = {
-//    def failure(badForm: Form[ResultFormInput]) = {
-//      Future.successful(BadRequest(badForm.errorsAsJson))
-//    }
-//
-//    def success(input: ResultFormInput) = {
-//      Future {
-//        //var error: Option[Result] = None
-//        db.withTransaction { implicit c =>
-//          (for {
-//            validateStarted <- if (leagueRepo.isStarted(league)) Right(true) else Left(BadRequest("Cannot add results before league started"))
-//            internalPickee = input.pickees.map(p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats))
-//            now = LocalDateTime.now
-//            targetTstamp = getTargetedAtTstamp(input, league, now)
-//            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, now)
-//            insertedMatch <- newMatch(input, league, correctPeriod, targetTstamp, now)
-//            insertedResults <- newResults(input, league, insertedMatch, internalPickee)
-//            insertedStats <- newStats(league, insertedResults.toList, internalPickee)
-//            updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
-//          } yield Created("Successfully added results")).fold(identity, identity)
-//        }
-//      }
-//    }
-//
-//    form.bindFromRequest().fold(failure, success)
-//  }
-
-  private def processJsonAddFixture[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
-    def failure(badForm: Form[FixtureFormInput]) = {
-      Future.successful(BadRequest(badForm.errorsAsJson))
-    }
-
-    def success(input: FixtureFormInput) = {
-      Future {
-        val now = LocalDateTime.now
-        val targetTstamp = input.startTstamp
-        //var error: Option[Result] = None
-        db.withTransaction { implicit c =>
-          (for {
-            correctPeriod <- getPeriod(input.startTstamp, Some(targetTstamp), league, targetTstamp)
-            insertedMatch <- newFutureMatch(input, league, correctPeriod, targetTstamp, now)
-          } yield Created("Successfully added results")).fold(identity, identity)
-        }
-      }
-    }
-
-    fixtureForm.bindFromRequest().fold(failure, success)
   }
 
   private def getPeriod(startTstamp: LocalDateTime, targetAtTstamp: Option[LocalDateTime], league: LeagueRow, now: LocalDateTime)(implicit c: Connection): Either[Result, Int] = {
@@ -252,10 +229,17 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     }
   }
 
-  private def newMatch(input: ResultFormInput, league: LeagueRow, period: Int, targetAt: LocalDateTime, now: LocalDateTime)
+  private def newMatch(input: MatchFormInput, league: LeagueRow, seriesId: Long, period: Int, targetAt: LocalDateTime, now: LocalDateTime)
                       (implicit c: Connection): Either[Result, Long] = {
     tryOrResponse[Long](() => resultRepo.insertMatch(
-      league.leagueId, period, input, now, targetAt
+      league.leagueId, seriesId, period, input, now, targetAt
+    ), InternalServerError("Internal server error adding match"))
+  }
+
+  private def newSeries(input: SeriesFormInput, league: LeagueRow, period: Int, startTstamp: LocalDateTime)
+                      (implicit c: Connection): Either[Result, Long] = {
+    tryOrResponse[Long](() => resultRepo.insertSeries(
+      league.leagueId, period, input, startTstamp
     ), InternalServerError("Internal server error adding match"))
   }
 
@@ -265,7 +249,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     ), InternalServerError("Internal server error adding fixture"))
   }
 
-  private def newResults(input: ResultFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
+  private def newResults(input: MatchFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
                         (implicit c: Connection): Either[Result, Iterable[Long]] = {
     tryOrResponseRollback(() => pickees.map(p => resultRepo.insertResult(matchId, p)), c, InternalServerError("Internal server error adding result"))
   }
@@ -342,24 +326,12 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     }}), c, InternalServerError("Internal server error updating stats"))
   }
 
-  def getReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+  def getSeriesReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
     Future{
       db.withConnection { implicit c =>
         (for {
           period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          results = resultRepo.get(request.league.leagueId, period).toList
-          success = Ok(Json.toJson(results))
-        } yield success).fold(identity, identity)
-      }
-    }
-  }
-
-  def getMatchesReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    Future{
-      db.withConnection { implicit c =>
-        (for {
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
-          results = resultRepo.getMatches(request.league.leagueId, period).toList
+          results = resultRepo.getSeries(request.league.leagueId, period).toList
           success = Ok(Json.toJson(results))
         } yield success).fold(identity, identity)
       }

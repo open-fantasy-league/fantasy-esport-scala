@@ -21,6 +21,14 @@ case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String
                          targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
                          statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeePrice: BigDecimal)
 
+case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Long, teamOne: String, teamTwo: String,
+                         teamOneSeriesScore: Option[Int], teamTwoSeriesScore: Option[Int], teamOneMatchScore: Option[Int],
+                         teamTwoMatchScore: Option[Int],
+                         tournamentId: Long,
+                         startTstamp: LocalDateTime, seriesStartTstamp: LocalDateTime, addedDbTstamp: LocalDateTime,
+                         targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
+                         statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeePrice: BigDecimal)
+
 case class SingleResult(isTeamOne: Boolean, pickeeName: String, results: Map[String, Double])
 object SingleResult{
   implicit val implicitWrites = new Writes[SingleResult]{
@@ -34,10 +42,10 @@ object SingleResult{
   }
 }
 
-case class ResultsOut(matchu: MatchRow, results: Iterable[SingleResult])
-object ResultsOut{
-  implicit val implicitWrites = new Writes[ResultsOut] {
-    def writes(r: ResultsOut): JsValue = {
+case class MatchOut(matchu: MatchRow, results: Iterable[SingleResult])
+object MatchOut{
+  implicit val implicitWrites = new Writes[MatchOut] {
+    def writes(r: MatchOut): JsValue = {
       Json.obj(
         "match" -> r.matchu,
         "results" -> r.results,
@@ -46,13 +54,28 @@ object ResultsOut{
   }
 }
 
+case class SeriesOut(series: SeriesRow, matches: Iterable[MatchOut])
+object SeriesOut{
+  implicit val implicitWrites = new Writes[SeriesOut] {
+    def writes(r: SeriesOut): JsValue = {
+      Json.obj(
+        "series" -> r.series,
+        "matches" -> r.matches,
+      )
+    }
+  }
+}
+
 
 trait ResultRepo{
-  def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut]
-  def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow]
-  def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut]
+  def getSeries(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[SeriesOut]
+  def insertSeries(
+                    leagueId: Long, period: Int, input: SeriesFormInput, startTstamp: LocalDateTime
+                  )(implicit c: Connection): Long
+  //def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow]
+  def seriesQueryExtractor(query: Iterable[FullSeriesRow]): Iterable[SeriesOut]
   def insertMatch(
-                   leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
+                   leagueId: Long, seriesId: Long, period: Int, input: MatchFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
                  )(implicit c: Connection): Long
   def insertFutureMatch(
                    leagueId: Long, period: Int, input: FixtureFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
@@ -71,61 +94,80 @@ trait ResultRepo{
 @Singleton
 class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends ResultRepo{
   val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-  val fullResultParser: RowParser[FullResultRow] = Macro.namedParser[FullResultRow](ColumnNaming.SnakeCase)
+  val fullSeriesParser: RowParser[FullSeriesRow] = Macro.namedParser[FullSeriesRow](ColumnNaming.SnakeCase)
 
-  override def get(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[ResultsOut] = {
+  override def getSeries(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[SeriesOut] = {
     val q =
       """
-        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.team_one_score, m.team_two_score, m.tournament_id, m.start_tstamp, m.added_db_tstamp,
-        | m.targeted_at_tstamp, m.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
+        | select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two,
+        | ser.team_one_series_score, ser.team_two_series_score, m.team_one_match_score, m.team_two_match_score,
+        |  ser.tournament_id, m.start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
+        | m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
         |  pck.external_pickee_id,
         |  pck.pickee_name, pck.price as pickee_price
-        |  from matchu m join resultu r using(match_id)
+        |  from series ser join matchu m using(series_id) join resultu r using(match_id)
         | join stat s using(result_id)
         | join stat_field sf on (sf.stat_field_id = s.stat_field_id)
         | join pickee pck using(pickee_id)
         | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
         | order by m.targeted_at_tstamp desc, s.value;
       """.stripMargin
-    val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullResultParser.*)
-    resultQueryExtractor(r)
+    val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullSeriesParser.*)
+    seriesQueryExtractor(r)
   }
 
-  override def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow] = {
-    val q =
-      """
-        | select m.external_match_id, m.team_one, m.team_two, m.team_one_victory, m.team_one_score, m.team_two_score,
-        |  m.tournament_id, m.start_tstamp, m.added_db_tstamp,
-        | m.targeted_at_tstamp, m.period
-        |  from matchu m
-        | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
-        | order by m.targeted_at_tstamp desc;
-      """.stripMargin
-    SQL(q).on("leagueId" -> leagueId, "period" -> period).as(MatchRow.parser.*)
-  }
+//  override def getMatches(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[MatchRow] = {
+//    val q =
+//      """
+//        | select m.external_match_id, m.team_one_score, m.team_two_score,
+//        | m.start_tstamp, m.added_db_tstamp,
+//        | m.targeted_at_tstamp
+//        |  from matchu m
+//        | where m.league_id = {leagueId} and ({period} is null or m.period = {period})
+//        | order by m.targeted_at_tstamp desc;
+//      """.stripMargin
+//    SQL(q).on("leagueId" -> leagueId, "period" -> period).as(MatchRow.parser.*)
+//  }
 
-  override def resultQueryExtractor(query: Iterable[FullResultRow]): Iterable[ResultsOut] = {
-    val grouped = query.groupByOrdered(_.externalMatchId)
-    grouped.map({case (externalMatchId, v) =>
-      val results = v.groupByOrdered(tup => (tup.resultId, tup.externalPickeeId)).map({
-        case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne, x.head.pickeeName, x.map(y => y.statFieldName -> y.statsValue).toMap)
-      })//(collection.breakOut): List[SingleResult]
-      ResultsOut(MatchRow(externalMatchId, v.head.period, v.head.tournamentId, v.head.teamOne, v.head.teamTwo,
-        v.head.teamOneVictory, v.head.teamOneScore, v.head.teamTwoScore,
-        v.head.startTstamp, v.head.addedDbTstamp, v.head.targetedAtTstamp), results)
-    })
+  override def seriesQueryExtractor(query: Iterable[FullSeriesRow]): Iterable[SeriesOut] = {
+    query.groupByOrdered(_.externalSeriesId).map({ case (externalSeriesId, row) => {
+      val head = row.head
+      val matches = row.groupByOrdered(_.externalMatchId).map({ case (externalMatchId, row) => {
+        val results = row.groupByOrdered(tup => (tup.resultId, tup.externalPickeeId)).map({
+          case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne, x.head.pickeeName, x.map(y => y.statFieldName -> y.statsValue).toMap)
+        })
+        val head = row.head
+        MatchOut(MatchRow(
+          externalMatchId, head.teamOneMatchScore, head.teamTwoMatchScore, head.startTstamp, head.addedDbTstamp,
+          head.targetedAtTstamp), results)
+      }})
+        SeriesOut(SeriesRow(
+          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.teamOneSeriesScore,
+          head.teamTwoSeriesScore, head.seriesStartTstamp
+        ), matches)
+    }})
   }
 
   override def insertMatch(
-                            leagueId: Long, period: Int, input: ResultFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
+                            leagueId: Long, seriesId: Long, period: Int, input: MatchFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
                           )(implicit c: Connection): Long = {
-    SQL(
-      s"""
-        |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_score, team_two_score,
-        |start_tstamp, added_db_tstamp, targeted_at_tstamp)
-        |VALUES($leagueId, ${input.matchId}, $period, ${input.tournamentId}, '${input.teamOne}', '${input.teamTwo}',
-        | ${input.teamOneScore}, '${input.teamTwoScore}', '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
-      """.stripMargin).executeInsert().get
+    SQL"""
+        insert into matchu(league_id, series_id, external_match_id, team_one_score, team_two_score,
+        start_tstamp, added_db_tstamp, targeted_at_tstamp)
+        VALUES($leagueId, $seriesId, ${input.matchId},
+         ${input.teamOneMatchScore}, ${input.teamTwoMatchScore}, ${input.startTstamp}, $now, $targetedAtTstamp) returning match_id
+      """.executeInsert().get
+  }
+
+  override def insertSeries(
+                            leagueId: Long, period: Int, input: SeriesFormInput, startTstamp: LocalDateTime
+                          )(implicit c: Connection): Long = {
+    SQL"""
+         insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, team_one_series_score, team_two_series_score,
+         start_tstamp)
+         VALUES($leagueId, ${input.seriesId}, $period, ${input.tournamentId}, ${input.teamOne}, ${input.teamTwo},
+          ${input.teamOneSeriesScore}, ${input.teamTwoSeriesScore}, $startTstamp) returning series_id
+      """.executeInsert().get
   }
 
   override def insertFutureMatch(
