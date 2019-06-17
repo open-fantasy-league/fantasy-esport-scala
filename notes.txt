@@ -92,9 +92,14 @@ sort out infinity fields in league info
 am i using scoring for diff positions correctly ..............YYYYYYYYESSS
 
 
-ready for a proper test run
-check scoring system, and other score metrics
-make predictions look nice
+proper test run
+goalkeeper/forward ratios
+collection page
+filter by team
+responsive
+fotmob chrome extension to get data
+predictions series/match
+15 card packs start
 grey out too late predictions
 predictions dropdown
-other social auth
+facebook social auth

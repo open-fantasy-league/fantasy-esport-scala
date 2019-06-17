@@ -95,7 +95,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
     where c.user_id = {userId} and timespan = int4range({startPeriod}, {endPeriod});
     """
     println(q)
-    val rows = SQL(q).on("userId" -> userId, "start" -> startPeriod, "end" -> endPeriod).as(CardWithBonusRowAndLimits.parser.*)
+    val rows = SQL(q).on("userId" -> userId, "startPeriod" -> startPeriod, "endPeriod" -> endPeriod).as(CardWithBonusRowAndLimits.parser.*)
     rows.groupBy(_.cardId).map({case (cardId, v) => {
       val head = v.head
       val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).map(row => row.limitTypeName.get -> row.limitName.get).toMap

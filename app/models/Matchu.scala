@@ -37,9 +37,8 @@ object SeriesRow{
   val parser: RowParser[MatchRow] = Macro.namedParser[MatchRow](ColumnNaming.SnakeCase)
 }
 
-case class MatchRow( // because match is an sql keyword
-              externalMatchId: Long, // this is the dota2 match id field
-              // we dont want to have 2 different games where they can overlap primary key. so dont use match id as primary key
+case class MatchRow(
+              externalMatchId: Long,
                      teamOneMatchScore: Option[Int],
                      teamTwoMatchScore: Option[Int],
               startTstamp: LocalDateTime,
@@ -63,6 +62,83 @@ object MatchRow{
   }
 
   val parser: RowParser[MatchRow] = Macro.namedParser[MatchRow](ColumnNaming.SnakeCase)
+}
+
+case class SeriesAndMatchRow(
+                              externalSeriesId: Long,
+                              period: Int,
+                              tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
+                              teamOne: String,
+                              teamTwo: String,
+                              teamOneSeriesScore: Option[Int],
+                              teamTwoSeriesScore: Option[Int],
+                              seriesStartTstamp: LocalDateTime,
+                              externalMatchId: Option[Long],
+                              teamOneMatchScore: Option[Int],
+                              teamTwoMatchScore: Option[Int],
+                              startTstamp: Option[LocalDateTime],
+                              addedDbTstamp: Option[LocalDateTime],
+                              targetedAtTstamp: Option[LocalDateTime] // what timestamp do we look up teams for
+
+                            )
+
+object SeriesAndMatchRow{
+
+  def out(rows: Iterable[SeriesAndMatchRow]): Iterable[SeriesOut] = {
+    rows.groupBy(_.externalSeriesId).map({case (externalSeriesId, rows) => {
+      val head = rows.head
+      SeriesOut(SeriesRow(
+        externalSeriesId, head.period,head.tournamentId, head.teamOne, head.teamTwo,
+        head.teamOneSeriesScore,
+        head.teamTwoSeriesScore,
+        head.seriesStartTstamp), rows.withFilter(_.externalMatchId.isDefined).map(row => MatchOut(
+        MatchRow(
+        row.externalMatchId.get, row.teamOneMatchScore,
+        row.teamTwoMatchScore,
+        row.startTstamp.get,
+        row.addedDbTstamp.get,
+        row.targetedAtTstamp.get), List[SingleResult]())))
+    }})
+  }
+
+  val parser: RowParser[SeriesAndMatchRow] = Macro.namedParser[SeriesAndMatchRow](ColumnNaming.SnakeCase)
+}
+
+case class SingleResult(isTeamOne: Boolean, pickeeName: String, results: Map[String, Double])
+object SingleResult{
+  implicit val implicitWrites = new Writes[SingleResult]{
+    def writes(r: SingleResult): JsValue = {
+      Json.obj(
+        "isTeamOne" -> r.isTeamOne,
+        "pickee" -> r.pickeeName,
+        "stats" -> r.results,
+      )
+    }
+  }
+}
+
+case class MatchOut(matchu: MatchRow, results: Iterable[SingleResult])
+object MatchOut{
+  implicit val implicitWrites = new Writes[MatchOut] {
+    def writes(r: MatchOut): JsValue = {
+      Json.obj(
+        "match" -> r.matchu,
+        "results" -> r.results,
+      )
+    }
+  }
+}
+
+case class SeriesOut(series: SeriesRow, matches: Iterable[MatchOut])
+object SeriesOut{
+  implicit val implicitWrites = new Writes[SeriesOut] {
+    def writes(r: SeriesOut): JsValue = {
+      Json.obj(
+        "series" -> r.series,
+        "matches" -> r.matches,
+      )
+    }
+  }
 }
 
 case class PredictionRow(externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)

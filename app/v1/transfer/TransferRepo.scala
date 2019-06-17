@@ -115,28 +115,32 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     val pickeeWithLimits = pickeeRepo.getPickeeLimits(pickeeId)
     var bonuses = colour match {
       case "GOLD" => {
-        while (randomStatFieldIds.size < 2){
+        while (randomStatFieldIds.size < 3){
           randomStatFieldIds += statFieldIds(rnd.nextInt(statFieldIds.length))  // TODO check this +1
         }
         randomStatFieldIds.map(sfid => {
-          // leads to random from 1.15, 1.20, 1.25
-          val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)) < 0.0
+          // leads to random from 1.10, 1.15, 1.20, or x0.25 0.5 0.75 for negative
+          val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)).get < 0.0
           val multiplier = if (isNegative) (rnd.nextInt(3) + 1).toDouble * 0.25 else {
-            (((rnd.nextInt(3) + 3) * 5).toDouble / 100.0) + 1.0
+            (((rnd.nextInt(3) + 2) * 5).toDouble / 100.0) + 1.0
           }
           insertCardBonus(newCard.cardId, sfid, multiplier)
           CardBonusMultiplierRow(sfid, leagueRepo.getStatFieldName(sfid).get, multiplier)
         }).toList
       }
       case "SILVER" => {
-        // leads to random from 1.05, 1.10, 1.15
-        val sfid = statFieldIds(rnd.nextInt(statFieldIds.length))
-        val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)) < 0.0
-        val multiplier = if (isNegative) rnd.nextInt(3).toDouble * 0.25 else {
-          (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
+        while (randomStatFieldIds.size < 2){
+          randomStatFieldIds += statFieldIds(rnd.nextInt(statFieldIds.length))  // TODO check this +1
         }
-        insertCardBonus(newCard.cardId, sfid, multiplier)
-        List(CardBonusMultiplierRow(sfid, leagueRepo.getStatFieldName(sfid).get, multiplier))
+        randomStatFieldIds.map(sfid => {
+          val isNegative = leagueRepo.getPointsForStat(sfid, pickeeRepo.getPickeeLimitIds(pickeeId)).get < 0.0
+          // leads to random from 1.05, 1.10, 1.15 or x0.4 0.6 0.8 for negative
+          val multiplier = if (isNegative) (rnd.nextInt(3) + 2).toDouble * 0.2 else {
+            (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
+          }
+          insertCardBonus(newCard.cardId, sfid, multiplier)
+          CardBonusMultiplierRow(sfid, leagueRepo.getStatFieldName(sfid).get, multiplier)
+        }).toList
       }
       case _ => List[CardBonusMultiplierRow]()
     }

@@ -93,7 +93,7 @@ trait LeagueRepo{
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
   def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
   def getStatFieldName(statFieldId: Long)(implicit c: Connection): Option[String]
-  def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Double
+  def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double]
   def getScoringRules(leagueId: Long)(implicit c: Connection): Iterable[ScoringRow]
 }
 
@@ -164,7 +164,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description, transfer_limit,
         |transfer_wildcard, starting_money, team_size, force_full_teams, transfer_open,
         |transfer_delay_minutes, url, url_verified, current_period_id, apply_points_at_start_time,
-        |no_wildcard_for_late_register, card_system) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
+        |no_wildcard_for_late_register, card_system, recycle_value) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription}, {transferLimit}, {transferWildcard},
         | {startingMoney}, {teamSize}, {forceFullTeams}, false, {transferDelayMinutes}, {url}, false, null,
         |  {applyPointsAtStartTime},
@@ -272,7 +272,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def insertScoringField(statFieldId: Long, limitId: Option[Long], value: Double, noCardBonus: Boolean)(implicit c: Connection): Long = {
     println("inserting scoring field")
-    SQL("insert into scoring(stat_field_id, limit_id, value) VALUES ({statFieldId}, {limitId}, {value}, {noCardBonus});").on(
+    SQL("insert into scoring(stat_field_id, limit_id, value, no_card_bonus) VALUES ({statFieldId}, {limitId}, {value}, {noCardBonus});").on(
       "statFieldId" -> statFieldId, "limitId" -> limitId, "value" -> value, "noCardBonus" -> noCardBonus
     ).executeInsert().get
   }
@@ -506,7 +506,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     ).as(SqlParser.str("name").singleOpt)
   }
 
-  override def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Double = {
+  override def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double] = {
     // either this stat is faction agnostic, in which case there'll be a null entry
     // or we should find the faction entry in one of the limits
     // relies on only one limit type being used to determine points value
@@ -514,7 +514,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       """
         |select value from scoring where stat_field_id = {statFieldId} and (limit_id is null or limit_id in ({limitIds})) limit 1
         |""".stripMargin).on("statFieldId" -> statFieldId, "limitIds" -> limitIds.toList).as(
-      SqlParser.double("value").single
+      SqlParser.double("value").singleOpt
     )
   }
 
