@@ -272,29 +272,31 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
                                           )(implicit c: Connection): Iterable[RankingRow] = {
     val rankingParser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
     println(period)
-    val timestampFilter = if (period.isDefined) "t.timespan @> {period}" else "upper(t.timespan) is NULL"
-    val periodFilter = if (period.isDefined) "usp.period = {period}" else "usp.period is NULL"
+    val teamPeriodFilter = if (period.isDefined) "t.timespan @> {period}" else "upper(t.timespan) is NULL"
+    val statPeriodFilter = if (period.isDefined) "usp.period = {period}" else "usp.period is NULL"
     val q = secondaryOrdering match {
       case None => s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank,
                   pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, p.price from useru u
-           left join team t on (t.user_id = u.user_id and $timestampFilter)
-           left join pickee p using(pickee_id)
+                  join card c using(user_id)
+           join team t on (c.card_id = t.card_id and $teamPeriodFilter)
+           join pickee p using(pickee_id)
            join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
-           join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $periodFilter)
+           join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
            order by usp.value desc;
            """
       case Some(secondary) => {
         val extraJoins = secondary.map(s =>
           s"""join user_stat us$s on (us$s.user_id = u.user_id and us$s.stat_field_id = $s)
-            join user_stat_period usp$s on (usd$s.user_stat_id = us$s.user_stat_id and $periodFilter)
+            join user_stat_period usp$s on (usd$s.user_stat_id = us$s.user_stat_id and $statPeriodFilter)
             """).mkString(" ")
         val extraOrder = secondary.map(s => s"lusd$s.value desc").mkString(" ")
         s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank, pickee_id as internal_pickee_id, external_pickee_id
             p.pickee_name, p.price from useru u
-             left join team t on (t.user_id = u.user_id and $timestampFilter)
-             left join pickee p using(pickee_id)
+             join card c using(user_id)
+             join team t on (t.card_id = c.card_id and $teamPeriodFilter)
+             join pickee p using(pickee_id)
              join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
-             join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $periodFilter)
+             join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
              $extraJoins
              order by usp.value desc $extraOrder;
              """

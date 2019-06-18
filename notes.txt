@@ -99,7 +99,9 @@ filter by team
 responsive
 fotmob chrome extension to get data
 predictions series/match
-15 card packs start
+handle finalized column...maybe delete, maybe existence of score means finalised?
+more lightweight get league
+indexing
 grey out too late predictions
 predictions dropdown
 facebook social auth
