@@ -51,10 +51,20 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
                            oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]
                          )(implicit c: Connection) = {
     if (toSellCardIds.nonEmpty) {
-      val q =
-        """delete from team where card_id in ({toSellIds}) AND timespan = int4range({periodStart}, {periodEnd})"""
-      SQL(q).on("periodStart" -> periodStart, "periodEnd" -> periodEnd, "toSellIds" -> toSellCardIds)
-        .executeUpdate()
+      // TODO is this logic legit?
+      if (periodEnd.isDefined) {
+        val q =
+          """delete from team where card_id in ({toSellIds}) AND timespan = int4range({periodStart}, {periodEnd})"""
+        SQL(q).on("periodStart" -> periodStart, "periodEnd" -> periodEnd, "toSellIds" -> toSellCardIds)
+          .executeUpdate()
+      }
+      else{
+        val q =
+          """update team set timespan = int4range(lower(timespan), {periodStart}) where card_id in ({toSellIds})
+            |AND timespan @> int4range({periodStart}, {periodEnd})""".stripMargin
+        SQL(q).on("periodStart" -> periodStart, "periodEnd" -> periodEnd, "toSellIds" -> toSellCardIds)
+          .executeUpdate()
+      }
     }
     println(s"""Ended current team pickees: ${toSellCardIds.mkString(", ")}""")
     SQL("update useru set change_tstamp = null where user_id = {userId};").on("userId" -> userId).executeUpdate()
@@ -113,7 +123,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     val statFieldIds = leagueRepo.getScoringStatFieldsForPickee(leagueId, pickeeId).map(_.statFieldId).toArray
     var randomStatFieldIds = scala.collection.mutable.Set[Long]()
     val pickeeWithLimits = pickeeRepo.getPickeeLimits(pickeeId)
-    var bonuses = colour match {
+    val bonuses = colour match {
       case "GOLD" => {
         while (randomStatFieldIds.size < 3){
           randomStatFieldIds += statFieldIds(rnd.nextInt(statFieldIds.length))  // TODO check this +1

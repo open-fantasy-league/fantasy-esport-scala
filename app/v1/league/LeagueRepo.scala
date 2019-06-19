@@ -78,7 +78,7 @@ trait LeagueRepo{
   def getPeriodFromValue(leagueId: Long, value: Int)(implicit c: Connection): PeriodRow
   def getPeriodFromTimestamp(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow]
   def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow]
-  def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow]
+  def getNextPeriod(league: LeagueRow, requireCurrentPeriodEnded: Boolean = false)(implicit c: Connection): Either[Result, PeriodRow]
   def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow], scoringRules: Map[String, Map[String, Double]]): LeagueFull // TODO private
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
@@ -326,10 +326,10 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).on("periodId" -> league.currentPeriodId).as(PeriodRow.parser.singleOpt)
   }
 
-  override def getNextPeriod(league: LeagueRow)(implicit c: Connection): Either[Result, PeriodRow] = {
+  override def getNextPeriod(league: LeagueRow, requireCurrentPeriodEnded: Boolean = false)(implicit c: Connection): Either[Result, PeriodRow] = {
     // check if is above max?
     getCurrentPeriod(league) match {
-      case Some(p) if !p.ended => Left(BadRequest("Must end current period before start next"))
+      case Some(p) if requireCurrentPeriodEnded && !p.ended => Left(BadRequest("Must end current period before start next"))
       case Some(p) => {
         p.nextPeriodId match {
           case Some(np) => getPeriod(np).toRight(InternalServerError(s"Could not find next period $np, for period ${p.periodId}"))

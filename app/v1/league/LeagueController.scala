@@ -253,7 +253,7 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         implicit val implUpdateHistoricRanksFunc: Long => Unit = userRepo.updateHistoricRanks
         (for {
-          newPeriod <- leagueRepo.getNextPeriod(request.league)
+          newPeriod <- leagueRepo.getNextPeriod(request.league, requireCurrentPeriodEnded = true)
           _ = leagueRepo.postStartPeriodHook(request.league.leagueId, newPeriod.periodId, newPeriod.value, LocalDateTime.now())
           out = Ok(f"Successfully started period $newPeriod")
         } yield out).fold(identity, identity)

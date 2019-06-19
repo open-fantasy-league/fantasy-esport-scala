@@ -2,14 +2,16 @@ package v1.team
 
 import java.sql.Connection
 import java.time.LocalDateTime
+
 import akka.actor.ActorSystem
 import models._
 import anorm._
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.{Macro, RowParser}
+import Macro.ColumnNaming
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
-
 import javax.inject.{Inject, Singleton}
+import play.api.Logger
 
 case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[Int],
                    end: Option[Int], isActive: Boolean, pickees: Iterable[CardOut])
@@ -44,6 +46,7 @@ trait TeamRepo{
 
 @Singleton
 class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
+  private val logger = Logger("application")
   override def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut] = {
     println(s"TIIIIIIIIIIME: $period")
     val q =
@@ -92,10 +95,12 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
           left join pickee_limit pl using(pickee_id)
           left join "limit" l using(limit_id)
           left join limit_type lt using(limit_type_id)
-    where c.user_id = {userId} and timespan = int4range({startPeriod}, {endPeriod});
+    where c.user_id = {userId} and timespan @> int4range({startPeriod}, {endPeriod});
     """
+    logger.info(f"getUserTeamForPeriod: userId $userId, startPeriod $startPeriod, endPeriod $endPeriod")
     println(q)
     val rows = SQL(q).on("userId" -> userId, "startPeriod" -> startPeriod, "endPeriod" -> endPeriod).as(CardWithBonusRowAndLimits.parser.*)
+    logger.info(f"getUserTeamForPeriod rows (pickeename, cardid): ${rows.map(x => (x.pickeeName, x.cardId)).mkString(",")}")
     rows.groupBy(_.cardId).map({case (cardId, v) => {
       val head = v.head
       val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).map(row => row.limitTypeName.get -> row.limitName.get).toMap
