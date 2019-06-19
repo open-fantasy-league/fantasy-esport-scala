@@ -23,8 +23,8 @@ case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String
 
 case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Option[Long], teamOne: String, teamTwo: String,
                          seriesStartTstamp: LocalDateTime,
-                         teamOneSeriesScore: Option[Int], teamTwoSeriesScore: Option[Int], teamOneMatchScore: Option[Int],
-                         teamTwoMatchScore: Option[Int],
+                         seriesTeamOneScore: Option[Int], seriesTeamTwoScore: Option[Int], matchTeamOneScore: Option[Int],
+                         matchTeamTwoScore: Option[Int],
                          tournamentId: Long,
                          matchStartTstamp: Option[LocalDateTime], addedDbTstamp: Option[LocalDateTime],
                          targetedAtTstamp: Option[LocalDateTime], period: Int, resultId: Option[Long], isTeamOne: Option[Boolean],
@@ -65,7 +65,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     val q =
       """
         | select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two,
-        | ser.team_one_series_score, ser.team_two_series_score, m.team_one_match_score, m.team_two_match_score,
+        | ser.series_team_one_final_score, ser.series_team_two_final_score, m.match_team_one_final_score, m.match_team_two_final_score,
         |  ser.tournament_id, m.start_tstamp as match_start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
         | m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
         |  pck.external_pickee_id,
@@ -105,12 +105,12 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         })
         val head = row.head
         MatchOut(MatchRow(
-          externalMatchId.get, head.teamOneMatchScore, head.teamTwoMatchScore, head.matchStartTstamp.get, head.addedDbTstamp.get,
+          externalMatchId.get, head.matchTeamOneScore, head.matchTeamTwoScore, head.matchStartTstamp.get, head.addedDbTstamp.get,
           head.targetedAtTstamp.get), results)
       }})
         SeriesOut(SeriesRow(
-          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.teamOneSeriesScore,
-          head.teamTwoSeriesScore, head.seriesStartTstamp
+          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.seriesTeamOneScore,
+          head.seriesTeamTwoScore, head.seriesStartTstamp
         ), matches)
     }})
   }
@@ -119,10 +119,10 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                             seriesId: Long, period: Int, input: MatchFormInput, now: LocalDateTime, targetedAtTstamp: LocalDateTime
                           )(implicit c: Connection): Long = {
     SQL"""
-        insert into matchu(series_id, external_match_id, team_one_match_score, team_two_match_score,
+        insert into matchu(series_id, external_match_id, match_team_one_final_score, match_team_two_final_score,
         start_tstamp, added_db_tstamp, targeted_at_tstamp)
         VALUES($seriesId, ${input.matchId},
-         ${input.teamOneMatchScore}, ${input.teamTwoMatchScore}, ${input.startTstamp}, $now, $targetedAtTstamp) returning match_id
+         ${input.matchTeamOneScore}, ${input.matchTeamTwoScore}, ${input.startTstamp}, $now, $targetedAtTstamp) returning match_id
       """.executeInsert().get
   }
 
@@ -130,10 +130,10 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                             leagueId: Long, period: Int, input: SeriesFormInput, startTstamp: LocalDateTime
                           )(implicit c: Connection): Long = {
     SQL"""
-         insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, team_one_series_score, team_two_series_score,
+         insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, series_team_one_final_score, series_team_two_final_score,
          start_tstamp)
          VALUES($leagueId, ${input.seriesId}, $period, ${input.tournamentId}, ${input.teamOne}, ${input.teamTwo},
-          ${input.teamOneSeriesScore}, ${input.teamTwoSeriesScore}, $startTstamp) returning series_id
+          ${input.seriesTeamOneScore}, ${input.seriesTeamTwoScore}, $startTstamp) returning series_id
       """.executeInsert().get
   }
 
@@ -142,8 +142,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                           )(implicit c: Connection): Long = {
     SQL(
       s"""
-         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, team_one_match_score,
-         |team_two_match_score, start_tstamp, added_db_tstamp, targeted_at_tstamp)
+         |insert into matchu(league_id, external_match_id, period, tournament_id, team_one, team_two, match_team_one_final_score,
+         |match_team_two_final_score, start_tstamp, added_db_tstamp, targeted_at_tstamp)
          |VALUES($leagueId, ${input.matchId}, $period, ${input.tournamentId}, '${input.teamOne}', '${input.teamTwo}',
          | null, null, '${input.startTstamp}', '$now', '$targetedAtTstamp') returning match_id
       """.stripMargin).executeInsert().get
@@ -210,8 +210,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
     val q =
       """
         | select s.external_series_id, s.tournament_id, s.period, s.start_tstamp as series_start_tstamp,
-        | team_one_series_score, team_two_series_score, m.external_match_id,
-        | team_one, team_two, m.team_one_match_score, m.team_two_match_score,
+        | series_team_one_final_score, series_team_two_final_score, m.external_match_id,
+        | team_one, team_two, m.match_team_one_final_score, m.match_team_two_final_score,
         |  tournament_id, m.start_tstamp, m.added_db_tstamp,
         | m.targeted_at_tstamp, period
         |  from series s

@@ -1,8 +1,9 @@
 package models
 
-import java.time.LocalDateTime
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.{Macro, RowParser}
+import Macro.ColumnNaming
 import play.api.libs.json._
+import utils.Utils
 
 case class StatDailyRow(
                                    statFieldId: Long, statFieldName: String, previousRank: Int, value: Double,
@@ -35,7 +36,7 @@ object CardBonusMultiplierRow{
         // TODO conditionally dont print colour/price if/not-if card
         "statFieldId" -> t.statFieldId,
         "name" -> t.statFieldName,
-        "multiplier" -> t.multiplier,
+        "multiplier" ->  Utils.trunc(t.multiplier, 2),
       )
     }
   }

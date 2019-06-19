@@ -25,15 +25,15 @@ import v1.user.UserRepo
 
 
 case class MatchFormInput(
-                         matchId: Long, teamOneMatchScore: Option[Int],
-                         teamTwoMatchScore: Option[Int], startTstamp: Option[LocalDateTime],
+                         matchId: Long, matchTeamOneScore: Option[Int],
+                         matchTeamTwoScore: Option[Int], startTstamp: Option[LocalDateTime],
                          targetAtTstamp: Option[LocalDateTime],
                          pickeeResults: List[PickeeFormInput]
                          )
 
 case class SeriesFormInput(
                             seriesId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
-                            teamOneSeriesScore: Option[Int], teamTwoSeriesScore: Option[Int],
+                            seriesTeamOneScore: Option[Int], seriesTeamTwoScore: Option[Int],
                             startTstamp: Option[LocalDateTime], matches: List[MatchFormInput]
                           )
 
@@ -69,13 +69,13 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         "tournamentId" -> optional(of(longFormat)),
         "teamOne" -> optional(nonEmptyText),
         "teamTwo" -> optional(nonEmptyText),
-        "teamOneSeriesScore" -> optional(number),
-        "teamTwoSeriesScore" -> optional(number),
+        "seriesTeamOneScore" -> optional(number),
+        "seriesTeamTwoScore" -> optional(number),
         "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "matches" -> list(mapping(
           "matchId" -> of(longFormat),
-          "teamOneMatchScore" -> optional(number),
-          "teamTwoMatchScore" -> optional(number),
+          "matchTeamOneScore" -> optional(number),
+          "matchTeamTwoScore" -> optional(number),
           "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
           "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
           "pickeeResults" -> list(mapping(
@@ -134,6 +134,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
             correctPeriod <- getPeriod(startTstamp, Some(startTstamp), league, now)
             seriesId <- if (existingSeries.isDefined) Right(existingSeries.get._1) else
               newSeries(input, league, correctPeriod, startTstamp)
+            _ <- if (existingSeries.isDefined) updatedSeries(seriesId, input)
             // TODO ideally would bail on first error
             _ <- input.matches.map(matchu => for {
               existingMatch <- existingMatchInfo(league.leagueId, matchu.matchId)
@@ -145,10 +146,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
                 p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats)
               )
               _ = if (existingMatch.isDefined) updatedMatch(matchId, matchu)
-              _ = if (matchu.teamOneMatchScore.isDefined) awardPredictions(matchId, matchu.teamOneMatchScore.get, matchu.teamTwoMatchScore.get)
+              _ = if (matchu.matchTeamOneScore.isDefined) awardPredictions(matchId, matchu.matchTeamOneScore.get, matchu.matchTeamTwoScore.get)
               insertedResults <- newResults(matchu, league, matchId, internalPickee)
               insertedStats <- newStats(league, insertedResults.toList, internalPickee)
-              updatedStats <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
+              _ <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
             } yield "Added match").foldRight(Right(Nil): Either[Result, List[Any]]) { (elem, acc) =>
               acc.right.flatMap(list => elem.right.map(_ :: list))}
           } yield Created("Successfully added results")).fold(identity, identity)
@@ -184,12 +185,25 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
        """.as(parser.singleOpt).map(x => (x.internalId, x.startTstamp))
   }
 
-  private def updatedMatch(matchId: Long, input: MatchFormInput)(implicit c: Connection) = {
-    if (input.teamOneMatchScore.isDefined) {
-      SQL"""update matchu set team_one_match_score = ${input.teamOneMatchScore}, team_two_match_score = ${input.teamTwoMatchScore}
-         where match_id = $matchId
+  private def updatedMatch(matchId: Long, input: MatchFormInput)(implicit c: Connection): Either[Result, Any] = {
+    if (input.matchTeamOneScore.isDefined) {
+      val updatedCount = SQL"""update matchu set match_team_one_final_score = ${input.matchTeamOneScore}, match_team_two_final_score = ${input.matchTeamTwoScore}
+         where match_id = $matchId and match_team_one_final_score is null
        """.executeUpdate()
+      if (updatedCount == 0) return Left(BadRequest("Cannot update final match score after setting"))
     }
+    Right(true)
+  }
+
+  private def updatedSeries(seriesId: Long, input: SeriesFormInput)(implicit c: Connection): Either[Result, Any] = {
+    if (input.seriesTeamOneScore.isDefined) {
+      val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneScore},
+                          series_team_two_final_score = ${input.seriesTeamTwoScore}
+         where series_id = $seriesId and series_team_one_final_score is null
+       """.executeUpdate()
+      if (updatedCount == 0) return Left(BadRequest("Cannot update final series score after setting"))
+    }
+    Right(true)
   }
 
   private def awardPredictions(matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
@@ -241,12 +255,6 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     ), InternalServerError("Internal server error adding match"))
   }
 
-  private def newFutureMatch(input: FixtureFormInput, league: LeagueRow, period: Int, targetAt: LocalDateTime, now: LocalDateTime)(implicit c: Connection): Either[Result, Long] = {
-    tryOrResponse[Long](() => resultRepo.insertFutureMatch(
-      league.leagueId, period, input, now, targetAt
-    ), InternalServerError("Internal server error adding fixture"))
-  }
-
   private def newResults(input: MatchFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
                         (implicit c: Connection): Either[Result, Iterable[Long]] = {
     tryOrResponseRollback(() => pickees.map(p => resultRepo.insertResult(matchId, p)), c, InternalServerError("Internal server error adding result"))
@@ -256,7 +264,6 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
                       (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
     tryOrResponseRollback(() => {
       // TODO tidy same code in branches
-      // TODO finalised
       if (league.manuallyCalculatePoints) {
         pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
           val stats = if (s.field == "points") s.value * leagueRepo.getCurrentPeriod(league).get.multiplier else s.value

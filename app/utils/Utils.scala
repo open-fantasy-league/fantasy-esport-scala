@@ -77,6 +77,21 @@ object GroupByOrderedImplicit {
   }
 }
 
+object Utils{
+  //https://stackoverflow.com/a/11108013
+  def trunc(x: Double, n: Int): Double = {
+    def p10(n: Int, pow: Long = 10): Long = if (n==0) pow else p10(n-1,pow*10)
+    if (n < 0) {
+      val m = p10(-n).toDouble
+      math.round(x/m) * m
+    }
+    else {
+      val m = p10(n).toDouble
+      math.round(x*m) / m
+    }
+  }
+}
+
 //object Formatter {
 //  import play.api.libs.json._
 //
