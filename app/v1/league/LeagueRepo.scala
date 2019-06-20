@@ -39,7 +39,6 @@ object LeagueFull{
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
         "transferWildcard" -> league.league.transferWildcard,
         "transferOpen" -> league.league.transferOpen,
-        "transferDelayMinutes" -> league.league.transferDelayMinutes,
         "forceFullTeams" -> league.league.forceFullTeams,
         "startingMoney" -> league.league.startingMoney,
         "statFields" -> league.statFields,
@@ -51,7 +50,10 @@ object LeagueFull{
         "pickeeDescription" -> league.league.pickeeDescription,
         "periodDescription" -> league.league.periodDescription,
         "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
-        "cardSystem" -> league.league.cardSystem,
+        "isCardSystem" -> league.league.isCardSystem,
+        "recycleValue" -> league.league.recycleValue,
+        "cardPackCost" -> league.league.packCost,
+        "cardPackSize" -> league.league.packSize,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
         "url" -> {if (league.league.urlVerified) league.league.url else ""},
         "scoring" -> league.scoring
@@ -105,19 +107,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def get(leagueId: Long)(implicit c: Connection): Option[LeagueRow] = {
     SQL(
-      s"""select league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
-        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open,
+      s"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
+        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, card_system, recycle_value, manually_calculate_points
-        | from league where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
+        | no_wildcard_for_late_register, is_card_system, recycle_value, pack_size, pack_cost, manually_calculate_points
+        | from league l
+        | left join card_system using(league_id)
+        | left join transfer_system using(league_id)
+        | where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
 
 
   override def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull = {
     val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
-          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_delay_minutes, transfer_open, force_full_teams,
-          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, card_system, recycle_value,
-           (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
+          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
+          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, is_card_system, recycle_value,
+          pack_size, pack_cost, (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
            p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
            p.on_start_close_transfer_window, p.on_end_open_transfer_window,
           CASE WHEN l.current_period_id is null then false
@@ -125,6 +130,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
            ELSE false END as current, sf.name as stat_field_name,
            lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max
           from league l
+          left join card_system using(league_id)
+          left join transfer_system using(league_id)
     join period p using(league_id)
     left join limit_type lt on(l.league_id = lt.league_id)
     left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
@@ -161,36 +168,43 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def insert(input: LeagueFormInput)(implicit c: Connection): LeagueRow = {
     println("Inserting new league")
     val q = SQL(
-      """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description, transfer_limit,
-        |transfer_wildcard, starting_money, team_size, force_full_teams, transfer_open,
-        |transfer_delay_minutes, url, url_verified, current_period_id, apply_points_at_start_time,
-        |no_wildcard_for_late_register, card_system, recycle_value) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
-        | {pickeeDescription}, {periodDescription}, {transferLimit}, {transferWildcard},
-        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {transferDelayMinutes}, {url}, false, null,
-        |  {applyPointsAtStartTime},
-        | {noWildcardForLateRegister}, {cardSystem}, {recycleValue}) returning league_id;""".stripMargin
+      """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description,
+        |starting_money, team_size, force_full_teams, transfer_open,
+        |url, url_verified, current_period_id, apply_points_at_start_time,
+        |is_card_system) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
+        | {pickeeDescription}, {periodDescription},
+        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, null,
+        |  {applyPointsAtStartTime}, {cardSystem}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
-      "periodDescription" -> input.periodDescription, "transferLimit" -> input.transferInfo.transferLimit,
-      "transferWildcard" -> input.transferInfo.transferWildcard, "startingMoney" -> input.startingMoney,
-      "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams,
-      "transferDelayMinutes" -> input.transferInfo.transferDelayMinutes, "url" -> input.url.getOrElse(""),
-      "applyPointsAtStartTime" -> input.applyPointsAtStartTime,
-      "noWildcardForLateRegister" -> input.transferInfo.noWildcardForLateRegister, "cardSystem" -> input.transferInfo.cardSystem,
-      "recycleValue" -> input.transferInfo.recycleValue
+      "periodDescription" -> input.periodDescription, "startingMoney" -> input.startingMoney,
+      "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams, "url" -> input.url.getOrElse(""),
+      "applyPointsAtStartTime" -> input.applyPointsAtStartTime, "cardSystem" -> input.transferInfo.isCardSystem,
     )
     println(q.sql)
     println(q)
     val newLeagueId: Option[Long]= q.executeInsert()
-    println(newLeagueId)
+    if (input.transferInfo.isCardSystem){
+      SQL"""insert into card_system(league_id, recycle_value, pack_cost, pack_size) VALUES
+            ($newLeagueId, ${input.transferInfo.recycleValue},
+        ${input.transferInfo.cardPackCost}, ${input.transferInfo.cardPackSize})""".executeInsert()
+    }
+    else{
+      SQL"""insert into transfer_system(league_id, transfer_limit, transfer_wildcard, no_wildcard_for_late_register) VALUES
+            ($newLeagueId, ${input.transferInfo.transferLimit},
+        ${input.transferInfo.transferWildcard}, ${input.transferInfo.noWildcardForLateRegister})""".executeInsert()
+    }
     // TODO maybe better do returning
     LeagueRow(newLeagueId.get, input.name, input.apiKey, input.gameId, input.isPrivate,
        input.tournamentId,  input.pickeeDescription,
       input.periodDescription, input.transferInfo.transferLimit,
       input.transferInfo.transferWildcard, input.startingMoney,
-      input.teamSize, input.transferInfo.transferDelayMinutes, false, input.transferInfo.forceFullTeams,
+      input.teamSize, false, input.transferInfo.forceFullTeams,
       input.url.getOrElse(""), false, null,
-      input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister, input.transferInfo.cardSystem)
+      input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister, input.manuallyCalculatePoints,
+      input.transferInfo.isCardSystem, input.transferInfo.recycleValue,
+      input.transferInfo.cardPackCost, input.transferInfo.cardPackSize
+    )
   }
 
   override def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow = {
@@ -214,10 +228,6 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       setString += ", force_full_teams = {forceFullTeams}"
       params = params :+ NamedParameter("forceFullTeams", input.forceFullTeams.get)
     }
-    if (input.transferDelayMinutes.isDefined) {
-      setString += ", transfer_delay_minutes = {transferDelayMinutes}"
-      params = params :+ NamedParameter("transferDelayMinutes", input.transferDelayMinutes.get)
-    }
     if (input.periodDescription.isDefined) {
       setString += ", period_description = '{periodDescription}'"
       params = params :+ NamedParameter("periodDescription", input.periodDescription.get)
@@ -226,21 +236,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       setString += ", pickee_description = '{pickeeDescription}'"
       params = params :+ NamedParameter("pickeeDescription", input.pickeeDescription.get)
     }
-    if (input.transferLimit.isDefined) {
-      setString += ", transfer_limit = {transferLimit}"
-      params = params :+ NamedParameter("transferLimit", input.transferLimit.get)
-    }
-    if (input.transferWildcard.isDefined) {
-      setString += ", transfer_wildcard = {transferWildcard}"
-      params = params :+ NamedParameter("transferWildcard", input.transferWildcard.get)
-    }
     if (input.applyPointsAtStartTime.isDefined) {
       setString += ", apply_points_at_start_time = {applyPointsAtStartTime}"
       params = params :+ NamedParameter("applyPointsAtStartTime", input.applyPointsAtStartTime.get)
-    }
-    if (input.recycleValue.isDefined) {
-      setString += ", recycle_value = {recycleValue}"
-      params = params :+ NamedParameter("recycleValue", input.recycleValue.get)
     }
     if (input.url.isDefined) {
       setString += ", url = {url}"
@@ -252,6 +250,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       "update league set " + setString + " WHERE league_id = {leagueId}"
     ).on(params:_*).executeUpdate()
     // TODO returning, or overwrite league row
+
+    // TODO update transfer/card settings
     get(league.leagueId).get
   }
 

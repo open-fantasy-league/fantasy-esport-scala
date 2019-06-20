@@ -134,7 +134,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
             correctPeriod <- getPeriod(startTstamp, Some(startTstamp), league, now)
             seriesId <- if (existingSeries.isDefined) Right(existingSeries.get._1) else
               newSeries(input, league, correctPeriod, startTstamp)
-            _ <- if (existingSeries.isDefined) updatedSeries(seriesId, input)
+            _ <- if (existingSeries.isDefined) updatedSeries(seriesId, input) else Right(true)
             // TODO ideally would bail on first error
             _ <- input.matches.map(matchu => for {
               existingMatch <- existingMatchInfo(league.leagueId, matchu.matchId)
@@ -145,7 +145,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
               internalPickee = matchu.pickeeResults.map(
                 p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats)
               )
-              _ = if (existingMatch.isDefined) updatedMatch(matchId, matchu)
+              _ <- if (existingMatch.isDefined) updatedMatch(matchId, matchu) else Right(true)
               _ = if (matchu.matchTeamOneScore.isDefined) awardPredictions(matchId, matchu.matchTeamOneScore.get, matchu.matchTeamTwoScore.get)
               insertedResults <- newResults(matchu, league, matchId, internalPickee)
               insertedStats <- newStats(league, insertedResults.toList, internalPickee)
@@ -322,7 +322,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
          where (period is NULL or period = {period}) and us.user_stat_id = usp.user_stat_id and
                 t.timespan @> {period} and p.pickee_id = {pickeeId} and us.stat_field_id = {statFieldId}
                and l.league_id = {leagueId} and
-               (u.late_entry_lock_ts is NULL OR u.late_entry_lock_ts + interval '1 minute' * l.transfer_delay_minutes < {targetedAtTstamp});
+               (u.late_entry_lock_ts is NULL OR u.late_entry_lock_ts < {targetedAtTstamp});
               """
           //(select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;
           val sql = SQL(q).on(

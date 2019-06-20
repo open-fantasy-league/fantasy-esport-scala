@@ -165,7 +165,8 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
 
   override def moneyAfterPack(userId: Long)(implicit c: Connection): Double = {
     SQL"""
-         select (money - card_pack_cost) as new_money from useru join league using(league_id) where user_id = $userId
+         select (money - pack_cost) as new_money from useru join league using(league_id) join card_system using(league_id)
+         where user_id = $userId
       """.as(SqlParser.double("new_money").single)
   }
 
@@ -174,8 +175,8 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     if (moneyAfterPack(userId) < -0.001) Left("Not enought money to buy pack")
     else {
       SQL"""
-         update useru set money = money - card_pack_cost
-         from league where useru.league_id = league.league_id AND user_id = $userId
+         update useru set money = money - pack_cost
+         from league join card_system using(league_id) where useru.league_id = league.league_id AND user_id = $userId
        """.executeUpdate()
       Right(generateCardPack(leagueId, userId))
     }
@@ -206,7 +207,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     if (updatedCount == 0){
       return false
     }
-    SQL"""update useru set money = money + league.recycle_value from league where useru.league_id = league.league_id""".executeUpdate()
+    SQL"""update useru set money = money + recycle_value from league join card_system using(league_id) where useru.league_id = league.league_id""".executeUpdate()
     true
   }
 }

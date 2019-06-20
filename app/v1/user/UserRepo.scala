@@ -183,7 +183,8 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
       "leagueId" -> league.leagueId, "externalUserId" -> externalUserId, "startingMoney" -> league.startingMoney,
       "entered" -> LocalDateTime.now(), "remainingTransfers" -> league.transferLimit, "username" -> username,
       // dont give wildcard to people who join league late
-      "usedWildcard" -> (!league.transferWildcard || (leagueRepo.isStarted(league) && league.noWildcardForLateRegister))
+      "usedWildcard" -> (!league.transferWildcard.getOrElse(false) ||
+        (leagueRepo.isStarted(league) && league.noWildcardForLateRegister.getOrElse(false)))
     ).executeInsert().get
     println("executed insert league user")
     get(league.leagueId, externalUserId).get

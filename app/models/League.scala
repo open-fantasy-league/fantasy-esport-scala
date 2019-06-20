@@ -14,18 +14,19 @@ case class DetailedLeagueRow(
                              pickeeDescription: String,
                              periodDescription: String,
                              transferLimit: Option[Int],
-                             transferWildcard: Boolean,
+                             transferWildcard: Option[Boolean],
                              startingMoney: BigDecimal,
                              teamSize: Int,
-                             transferDelayMinutes: Int,
                              transferOpen: Boolean,
                              forceFullTeams: Boolean,
                              url: String,
                              urlVerified: Boolean,
                              applyPointsAtStartTime: Boolean,
-                             noWildcardForLateRegister: Boolean,
-                            cardSystem: Boolean,
-                            recycleValue: Option[Double],
+                             noWildcardForLateRegister: Option[Boolean],
+                            isCardSystem: Boolean,
+                            recycleValue: Option[BigDecimal],
+                            packCost: Option[BigDecimal],
+                            packSize: Option[Int],
                              started: Boolean,
                              ended: Boolean,
                              periodValue: Int,
@@ -51,18 +52,19 @@ case class PublicLeagueRow(
                           pickeeDescription: String,
                           periodDescription: String,
                           transferLimit: Option[Int],
-                          transferWildcard: Boolean,
+                          transferWildcard: Option[Boolean],
                           startingMoney: BigDecimal,
                           teamSize: Int,
-                          transferDelayMinutes: Int,
                           transferOpen: Boolean,
                           forceFullTeams: Boolean,
                           url: String,
                           urlVerified: Boolean,
                           applyPointsAtStartTime: Boolean,
-                          noWildcardForLateRegister: Boolean,
-                          cardSystem: Boolean,
-                          recycleValue: Option[Double],
+                          noWildcardForLateRegister: Option[Boolean],
+                          isCardSystem: Boolean,
+                          recycleValue: Option[BigDecimal],
+                          packCost: Option[BigDecimal],
+                          packSize: Option[Int],
                           started: Boolean,
                           ended: Boolean
 )
@@ -84,13 +86,14 @@ object PublicLeagueRow{
         "transferWildcard" -> league.transferWildcard,
         "startingMoney" -> league.startingMoney,
         "transferOpen" -> league.transferOpen,
-        "transferDelayMinutes" -> league.transferDelayMinutes,
         "forceFullTeams" -> league.forceFullTeams,
         "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister,
-        "cardSystem" -> league.cardSystem,
+        "isCardSystem" -> league.isCardSystem,
         "recycleValue" -> league.recycleValue,
+        "packCost" -> league.packCost,
+        "packSize" -> league.packSize,
         "started" -> league.started,
         "ended" -> league.ended
       )
@@ -100,9 +103,9 @@ object PublicLeagueRow{
   def fromDetailedRow(row: DetailedLeagueRow): PublicLeagueRow = {
     PublicLeagueRow(
       row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
-      row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.transferDelayMinutes,
+      row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
-      row.noWildcardForLateRegister, row.cardSystem, row.recycleValue, row.started, row.ended
+      row.noWildcardForLateRegister, row.isCardSystem, row.recycleValue, row.packCost, row.packSize, row.started, row.ended
     )
   }
 }
@@ -116,20 +119,21 @@ case class LeagueRow(leagueId: Long,
                      pickeeDescription: String,
                      periodDescription: String,
                      transferLimit: Option[Int],
-                     transferWildcard: Boolean,
+                     transferWildcard: Option[Boolean],
                      startingMoney: BigDecimal,
                      teamSize: Int,
-                     transferDelayMinutes: Int = 0, // Only applies for when period 1 has started
                      transferOpen: Boolean = false,
                      forceFullTeams: Boolean = false,
                      url: String = "",
                      urlVerified: Boolean = false,
                      currentPeriodId: Option[Long] = None,
                      applyPointsAtStartTime: Boolean = true, // compared to applying at entry time
-                     noWildcardForLateRegister: Boolean = false, // late defined as after league has startd,
+                     noWildcardForLateRegister: Option[Boolean] = Some(false), // late defined as after league has startd,
                      manuallyCalculatePoints: Boolean = true,
-                     cardSystem: Boolean = false,
-                     recycleValue: Option[Double] = None
+                     isCardSystem: Boolean = false,
+                     recycleValue: Option[BigDecimal] = None,
+                     packCost: Option[BigDecimal] = None,
+                     packSize: Option[Int] = None
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)
@@ -177,6 +181,7 @@ object PeriodRow{
 }
 
 object LeagueRow{
+  //TODO update this to current stuff
   //implicit val timestampFormat = timestampFormatFactory("yyyy-MM-dd HH:mm:ss")
   implicit val implicitWrites = new Writes[LeagueRow] {
     def writes(league: LeagueRow): JsValue = {
@@ -193,7 +198,6 @@ object LeagueRow{
         "transferWildcard" -> league.transferWildcard,
         "startingMoney" -> league.startingMoney,
         "transferOpen" -> league.transferOpen,
-        "transferDelayMinutes" -> league.transferDelayMinutes,
         "forceFullTeams" -> league.forceFullTeams,
         "applyPointsAtStartTime" -> league.applyPointsAtStartTime,
         "url" -> {if (league.urlVerified) league.url else ""},

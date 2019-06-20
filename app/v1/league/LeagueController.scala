@@ -32,9 +32,9 @@ case class LimitInput(name: String, max: Option[Int])
 case class LimitTypeInput(name: String, description: Option[String], max: Option[Int], types: List[LimitInput])
 
 case class TransferInput(
-                          transferLimit: Option[Int], transferDelayMinutes: Int, transferWildcard: Boolean,
-                          forceFullTeams: Boolean, noWildcardForLateRegister: Boolean, cardSystem: Boolean,
-                          recycleValue: Option[Double]
+                          transferLimit: Option[Int], transferWildcard: Option[Boolean],
+                          forceFullTeams: Boolean, noWildcardForLateRegister: Option[Boolean], isCardSystem: Boolean,
+                          recycleValue: Option[BigDecimal], cardPackCost: Option[BigDecimal], cardPackSize: Option[Int]
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
@@ -54,7 +54,6 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
 case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
                                  tournamentId: Option[Int], transferOpen: Option[Boolean],
                                  forceFullTeams: Option[Boolean],
-                                 transferDelayMinutes: Option[Int],
                                  url: Option[String], transferLimit: Option[Int],
                                  transferWildcard: Option[Boolean],
                                  periodDescription: Option[String],
@@ -90,12 +89,13 @@ class LeagueController @Inject()(
         //"captain" -> default(boolean, false),
         "transferInfo" -> mapping(
           "transferLimit" -> optional(number),
-          "transferDelayMinutes" -> default(number, 0),
-          "transferWildcard" -> default(boolean, false),
+          "transferWildcard" -> optional(boolean),
           "forceFullTeams" -> default(boolean, false),
-          "noWildcardForLateRegister" -> default(boolean, false),
-          "cardSystem" -> default(boolean, false),
-          "recycleValue" -> optional(of(doubleFormat))
+          "noWildcardForLateRegister" -> optional(boolean),
+          "isCardSystem" -> boolean,
+          "recycleValue" -> optional(bigDecimal(10, 1)),
+          "cardPackCost" -> optional(bigDecimal(10, 1)),
+          "cardPackSize" -> optional(number)
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
           "name" -> nonEmptyText,
@@ -149,7 +149,6 @@ class LeagueController @Inject()(
         "tournamentId" -> optional(number),
         "transferOpen" -> optional(boolean),
         "forceFullTeams" -> optional(boolean),
-        "transferDelayMinutes" -> optional(number),
         "url" -> optional(nonEmptyText),
         "transferLimit" -> optional(number),
         "transferWildcard" -> optional(boolean),

@@ -106,7 +106,7 @@ class TransferController @Inject()(
   }
 
   private def makeTransfer[A](league: LeagueRow, user: UserRow)(implicit request: Request[A]): Future[Result] = {
-    val isCard = league.cardSystem
+    val isCard = league.isCardSystem
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -157,7 +157,7 @@ class TransferController @Inject()(
             _ <- validateDuplicates(input.sell, sell, input.buy, buy)
             leagueStarted = leagueRepo.isStarted(league)
             _ <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
-            applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard, user.usedWildcard, sell)
+            applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard.get, user.usedWildcard, sell)
             newRemaining <- updatedRemainingTransfers(leagueStarted, user.remainingTransfers, sell)
             pickees = pickeeRepo.getPickees(league.leagueId).toList
             newMoney <- updatedMoney(user.money, pickees, sell, buy, applyWildcard, league.startingMoney)
@@ -172,7 +172,7 @@ class TransferController @Inject()(
             _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
             _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
             _ <- validateLimits(newTeamIds, league.leagueId)
-            transferDelay = if (!leagueStarted) None else Some(league.transferDelayMinutes)
+            transferDelay = None
             currentPeriod = leagueRepo.getCurrentPeriod(league)
             userIsNew = currentPeriod.isEmpty || user.entered.isAfter(currentPeriod.get.start)
             defaultPeriod <- if (userIsNew)
