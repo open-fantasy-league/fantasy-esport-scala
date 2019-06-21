@@ -95,7 +95,7 @@ am i using scoring for diff positions correctly ..............YYYYYYYYESSS
 proper test run
 goalkeeper/forward ratios !!!!!!!!!!!!!!!!!!!!!!!!!!
 collection page
-filter by team
+filter by team   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 responsive
 fotmob chrome extension to get data
 predictions series/match
@@ -103,8 +103,9 @@ handle finalized column...maybe delete, maybe existence of score means finalised
 more lightweight get league
 indexing
 grey out too late predictions
+pretty predictions
 predictions dropdown  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 facebook social auth  !!!!!!!!!!!!!!!!!!!!!!???????????????
 add cards to card tabs without page reload  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-relayout league table to separate card stuff out
+relayout league table to separate card stuff out !!!!!!!!!!!!!!!!!!!!!!!!!
 x0.6000000000000001 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

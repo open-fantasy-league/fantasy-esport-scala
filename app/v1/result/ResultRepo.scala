@@ -14,17 +14,10 @@ import javax.inject.{Inject, Singleton}
 
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
-case class FullResultRow(externalMatchId: Long, teamOne: String, teamTwo: String, teamOneVictory: Option[Boolean],
-                         teamOneScore: Option[Int], teamTwoScore: Option[Int],
-                         tournamentId: Long,
-                         startTstamp: LocalDateTime, addedDbTstamp: LocalDateTime,
-                         targetedAtTstamp: LocalDateTime, period: Int, resultId: Long, isTeamOne: Boolean, statsValue: Double,
-                         statFieldName: String, externalPickeeId: Long, pickeeName: String, pickeePrice: BigDecimal)
-
 case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Option[Long], teamOne: String, teamTwo: String,
                          seriesStartTstamp: LocalDateTime,
-                         seriesTeamOneScore: Option[Int], seriesTeamTwoScore: Option[Int], matchTeamOneScore: Option[Int],
-                         matchTeamTwoScore: Option[Int],
+                         seriesTeamOneFinalScore: Option[Int], seriesTeamTwoFinalScore: Option[Int], matchTeamOneFinalScore: Option[Int],
+                         matchTeamTwoFinalScore: Option[Int],
                          tournamentId: Long,
                          matchStartTstamp: Option[LocalDateTime], addedDbTstamp: Option[LocalDateTime],
                          targetedAtTstamp: Option[LocalDateTime], period: Int, resultId: Option[Long], isTeamOne: Option[Boolean],
@@ -105,12 +98,12 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         })
         val head = row.head
         MatchOut(MatchRow(
-          externalMatchId.get, head.matchTeamOneScore, head.matchTeamTwoScore, head.matchStartTstamp.get, head.addedDbTstamp.get,
+          externalMatchId.get, head.matchTeamOneFinalScore, head.matchTeamTwoFinalScore, head.matchStartTstamp.get, head.addedDbTstamp.get,
           head.targetedAtTstamp.get), results)
       }})
         SeriesOut(SeriesRow(
-          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.seriesTeamOneScore,
-          head.seriesTeamTwoScore, head.seriesStartTstamp
+          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.seriesTeamOneFinalScore,
+          head.seriesTeamTwoFinalScore, head.seriesStartTstamp
         ), matches)
     }})
   }
@@ -122,7 +115,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         insert into matchu(series_id, external_match_id, match_team_one_final_score, match_team_two_final_score,
         start_tstamp, added_db_tstamp, targeted_at_tstamp)
         VALUES($seriesId, ${input.matchId},
-         ${input.matchTeamOneScore}, ${input.matchTeamTwoScore}, ${input.startTstamp}, $now, $targetedAtTstamp) returning match_id
+         ${input.matchTeamOneFinalScore}, ${input.matchTeamTwoFinalScore}, ${input.startTstamp}, $now, $targetedAtTstamp) returning match_id
       """.executeInsert().get
   }
 
@@ -133,7 +126,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
          insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, series_team_one_final_score, series_team_two_final_score,
          start_tstamp)
          VALUES($leagueId, ${input.seriesId}, $period, ${input.tournamentId}, ${input.teamOne}, ${input.teamTwo},
-          ${input.seriesTeamOneScore}, ${input.seriesTeamTwoScore}, $startTstamp) returning series_id
+          ${input.seriesTeamOneFinalScore}, ${input.seriesTeamTwoFinalScore}, $startTstamp) returning series_id
       """.executeInsert().get
   }
 

@@ -11,8 +11,8 @@ case class SeriesRow(
                       tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
                       teamOne: String,
                       teamTwo: String,
-                      seriesTeamOneScore: Option[Int],
-                      seriesTeamTwoScore: Option[Int],
+                      seriesTeamOneFinalScore: Option[Int],
+                      seriesTeamTwoFinalScore: Option[Int],
                       startTstamp: LocalDateTime,
                     )
 
@@ -28,8 +28,8 @@ object SeriesRow{
         "seriesId" -> m.externalSeriesId,
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
-        "seriesTeamOneScore" -> m.seriesTeamOneScore,
-        "seriesTeamTwoScore" -> m.seriesTeamTwoScore,
+        "seriesTeamOneFinalScore" -> m.seriesTeamOneFinalScore,
+        "seriesTeamTwoFinalScore" -> m.seriesTeamTwoFinalScore,
       )
     }
   }
@@ -39,8 +39,8 @@ object SeriesRow{
 
 case class MatchRow(
               externalMatchId: Long,
-                     matchTeamOneScore: Option[Int],
-                     matchTeamTwoScore: Option[Int],
+                     matchTeamOneFinalScore: Option[Int],
+                     matchTeamTwoFinalScore: Option[Int],
               startTstamp: LocalDateTime,
               addedDbTstamp: LocalDateTime,
               targetedAtTstamp: LocalDateTime // what timestamp do we look up teams for
@@ -70,12 +70,12 @@ case class SeriesAndMatchRow(
                               tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
                               teamOne: String,
                               teamTwo: String,
-                              seriesTeamOneScore: Option[Int],
-                              seriesTeamTwoScore: Option[Int],
+                              seriesTeamOneFinalScore: Option[Int],
+                              seriesTeamTwoFinalScore: Option[Int],
                               seriesStartTstamp: LocalDateTime,
                               externalMatchId: Option[Long],
-                              matchTeamOneScore: Option[Int],
-                              matchTeamTwoScore: Option[Int],
+                              matchTeamOneFinalScore: Option[Int],
+                              matchTeamTwoFinalScore: Option[Int],
                               startTstamp: Option[LocalDateTime],
                               addedDbTstamp: Option[LocalDateTime],
                               targetedAtTstamp: Option[LocalDateTime] // what timestamp do we look up teams for
@@ -89,12 +89,12 @@ object SeriesAndMatchRow{
       val head = rows.head
       SeriesOut(SeriesRow(
         externalSeriesId, head.period,head.tournamentId, head.teamOne, head.teamTwo,
-        head.seriesTeamOneScore,
-        head.seriesTeamTwoScore,
+        head.seriesTeamOneFinalScore,
+        head.seriesTeamTwoFinalScore,
         head.seriesStartTstamp), rows.withFilter(_.externalMatchId.isDefined).map(row => MatchOut(
         MatchRow(
-        row.externalMatchId.get, row.matchTeamOneScore,
-        row.matchTeamTwoScore,
+        row.externalMatchId.get, row.matchTeamOneFinalScore,
+        row.matchTeamTwoFinalScore,
         row.startTstamp.get,
         row.addedDbTstamp.get,
         row.targetedAtTstamp.get), List[SingleResult]())))

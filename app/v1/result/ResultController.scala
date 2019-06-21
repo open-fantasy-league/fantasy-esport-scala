@@ -25,15 +25,15 @@ import v1.user.UserRepo
 
 
 case class MatchFormInput(
-                         matchId: Long, matchTeamOneScore: Option[Int],
-                         matchTeamTwoScore: Option[Int], startTstamp: Option[LocalDateTime],
+                         matchId: Long, matchTeamOneFinalScore: Option[Int],
+                         matchTeamTwoFinalScore: Option[Int], startTstamp: Option[LocalDateTime],
                          targetAtTstamp: Option[LocalDateTime],
                          pickeeResults: List[PickeeFormInput]
                          )
 
 case class SeriesFormInput(
                             seriesId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
-                            seriesTeamOneScore: Option[Int], seriesTeamTwoScore: Option[Int],
+                            seriesTeamOneFinalScore: Option[Int], seriesTeamTwoFinalScore: Option[Int],
                             startTstamp: Option[LocalDateTime], matches: List[MatchFormInput]
                           )
 
@@ -69,13 +69,13 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         "tournamentId" -> optional(of(longFormat)),
         "teamOne" -> optional(nonEmptyText),
         "teamTwo" -> optional(nonEmptyText),
-        "seriesTeamOneScore" -> optional(number),
-        "seriesTeamTwoScore" -> optional(number),
+        "seriesTeamOneFinalScore" -> optional(number),
+        "seriesTeamTwoFinalScore" -> optional(number),
         "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "matches" -> list(mapping(
           "matchId" -> of(longFormat),
-          "matchTeamOneScore" -> optional(number),
-          "matchTeamTwoScore" -> optional(number),
+          "matchTeamOneFinalScore" -> optional(number),
+          "matchTeamTwoFinalScore" -> optional(number),
           "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
           "targetAtTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
           "pickeeResults" -> list(mapping(
@@ -146,7 +146,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
                 p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats)
               )
               _ <- if (existingMatch.isDefined) updatedMatch(matchId, matchu) else Right(true)
-              _ = if (matchu.matchTeamOneScore.isDefined) awardPredictions(matchId, matchu.matchTeamOneScore.get, matchu.matchTeamTwoScore.get)
+              _ = if (matchu.matchTeamOneFinalScore.isDefined) awardPredictions(matchId, matchu.matchTeamOneFinalScore.get, matchu.matchTeamTwoFinalScore.get)
               insertedResults <- newResults(matchu, league, matchId, internalPickee)
               insertedStats <- newStats(league, insertedResults.toList, internalPickee)
               _ <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
@@ -186,8 +186,8 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   }
 
   private def updatedMatch(matchId: Long, input: MatchFormInput)(implicit c: Connection): Either[Result, Any] = {
-    if (input.matchTeamOneScore.isDefined) {
-      val updatedCount = SQL"""update matchu set match_team_one_final_score = ${input.matchTeamOneScore}, match_team_two_final_score = ${input.matchTeamTwoScore}
+    if (input.matchTeamOneFinalScore.isDefined) {
+      val updatedCount = SQL"""update matchu set match_team_one_final_score = ${input.matchTeamOneFinalScore}, match_team_two_final_score = ${input.matchTeamTwoFinalScore}
          where match_id = $matchId and match_team_one_final_score is null
        """.executeUpdate()
       if (updatedCount == 0) return Left(BadRequest("Cannot update final match score after setting"))
@@ -196,9 +196,9 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   }
 
   private def updatedSeries(seriesId: Long, input: SeriesFormInput)(implicit c: Connection): Either[Result, Any] = {
-    if (input.seriesTeamOneScore.isDefined) {
-      val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneScore},
-                          series_team_two_final_score = ${input.seriesTeamTwoScore}
+    if (input.seriesTeamOneFinalScore.isDefined) {
+      val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneFinalScore},
+                          series_team_two_final_score = ${input.seriesTeamTwoFinalScore}
          where series_id = $seriesId and series_team_one_final_score is null
        """.executeUpdate()
       if (updatedCount == 0) return Left(BadRequest("Cannot update final series score after setting"))
