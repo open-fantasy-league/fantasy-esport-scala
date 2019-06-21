@@ -135,6 +135,8 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
             seriesId <- if (existingSeries.isDefined) Right(existingSeries.get._1) else
               newSeries(input, league, correctPeriod, startTstamp)
             _ <- if (existingSeries.isDefined) updatedSeries(seriesId, input) else Right(true)
+            _ = if (input.seriesTeamOneFinalScore.isDefined)
+              awardPredictions(None, Some(seriesId), input.seriesTeamOneFinalScore.get, input.seriesTeamTwoFinalScore.get)
             // TODO ideally would bail on first error
             _ <- input.matches.map(matchu => for {
               existingMatch <- existingMatchInfo(league.leagueId, matchu.matchId)
@@ -146,7 +148,8 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
                 p => InternalPickee(pickeeRepo.getInternalId(league.leagueId, p.id).get, p.isTeamOne, p.stats)
               )
               _ <- if (existingMatch.isDefined) updatedMatch(matchId, matchu) else Right(true)
-              _ = if (matchu.matchTeamOneFinalScore.isDefined) awardPredictions(matchId, matchu.matchTeamOneFinalScore.get, matchu.matchTeamTwoFinalScore.get)
+              _ = if (matchu.matchTeamOneFinalScore.isDefined)
+                awardPredictions(None, Some(matchId), matchu.matchTeamOneFinalScore.get, matchu.matchTeamTwoFinalScore.get)
               insertedResults <- newResults(matchu, league, matchId, internalPickee)
               insertedStats <- newStats(league, insertedResults.toList, internalPickee)
               _ <- updateStats(insertedStats, league, correctPeriod, targetTstamp)
@@ -206,8 +209,9 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     Right(true)
   }
 
-  private def awardPredictions(matchId: Long, teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
-    val winningUsers = SQL"""select user_id, prediction_id from prediction where match_id = $matchId
+  private def awardPredictions(seriesId: Option[Long], matchId: Option[Long], teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
+    val winningUsers = SQL"""select user_id, prediction_id from prediction where ($matchId IS NULL OR match_id = $matchId)
+                             AND ($seriesId IS NULL OR series_id = $seriesId)
                          AND team_one_score = $teamOneScore AND team_two_score = $teamTwoScore
          AND paid_out = false FOR UPDATE
        """.as((SqlParser.long("user_id") ~ SqlParser.long("prediction_id")).*)

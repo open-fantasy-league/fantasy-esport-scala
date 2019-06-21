@@ -98,7 +98,7 @@ collection page
 filter by team   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 responsive
 fotmob chrome extension to get data
-predictions series/match
+predictions series/match            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 handle finalized column...maybe delete, maybe existence of score means finalised?    !!!!!!!!!!!!!!!!!!!!!!!!!1
 more lightweight get league
 indexing
