@@ -29,18 +29,25 @@ case class DetailedLeagueRow(
                             packSize: Option[Int],
                              started: Boolean,
                              ended: Boolean,
-                             periodValue: Int,
-                             start: LocalDateTime,
-                             end: LocalDateTime,
-                             multiplier: Double,
-                             onStartCloseTransferWindow: Boolean,
-                             onEndOpenTransferWindow: Boolean,
-                             current: Boolean,
+                             periodValue: Option[Int],
+                             start: Option[LocalDateTime],
+                             end: Option[LocalDateTime],
+                             multiplier: Option[Double],
+                             onStartCloseTransferWindow: Option[Boolean],
+                             onEndOpenTransferWindow: Option[Boolean],
+                            currentPeriodId: Option[Long],
+                            currentPeriodValue: Option[Int],
+                            currentPeriodStart: Option[LocalDateTime],
+                            currentPeriodEnd: Option[LocalDateTime],
+                            currentPeriodMultiplier: Option[Double],
+                            currentPeriodOnStartCloseTransferWindow: Option[Boolean],
+                            currentPeriodOnEndOpenTransferWindow: Option[Boolean],
                              statFieldName: Option[String],
                              limitTypeName: Option[String],
                              description: Option[String],
                              limitName: Option[String],
                              limitMax: Option[Int],
+                            numPeriods: Int,
                             )
 
 case class PublicLeagueRow(
@@ -66,7 +73,9 @@ case class PublicLeagueRow(
                           packCost: Option[BigDecimal],
                           packSize: Option[Int],
                           started: Boolean,
-                          ended: Boolean
+                          ended: Boolean,
+                          numPeriods: Int,
+                          currentPeriod: Option[PeriodRow]
 )
 
 object PublicLeagueRow{
@@ -95,7 +104,8 @@ object PublicLeagueRow{
         "packCost" -> league.packCost,
         "packSize" -> league.packSize,
         "started" -> league.started,
-        "ended" -> league.ended
+        "ended" -> league.ended,
+        "numPeriods" -> league.numPeriods,
       )
     }
   }
@@ -105,7 +115,11 @@ object PublicLeagueRow{
       row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
-      row.noWildcardForLateRegister, row.isCardSystem, row.recycleValue, row.packCost, row.packSize, row.started, row.ended
+      row.noWildcardForLateRegister, row.isCardSystem, row.recycleValue, row.packCost, row.packSize, row.started, row.ended, row.numPeriods,
+      if (row.currentPeriodId.isDefined) Some(PeriodRow(
+        row.currentPeriodId.get, row.leagueId, row.currentPeriodValue.get, row.currentPeriodStart.get, row.currentPeriodEnd.get,
+        row.currentPeriodMultiplier.get, row.currentPeriodOnStartCloseTransferWindow.get, row.currentPeriodOnEndOpenTransferWindow.get
+      )) else None
     )
   }
 }

@@ -180,7 +180,12 @@ class LeagueController @Inject()(
   }
 
   def getWithRelatedReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
-    Future(db.withConnection { implicit c => Ok(Json.toJson(leagueRepo.getWithRelated(request.league.leagueId)))})
+    Future(db.withConnection { implicit c => Ok(Json.toJson(
+      leagueRepo.getWithRelated(
+        request.league.leagueId, request.getQueryString("periods").isDefined, request.getQueryString("scoring").isDefined,
+        request.getQueryString("statfields").isDefined, request.getQueryString("limits").isDefined
+      )
+    ))})
   }
 
   def update(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async { implicit request =>

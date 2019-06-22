@@ -1,11 +1,10 @@
 package v1.league
 
-import java.sql.Connection
-
 import javax.inject.{Inject, Singleton}
-import java.time.LocalDateTime
-
 import play.api.Logger
+import utils.Utils
+import java.sql.Connection
+import java.time.LocalDateTime
 //import java.math.BigDecimal
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
@@ -65,7 +64,7 @@ object LeagueFull{
 
 trait LeagueRepo{
   def get(leagueId: Long)(implicit c: Connection): Option[LeagueRow]
-  def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull
+  def getWithRelated(leagueId: Long, showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean)(implicit c: Connection): LeagueFull
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
   def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
   def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
@@ -81,7 +80,8 @@ trait LeagueRepo{
   def getPeriodFromTimestamp(leagueId: Long, time: LocalDateTime)(implicit c: Connection): Option[PeriodRow]
   def getCurrentPeriod(league: LeagueRow)(implicit c: Connection): Option[PeriodRow]
   def getNextPeriod(league: LeagueRow, requireCurrentPeriodEnded: Boolean = false)(implicit c: Connection): Either[Result, PeriodRow]
-  def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow], scoringRules: Map[String, Map[String, Double]]): LeagueFull // TODO private
+  def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow], scoringRules: Map[String, Map[String, Double]],
+                                   showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean): LeagueFull // TODO private
   def updatePeriod(
                     leagueId: Long, periodValue: Int, start: Option[LocalDateTime], end: Option[LocalDateTime],
                     multiplier: Option[Double], onStartCloseTransferWindow: Option[Boolean],
@@ -118,28 +118,69 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
 
-  override def getWithRelated(leagueId: Long)(implicit c: Connection): LeagueFull = {
-    val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
+  override def getWithRelated(leagueId: Long, showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean)(implicit c: Connection): LeagueFull = {
+    var extraJoins = ""
+    var extraSelects = ""
+    if (showPeriods) {
+      extraJoins += " left join period p using(league_id) "
+      extraSelects +=
+        """, p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
+        p.on_start_close_transfer_window, p.on_end_open_transfer_window"""
+    } else{
+      extraSelects +=
+        """,null as period_value, null as start, null as "end", null as multiplier,
+          null as on_start_close_transfer_window, null as on_end_open_transfer_window"""
+    }
+    if (showStatfields){
+      extraJoins += " left join stat_field sf on(l.league_id = sf.league_id) "
+      extraSelects += ",sf.name as stat_field_name"
+    } else {
+      extraSelects += ",null as stat_field_name"
+    }
+    if (showLimits){
+      extraJoins += """  left join limit_type lt on(l.league_id = lt.league_id)  left join "limit" lim using(limit_type_id) """
+      extraSelects += """,lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max"""
+    } else {
+      extraSelects += """,null as limit_type_name, null as description, null as limit_name, null as limit_max"""
+    }
+    val sql = s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
           transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, is_card_system, recycle_value,
-          pack_size, pack_cost, (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
-           p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
-           p.on_start_close_transfer_window, p.on_end_open_transfer_window,
-          CASE WHEN l.current_period_id is null then false
-          WHEN p.period_id = l.current_period_id then true
-           ELSE false END as current, sf.name as stat_field_name,
-           lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max
+          pack_size, pack_cost, (current_period_id is not null) as started,
+          (current_period_id is not null and upper(current_period.timespan) < now()) as ended,
+          (select count(*) from period where league_id = $leagueId) as num_periods,
+           current_period_id,
+           current_period.value as current_period_value, lower(current_period.timespan) as current_period_start,
+           upper(current_period.timespan) as current_period_end, current_period.multiplier as current_period_multiplier,
+           current_period.on_start_close_transfer_window as current_period_on_start_close_transfer_window,
+           current_period.on_end_open_transfer_window as current_period_on_end_open_transfer_window
+          $extraSelects
           from league l
           left join card_system using(league_id)
           left join transfer_system using(league_id)
-    join period p using(league_id)
-    left join limit_type lt on(l.league_id = lt.league_id)
-    left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
-           left join "limit" lim using(limit_type_id)
-           join stat_field sf on(l.league_id = sf.league_id)
-        where l.league_id = $leagueId order by p.value;""".stripMargin).as(detailedLeagueParser.*)
-    val scoringRules = ScoringRow.rowsToOut(getScoringRules(leagueId))
-    detailedLeagueQueryExtractor(queryResult, scoringRules)
+          left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
+          $extraJoins where l.league_id = $leagueId"""
+    val queryResult = SQL(sql).as(detailedLeagueParser.*)
+
+//    val queryResult = SQL(s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
+//          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
+//          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, is_card_system, recycle_value,
+//          pack_size, pack_cost, (current_period is not null) as started, (current_period is not null and upper(current_period.timespan) < now()) as ended,
+//           p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
+//           p.on_start_close_transfer_window, p.on_end_open_transfer_window,
+//           sf.name as stat_field_name,
+//           lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max
+//          from league l
+//          left join card_system using(league_id)
+//          left join transfer_system using(league_id)
+//    join period p using(league_id)
+//    left join limit_type lt on(l.league_id = lt.league_id)
+//    left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
+//           left join "limit" lim using(limit_type_id)
+//           join stat_field sf on(l.league_id = sf.league_id)
+//        where l.league_id = $leagueId;""".stripMargin).as(detailedLeagueParser.*)
+    val scoringRules = if (showScoring) ScoringRow.rowsToOut(getScoringRules(leagueId)) else Map[String, Map[String, Double]]()
+    detailedLeagueQueryExtractor(queryResult, scoringRules, showPeriods, showScoring, showStatfields, showLimits)
         // deconstruct tuple
         // check what db queries would actuallly return
   }
@@ -342,20 +383,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }
   }
 
-  override def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow], scoringRules: Map[String, Map[String, Double]]): LeagueFull = {
-    val league = PublicLeagueRow.fromDetailedRow(rows.head)
-    val statFields = rows.flatMap(_.statFieldName).toSet
-    val periods = rows.groupByOrdered(_.periodValue).map({ case (k, v) =>
+  override def detailedLeagueQueryExtractor(rows: Iterable[DetailedLeagueRow], scoringRules: Map[String, Map[String, Double]],
+                                            showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean
+                                           ): LeagueFull = {
+    val league =  PublicLeagueRow.fromDetailedRow(rows.head)
+    val statFields = if (showStatfields) rows.flatMap(_.statFieldName).toSet else Set[String]()
+    //TODO sort
+    val periods: Iterable[PeriodRow] = if (showPeriods) rows.groupBy(_.periodValue).map({ case (k, v) =>
       val r = v.head
-      PeriodRow(-1, -1, r.periodValue, r.start, r.end, r.multiplier, r.onStartCloseTransferWindow, r.onEndOpenTransferWindow)
-    })
-    val currentPeriod = rows.withFilter(_.current).map(r => PeriodRow(
-      -1, -1, r.periodValue, r.start, r.end, r.multiplier, r.onStartCloseTransferWindow, r.onEndOpenTransferWindow
-    )).headOption
+      PeriodRow(-1, -1, r.periodValue.get, r.start.get, r.end.get, r.multiplier.get, r.onStartCloseTransferWindow.get,
+        r.onEndOpenTransferWindow.get)
+    }) else List()
+    val currentPeriod = league.currentPeriod
     // TODO think this filter before group by inefficient
-    val limits: Map[String, Iterable[LimitRow]] = rows.filter(_.limitTypeName.isDefined).groupBy(_.limitTypeName.get).mapValues(
+    val limits: Map[String, Iterable[LimitRow]] = if (showLimits) rows.filter(_.limitTypeName.isDefined).groupBy(_.limitTypeName.get).mapValues(
       v => v.groupBy(_.limitName.get).map({case(_, x2) => LimitRow(x2.head.limitName.get, x2.head.limitMax.get)})
-    )
+    ) else Map()
     LeagueFull(league, limits, periods, currentPeriod, statFields, scoringRules)
   }
 
@@ -522,7 +565,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL"""select stat_field.name as stat_field_name, l.name as limit_name, value as points from scoring s
           join stat_field using(stat_field_id)
           left join "limit" l using(limit_id)
-          join league using(league_id) where league_id = $leagueId;""".as(ScoringRow.parser.*)
+          where league_id = $leagueId;""".as(ScoringRow.parser.*)
   }
 }
 
