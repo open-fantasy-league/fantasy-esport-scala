@@ -55,7 +55,8 @@ object LeagueFull{
         "cardPackSize" -> league.league.packSize,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
         "url" -> {if (league.league.urlVerified) league.league.url else ""},
-        "scoring" -> league.scoring
+        "scoring" -> league.scoring,
+        "numPeriods" -> league.league.numPeriods,
       )
     }
   }
