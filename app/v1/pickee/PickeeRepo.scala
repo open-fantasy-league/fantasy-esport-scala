@@ -32,7 +32,7 @@ object PickeeLimitsOut {
         "id" -> x.pickee.externalPickeeId,
         "name" -> x.pickee.pickeeName,
         "price" -> x.pickee.price,
-        "limits" -> x.limits,
+        "limitTypes" -> x.limits,
       )
     }
   }
@@ -105,9 +105,10 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
          |coalesce(lt.max, l.max) as "max"
         |from pickee p
-        |left join limit_type lt using(league_id)
-        |left join "limit" l using(limit_type_id)
-        |where league_id = $leagueId;""".stripMargin).as(rowParser.*).groupBy(_.internalPickeeId).map({case(internalPickeeId, v) => {
+        |left join pickee_limit pl using(pickee_id)
+        |left join "limit" l using(limit_id)
+        |left join limit_type lt using(limit_type_id)
+        |where p.league_id = $leagueId;""".stripMargin).as(rowParser.*).groupBy(_.internalPickeeId).map({case(internalPickeeId, v) => {
       PickeeLimitsOut(PickeeRow(
         internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price
       ), v.map(lim => lim.limitType -> lim.limitName).toMap)

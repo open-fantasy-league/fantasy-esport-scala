@@ -127,7 +127,7 @@ object PickeeStatsOut{
         "id" -> p.pickee.externalPickeeId,
         "name" -> p.pickee.pickeeName,
         "stats" -> p.stats,
-        "limits" -> p.limits,
+        "limitTypes" -> p.limits,
         "price" -> p.pickee.price,
         "active" -> true //p.pickee.active  TODO reimplement active
       )
