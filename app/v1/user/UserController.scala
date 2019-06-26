@@ -50,7 +50,7 @@ class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo)
           externalUserId <- parseLongId(userId, "User")
           username <- request.getQueryString("username").toRight(BadRequest("Must specify username query parameter"))
           _ <- if (userRepo.userInLeague(externalUserId, request.league.leagueId)) Left(BadRequest("User already in this league")) else Right(true)
-          _ <- tryOrResponse(() =>
+          _ <- tryOrResponse(
             userRepo.joinUser(externalUserId, username, request.league),
             InternalServerError("Internal server error adding user to league"))
           success = "Successfully added user to league"
@@ -85,7 +85,7 @@ class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo)
           (for {
             userId <- parseLongId(userId, "User")
             user <- userRepo.get(request.league.leagueId, userId).toRight(BadRequest("User does not exist"))
-            updateUser <- tryOrResponse(() => userRepo.update(userId, input), InternalServerError("Could not update user"))
+            updateUser <- tryOrResponse(userRepo.update(userId, input), InternalServerError("Could not update user"))
             finished = Ok("User updated")
           } yield finished).fold(identity, identity)
         }

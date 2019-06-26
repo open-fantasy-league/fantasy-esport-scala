@@ -7,9 +7,7 @@ import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
 import play.api.libs.concurrent.CustomExecutionContext
 import anorm._
-import play.api.db._
 import models._
-import play.api.mvc.Result
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
@@ -23,15 +21,14 @@ trait TransferRepo{
   def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)]
   def insert(
               userId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
-              scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
+              periodStart: Int, periodEnd: Option[Int], price: BigDecimal, applyWildcard: Boolean
             )(implicit c: Connection): Long
-  def setProcessed(transferId: Long)(implicit c: Connection): Long
   def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut
   def moneyAfterPack(userId: Long)(implicit c: Connection): Double
-  def buyCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Either[String, Iterable[CardOut]]
-  def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardOut]
+  def buyCardPack(leagueId: Long, userId: Long, packSize: Int, packCost: BigDecimal)(implicit c: Connection): Either[String, Iterable[CardOut]]
+  def generateCardPack(leagueId: Long, userId: Long, packSize: Int)(implicit c: Connection): Iterable[CardOut]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
-  def recycleCard(leagueId: Long, userId: Long, cardId: Long)(implicit c: Connection): Boolean
+  def recycleCard(leagueId: Long, userId: Long, cardId: Long, recycleValue: BigDecimal)(implicit c: Connection): Boolean
 }
 
 @Singleton
@@ -67,7 +64,6 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
       }
     }
     println(s"""Ended current team pickees: ${toSellCardIds.mkString(", ")}""")
-    SQL("update useru set change_tstamp = null where user_id = {userId};").on("userId" -> userId).executeUpdate()
     print(s"""Buying: ${toBuyCardIds.mkString(", ")}""")
     toBuyCardIds.map(t => {
       SQL("insert into team(card_id, timespan) values({cardId}, int4range({periodStart}, {periodEnd})) returning team_id;").
@@ -97,21 +93,13 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
 
   override def insert(
                        userId: Long, internalPickeeId: Long, isBuy: Boolean, currentTime: LocalDateTime,
-                       scheduledUpdateTime: LocalDateTime, processed: Boolean, price: BigDecimal, applyWildcard: Boolean
+                       periodStart: Int, periodEnd: Option[Int], price: BigDecimal, applyWildcard: Boolean
                      )(implicit c: Connection): Long = {
-    SQL(
-      """
-        |insert into transfer(user_id, pickee_id, is_buy, time_made, scheduled_for, processed, price, was_wildcard)
-        |values({userId}, {internalPickeeId}, {isBuy}, {currentTime}, {scheduledUpdateTime}, {processed}, {price}, {applyWildcard})
-        |returning transfer_id;
-        |""".stripMargin
-    ).on("userId" -> userId, "internalPickeeId" -> internalPickeeId, "isBuy" -> isBuy, "currentTime" -> currentTime,
-      "scheduledUpdateTime" -> scheduledUpdateTime, "processed" -> processed, "price" -> price, "applyWildcard" -> applyWildcard
-      ).executeInsert().get
-  }
-
-  override def setProcessed(transferId: Long)(implicit c: Connection): Long = {
-    SQL(s"update transfer set processed = true where transfer_id = $transferId").executeUpdate()
+    SQL"""
+        insert into transfer(user_id, pickee_id, is_buy, time_made, timespan, price, was_wildcard)
+        values($userId, $internalPickeeId, $isBuy, $currentTime, int4range($periodStart, $periodEnd), $price, $applyWildcard)
+        returning transfer_id;
+        """.executeInsert().get
   }
 
   override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut= {
@@ -170,25 +158,24 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
       """.as(SqlParser.double("new_money").single)
   }
 
-  override def buyCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Either[String, Iterable[CardOut]] = {
+  override def buyCardPack(leagueId: Long, userId: Long, packSize: Int, packCost: BigDecimal)(implicit c: Connection): Either[String, Iterable[CardOut]] = {
     // relies on contrainst not letting user money negative
     if (moneyAfterPack(userId) < -0.001) Left("Not enought money to buy pack")
     else {
       SQL"""
-         update useru set money = money - pack_cost
-         from league join card_system using(league_id) where useru.league_id = league.league_id AND user_id = $userId
+         update useru set money = money - $packCost WHERE user_id = $userId
        """.executeUpdate()
-      Right(generateCardPack(leagueId, userId))
+      Right(generateCardPack(leagueId, userId, packSize))
     }
   }
 
-  override def generateCardPack(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardOut] = {
-    val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId).toArray
+  override def generateCardPack(leagueId: Long, userId: Long, packSize: Int)(implicit c: Connection): Iterable[CardOut] = {
+    val pickeeIds = pickeeRepo.getRandomPickeesFromDifferentFactions(leagueId, packSize).toArray
     for {
-        i <- 0 until 7
+        i <- 0 until packSize
         colour = scala.util.Random.nextInt(10) match {
-          case x if x < 6 => "BRONZE"
-          case x if x < 9 => "SILVER"
+          case x if x < 5 => "BRONZE"
+          case x if x < 8 => "SILVER"
           case x if x < 10 => "GOLD"
           case _ => "BRONZE"
         }
@@ -202,12 +189,12 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert()
   }
 
-  override def recycleCard(leagueId: Long, userId: Long, cardId: Long)(implicit c: Connection): Boolean = {
-    val updatedCount = SQL"""update card set recycled = true where card_id = $cardId and user_id = $userId;""".executeUpdate()
+  override def recycleCard(leagueId: Long, userId: Long, cardId: Long, recycleValue: BigDecimal)(implicit c: Connection): Boolean = {
+    val updatedCount = SQL"""update card set recycled = true where card_id = $cardId and user_id = $userId""".executeUpdate()
     if (updatedCount == 0){
       return false
     }
-    SQL"""update useru set money = money + recycle_value from league join card_system using(league_id) where useru.league_id = league.league_id""".executeUpdate()
+    SQL"""update useru set money = money + $recycleValue WHERE user_id = $userId""".executeUpdate()
     true
   }
 }

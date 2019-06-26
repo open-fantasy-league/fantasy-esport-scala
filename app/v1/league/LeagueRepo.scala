@@ -2,10 +2,8 @@ package v1.league
 
 import javax.inject.{Inject, Singleton}
 import play.api.Logger
-import utils.Utils
 import java.sql.Connection
 import java.time.LocalDateTime
-//import java.math.BigDecimal
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
 import play.api.mvc.Result
@@ -16,7 +14,6 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 
 import akka.actor.ActorSystem
 import models._
-import utils.GroupByOrderedImplicit._
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -53,6 +50,7 @@ object LeagueFull{
         "recycleValue" -> league.league.recycleValue,
         "cardPackCost" -> league.league.packCost,
         "cardPackSize" -> league.league.packSize,
+        "predictionWinMoney" -> league.league.predictionWinMoney,
         "applyPointsAtStartTime" -> league.league.applyPointsAtStartTime,
         "url" -> {if (league.league.urlVerified) league.league.url else ""},
         "scoring" -> league.scoring,
@@ -111,7 +109,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       s"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, is_card_system, recycle_value, pack_size, pack_cost, manually_calculate_points
+        | no_wildcard_for_late_register, is_card_system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points
         | from league l
         | left join card_system using(league_id)
         | left join transfer_system using(league_id)
@@ -147,7 +145,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val sql = s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
           transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, is_card_system, recycle_value,
-          pack_size, pack_cost, (current_period_id is not null) as started,
+          pack_size, pack_cost, prediction_win_money, (current_period_id is not null) as started,
           (current_period_id is not null and upper(current_period.timespan) < now()) as ended,
           (select count(*) from period where league_id = $leagueId) as num_periods,
            current_period_id,
@@ -213,15 +211,16 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description,
         |starting_money, team_size, force_full_teams, transfer_open,
         |url, url_verified, current_period_id, apply_points_at_start_time,
-        |is_card_system) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
+        |is_card_system, prediction_win_money) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription},
         | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, null,
-        |  {applyPointsAtStartTime}, {cardSystem}) returning league_id;""".stripMargin
+        |  {applyPointsAtStartTime}, {cardSystem}, {predictionWinMoney}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
       "periodDescription" -> input.periodDescription, "startingMoney" -> input.startingMoney,
       "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams, "url" -> input.url.getOrElse(""),
       "applyPointsAtStartTime" -> input.applyPointsAtStartTime, "cardSystem" -> input.transferInfo.isCardSystem,
+      "predictionWinMoney" -> input.transferInfo.predictionWinMoney
     )
     println(q.sql)
     println(q)

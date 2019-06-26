@@ -34,9 +34,16 @@ class TeamController @Inject()(cc: ControllerComponents, userRepo: UserRepo, tea
 
   def getCardsReq(leagueId: String, userId: String) = (
     new LeagueAction(leagueId) andThen new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
-    Future(Ok({
-      db.withConnection{ implicit c => Json.toJson(teamRepo.getUserCards(request.user.userId))}
-    }))
+    Future {
+      (for {
+        // TODO max value
+        showLastXPeriodStats <- IdParser.parseIntId(request.getQueryString("lastXPeriodStats"), "lastXPeriodStats")
+        overallStats = request.getQueryString("overallStats").isDefined
+        out = db.withConnection { implicit c => Json.toJson(
+          teamRepo.getUserCards(request.user.userId, showLastXPeriodStats, request.league.currentPeriodId, overallStats)
+        ) }
+      } yield Ok(out)).fold(identity, identity)
+    }
   }
 
   def getAllTeamsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>

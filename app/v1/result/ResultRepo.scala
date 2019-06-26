@@ -57,19 +57,19 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   override def getSeries(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[SeriesOut] = {
     val q =
       """
-        | select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two,
-        | ser.series_team_one_final_score, ser.series_team_two_final_score, m.match_team_one_final_score, m.match_team_two_final_score,
-        |  ser.tournament_id, m.start_tstamp as match_start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
-        | m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
-        |  pck.external_pickee_id,
-        |  pck.pickee_name, pck.price as pickee_price
-        |  from series ser left join matchu m using(series_id) left join resultu r using(match_id)
-        | left join stat s using(result_id)
-        | left join stat_field sf on (sf.stat_field_id = s.stat_field_id)
-        | left join pickee pck using(pickee_id)
-        | where ser.league_id = {leagueId} and ({period} is null or period = {period})
-        | order by m.targeted_at_tstamp desc, s.value;
-      """.stripMargin
+        select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two,
+        ser.series_team_one_final_score, ser.series_team_two_final_score, m.match_team_one_final_score, m.match_team_two_final_score,
+        ser.tournament_id, m.start_tstamp as match_start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
+        m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
+        pck.external_pickee_id,
+        pck.pickee_name, pck.price as pickee_price
+        from series ser left join matchu m using(series_id) left join resultu r using(match_id)
+        left join stat s using(result_id)
+        left join stat_field sf on (sf.stat_field_id = s.stat_field_id)
+        left join pickee pck using(pickee_id)
+        where ser.league_id = {leagueId} and ({period} is null or period = {period})
+        order by m.targeted_at_tstamp desc, s.value;
+      """
     val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullSeriesParser.*)
     seriesQueryExtractor(r)
   }
@@ -88,11 +88,11 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
 //  }
 
   override def seriesQueryExtractor(query: Iterable[FullSeriesRow]): Iterable[SeriesOut] = {
-    query.groupByOrdered(_.externalSeriesId).map({ case (externalSeriesId, row) => {
+    implicit def dateTimeOrdering: Ordering[LocalDateTime] = Ordering.fromLessThan(_ isBefore _)
+    query.groupBy(_.externalSeriesId).map({ case (externalSeriesId, row) => {
       val head = row.head
-      val matches = row.filter(_.externalMatchId.isDefined).groupByOrdered(_.externalMatchId).map({ case (externalMatchId, row) => {
-        // need a withFilter for groupByOrdered
-        val results = row.filter(_.resultId.isDefined).groupByOrdered(tup => (tup.resultId.get, tup.externalPickeeId.get)).map({
+      val matches = row.filter(_.externalMatchId.isDefined).groupBy(_.externalMatchId).map({ case (externalMatchId, row) => {
+        val results = row.filter(_.resultId.isDefined).groupBy(tup => (tup.resultId.get, tup.externalPickeeId.get)).map({
           case ((resultId, externalPickeeId), x) => SingleResult(x.head.isTeamOne.get, x.head.pickeeName.get,
             x.map(y => y.statFieldName.get -> y.statsValue.get).toMap)
         })
@@ -100,12 +100,12 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         MatchOut(MatchRow(
           externalMatchId.get, head.matchTeamOneFinalScore, head.matchTeamTwoFinalScore, head.matchStartTstamp.get, head.addedDbTstamp.get,
           head.targetedAtTstamp.get), results)
-      }})
+      }}).toList.sortBy(_.matchu.startTstamp)
         SeriesOut(SeriesRow(
           head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.seriesTeamOneFinalScore,
           head.seriesTeamTwoFinalScore, head.seriesStartTstamp
         ), matches)
-    }})
+    }}).toList.sortBy(_.series.startTstamp)
   }
 
   override def insertMatch(

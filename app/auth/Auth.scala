@@ -57,7 +57,7 @@ class LeagueAction(leagueId: String)(implicit val ec: ExecutionContext, db: Data
 //class PeriodAction()(implicit val ec: ExecutionContext, val parser: BodyParser[AnyContent]){
 //  def executionContext = ec
 //  def refineGeneric[A <: Request[B], B](input: A): Either[Result, Option[Int]] = {
-//      TryHelper.tryOrResponse(() => input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+//      TryHelper.tryOrResponse(input.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
 //    }
 //
 //  def apply()(implicit ec: ExecutionContext) = new ActionRefiner[Request, PeriodRequest]{

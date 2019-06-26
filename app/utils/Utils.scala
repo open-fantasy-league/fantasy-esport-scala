@@ -14,10 +14,14 @@ object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {
     Try(id.toLong).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
   }
-  def parseIntId(id: Option[String], idName: String, required: Boolean = false): Either[Result, Option[Int]] = {
+  def parseIntId(id: Option[String], idName: String, required: Boolean = false, max: Option[Int] = None): Either[Result, Option[Int]] = {
     if (id.isEmpty && required) Left(BadRequest(f"$idName parameter required"))
     else {
-      Try(id.map(_.toInt)).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))
+      Try(id.map(_.toInt)).toOption.toRight(BadRequest(f"Invalid $idName ID: $id")) match {
+        case Left(x) => Left(x)
+        case Right(x) if max.isDefined && x.getOrElse(0) > max.get => Left(BadRequest(f"Maximum value for $idName is ${max.get}"))
+        case Right(x) => Right(x)
+      }
     }
   }
 
@@ -29,9 +33,9 @@ object IdParser {
 
 object TryHelper {
 
-  def tryOrResponse[T](block: () => T, errorResponse: Result): Either[Result, T] = {
+  def tryOrResponse[T](block: => T, errorResponse: Result): Either[Result, T] = {
     try{
-      Right(block())
+      Right(block)
     }
     catch {
       case e: Exception => {
@@ -44,9 +48,9 @@ object TryHelper {
     }
   }
 
-  def tryOrResponseRollback[T](block: () => T, c: Connection, errorResponse: Result): Either[Result, T] = {
+  def tryOrResponseRollback[T](block: => T, c: Connection, errorResponse: Result): Either[Result, T] = {
     try{
-      Right(block())
+      Right(block)
     }
     catch {
       case e: Exception => {

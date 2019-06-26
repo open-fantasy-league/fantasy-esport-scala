@@ -1,17 +1,15 @@
 package v1.team
 
 import java.sql.Connection
-import java.time.LocalDateTime
 
 import akka.actor.ActorSystem
 import models._
 import anorm._
-import anorm.{Macro, RowParser}
-import Macro.ColumnNaming
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.libs.json._
 import javax.inject.{Inject, Singleton}
 import play.api.Logger
+import v1.league.LeagueRepo
 
 case class TeamOut(externalUserId: Long, username: String, userId: Long, start: Option[Int],
                    end: Option[Int], isActive: Boolean, pickees: Iterable[CardOut])
@@ -36,7 +34,8 @@ class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 
 trait TeamRepo{
   def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut]
-  def getUserCards(userId: Long)(implicit c: Connection): Iterable[CardOut]
+  def getUserCards(userId: Long, showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats:Boolean)
+                  (implicit c: Connection): Iterable[CardOut]
   def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut]
   def getUserTeamForPeriod(
                             userId: Long, startPeriod: Int,
@@ -45,7 +44,7 @@ trait TeamRepo{
 }
 
 @Singleton
-class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRepo{
+class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: LeagueRepo) extends TeamRepo{
   private val logger = Logger("application")
   override def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut] = {
     println(s"TIIIIIIIIIIME: $period")
@@ -113,33 +112,81 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext) extends TeamRe
     }})
   }
 
-  override def getUserCards(userId: Long)(implicit c: Connection): Iterable[CardOut] = {
-    val now = LocalDateTime.now() //TODO can just now in pg
-    val q =
-      """select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
-          c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
-          l.name as limit_name, lt.name as limit_type_name from card c
-          join pickee p using(pickee_id)
-          left join card_bonus_multiplier cbm using(card_id)
-          left join stat_field sf using(stat_field_id)
-          left join pickee_limit pl using(pickee_id)
-          left join "limit" l using(limit_id)
-          left join limit_type lt using(limit_type_id)
-    where c.user_id = {userId} and not c.recycled;
-    """
-    println(q)
-    val rows = SQL(q).on("userId" -> userId, "now" -> now).as(CardWithBonusRowAndLimits.parser.*)
-    rows.groupBy(_.cardId).map({case (cardId, v) => {
-      val head = v.head
-      val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).map(row => row.limitTypeName.get -> row.limitName.get).toMap
-      CardOut(
-        cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
-        // if have multiple limits, get the bonus for each row, so need to filter them out of map to not get dupes
-        v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
-          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
-        ), limits
-      )
-    }})
+  override def getUserCards(userId: Long, showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats: Boolean)
+                           (implicit c: Connection): Iterable[CardOut] = {
+    val currentPeriodValue = currentPeriodId.flatMap(x => leagueRepo.getPeriod(x).map(_.value))
+    var extraSelects = ""
+    var extraJoins = ""
+    // need this variable as although they asked for the stats, if league hasnt started, cant give them any
+    var showingRecentPeriodStats = false
+    if (showLastXPeriodStats.isEmpty || currentPeriodValue.isEmpty){
+      if (showOverallStats) {
+        extraSelects += ",sf2.name as stat_field_name2, null as period, psp.value as value"
+        extraJoins += """
+                    left join pickee_stat ps using(pickee_id)
+                    left join pickee_stat_period psp
+                    on (ps.pickee_stat_id = psp.pickee_stat_id AND psp.period IS NULL)
+                    left join stat_field sf2 on (ps.stat_field_id = sf2.stat_field_id)
+                    """
+      }
+      else{
+        extraSelects += ", null as stat_field_name_2, null as period, null as value"
+      }
+    }
+    else{
+      showingRecentPeriodStats = true
+      extraSelects += ",sf2.name as stat_field_name2, psp.period, psp.value as value"
+      extraJoins += """
+                    left join pickee_stat ps using(pickee_id)
+                    left join pickee_stat_period psp
+                    """
+      if (showOverallStats){
+        extraJoins += """ on (ps.pickee_stat_id = psp.pickee_stat_id AND (psp.period IS NULL OR psp.period IN ({periodValues})))"""
+      }
+      else{
+        extraJoins += " on (ps.pickee_stat_id = psp.pickee_stat_id AND psp.period IN ({periodValues}))"
+      }
+      extraJoins += " left join stat_field sf2 on (ps.stat_field_id = sf2.stat_field_id)"
+    }
+    val periodValues = ((currentPeriodValue.getOrElse(0) - showLastXPeriodStats.getOrElse(0)) to currentPeriodValue.getOrElse(0)).
+      filter(_ > 0).toList
+    val rows =
+      SQL(s"""select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
+        c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+        l.name as limit_name, lt.name as limit_type_name,
+        sf2.name as stat_field_name2, psp.period, psp.value
+         $extraSelects
+         from card c
+        join pickee p using(pickee_id)
+        left join card_bonus_multiplier cbm using(card_id)
+        left join stat_field sf using(stat_field_id)
+        left join pickee_limit pl using(pickee_id)
+        left join "limit" l using(limit_id)
+        left join limit_type lt using(limit_type_id)
+        $extraJoins
+  where c.user_id = $userId and not c.recycled;
+  """).on("periodValues" -> periodValues).as(CardWithBonusRowAndLimitsAndStats.parser.*)
+    rows.groupBy(_.cardId).map({
+      case (cardId, v) => {
+        val head = v.head
+        val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).
+          map(row => row.limitTypeName.get -> row.limitName.get).toMap
+        // TODO hacky get or else. do i need fix?
+        val recentPeriodStats: Map[Int, Map[String, Double]] = if (showOverallStats || showingRecentPeriodStats) {
+          v.groupBy(_.period.getOrElse(0)).
+            mapValues(rows => rows.map(row => row.statFieldName2.get -> row.value.get).toMap)
+        } else Map()
+        // TODO is this most efficient way?
+        val overallStats: Map[String, Double] = recentPeriodStats.getOrElse(0, Map())
+        CardOut(
+          cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
+          // if have multiple limits, get the bonus for each row, so need to filter them out of map to not get dupes
+          v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
+            v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
+          ), limits, overallStats, if (showingRecentPeriodStats) recentPeriodStats else Map()
+        )
+      }
+    })
   }
 
   override def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut] = {

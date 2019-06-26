@@ -48,6 +48,7 @@ case class DetailedLeagueRow(
                              limitName: Option[String],
                              limitMax: Option[Int],
                             numPeriods: Int,
+                            predictionWinMoney: Option[BigDecimal]
                             )
 
 case class PublicLeagueRow(
@@ -72,6 +73,7 @@ case class PublicLeagueRow(
                           recycleValue: Option[BigDecimal],
                           packCost: Option[BigDecimal],
                           packSize: Option[Int],
+                          predictionWinMoney: Option[BigDecimal],
                           started: Boolean,
                           ended: Boolean,
                           numPeriods: Int,
@@ -103,6 +105,7 @@ object PublicLeagueRow{
         "recycleValue" -> league.recycleValue,
         "packCost" -> league.packCost,
         "packSize" -> league.packSize,
+        "predictionWinMoney" -> league.predictionWinMoney,
         "started" -> league.started,
         "ended" -> league.ended,
         "numPeriods" -> league.numPeriods,
@@ -115,7 +118,7 @@ object PublicLeagueRow{
       row.leagueId, row.leagueName, row.gameId, row.isPrivate, row.tournamentId, row.pickeeDescription, row.periodDescription,
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
-      row.noWildcardForLateRegister, row.isCardSystem, row.recycleValue, row.packCost, row.packSize, row.started, row.ended, row.numPeriods,
+      row.noWildcardForLateRegister, row.isCardSystem, row.recycleValue, row.packCost, row.packSize, row.predictionWinMoney, row.started, row.ended, row.numPeriods,
       if (row.currentPeriodId.isDefined) Some(PeriodRow(
         row.currentPeriodId.get, row.leagueId, row.currentPeriodValue.get, row.currentPeriodStart.get, row.currentPeriodEnd.get,
         row.currentPeriodMultiplier.get, row.currentPeriodOnStartCloseTransferWindow.get, row.currentPeriodOnEndOpenTransferWindow.get
@@ -147,7 +150,8 @@ case class LeagueRow(leagueId: Long,
                      isCardSystem: Boolean = false,
                      recycleValue: Option[BigDecimal] = None,
                      packCost: Option[BigDecimal] = None,
-                     packSize: Option[Int] = None
+                     packSize: Option[Int] = None,
+                     predictionWinMoney: Option[BigDecimal] = None
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)

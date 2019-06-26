@@ -100,7 +100,7 @@ trait UserRepo{
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
   def insertUserStatDaily(userStatId: Long, period: Option[Int])(implicit c: Connection): Long
   def updateFromTransfer(
-              userId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: Option[LocalDateTime],
+              userId: Long, money: BigDecimal, remainingTransfers: Option[Int],
               appliedWildcard: Boolean
             )(implicit c: Connection): Unit
   def getRankings(
@@ -119,7 +119,6 @@ trait UserRepo{
   def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
-  def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long]
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
   def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int
 }
@@ -143,7 +142,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def get(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[UserRow] = {
-    SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp,
+    SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard,
             late_entry_lock_ts
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
   }
@@ -168,7 +167,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, change_tstamp, late_entry_lock_ts" +
+    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts" +
       "from useru where league_id = $leagueId").as(UserRow.parser.*)
   }
 
@@ -204,12 +203,12 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   }
 
   override def updateFromTransfer(
-                       userId: Long, money: BigDecimal, remainingTransfers: Option[Int], changeTstamp: Option[LocalDateTime],
+                       userId: Long, money: BigDecimal, remainingTransfers: Option[Int],
                        appliedWildcard: Boolean
                      )(implicit c: Connection): Unit = {
     val usedWildcardSet = if (appliedWildcard) ", used_wildcard = true" else ""
-    SQL(s"""update user set money = {money}, remaining_transfers = {remainingTransfers}, change_tstamp = {changeTstamp} $usedWildcardSet where user_id = {userId}""")
-      .on("money" -> money, "remainingTransfers" -> remainingTransfers, "changeTstamp" -> changeTstamp, "userId" -> userId).executeUpdate()
+    SQL(s"""update user set money = {money}, remaining_transfers = {remainingTransfers} $usedWildcardSet where user_id = {userId}""")
+      .on("money" -> money, "remainingTransfers" -> remainingTransfers, "userId" -> userId).executeUpdate()
   }
 
   override def getRankings(
@@ -220,15 +219,16 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
     val qResult = getUserStatsAndTeam(league, statFieldId, period, secondaryOrdering).toList
     val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
     val stats = filteredByUsers.groupByOrdered(_.externalUserId).toList
+    //https://stackoverflow.com/a/14696410
     var lastScore = Double.MaxValue
     var lastScoreRank = 0
-    val tmp = stats.map({case (u, v) => {
+    val userStatsAndTeam: Iterable[(RankingRow, Iterable[PickeeRow])] = stats.map({case (u, v) => {
       val team = v.withFilter(_.internalPickeeId.isDefined).map(v2 => PickeeRow(
         v2.internalPickeeId.get, v2.externalPickeeId.get, v2.pickeeName.get, v2.price.get)
       )
       (v.head, team)}
     })
-    val rankings = tmp.zipWithIndex.map({case ((q, team), i) => {
+    val rankings = userStatsAndTeam.zipWithIndex.map({case ((q, team), i) => {
       println(f"i: $i")
       val value = q.value
       println(f"value: $value")
@@ -346,11 +346,6 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   override def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean = {
     SQL(s"select 1 from useru where league_id = $leagueId and external_user_id = $externalUserId").
       as(SqlParser.scalar[Int].singleOpt).isDefined
-  }
-
-  override def getShouldProcessTransfer(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
-    val q = "select user_id from useru where league_id = {leagueId} and change_tstamp <= now();"
-    SQL(q).on("leagueId" -> leagueId).as(SqlParser.long("user_id").*)
   }
 
   override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {

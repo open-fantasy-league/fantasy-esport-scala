@@ -11,7 +11,6 @@ import anorm._
 import anorm.{Macro, RowParser}
 import Macro.ColumnNaming
 import play.api.Logger
-import utils.GroupByOrderedImplicit._
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -56,7 +55,7 @@ trait PickeeRepo{
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
   def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
   def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long
-  def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long]
+  def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long]
   def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
 }
 
@@ -150,10 +149,9 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         | join stat_field sf using(stat_field_id)
         | left join limit_type lt on(lt.league_id = p.league_id) left join "limit" l using(limit_type_id)
         | where p.league_id = {leagueId} and ({period} is null or period = {period}) and
-        | ({statFieldId} is null or stat_field_id = {statFieldId})
-        | order by pickee_name;
+        | ({statFieldId} is null or stat_field_id = {statFieldId});
       """.stripMargin).on("leagueId" -> leagueId, "period" -> period, "statFieldId" -> statFieldId).
-      as(rowParser.*).groupByOrdered(_.externalPickeeId).map({case(internalPickeeId, v) => {
+      as(rowParser.*).groupBy(_.externalPickeeId).map({case(internalPickeeId, v) => {
       PickeeStatsOut(
         PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price),
         v.withFilter(_.limitType.isDefined).map(lim => lim.limitType.get -> lim.limitName.get).toMap,
@@ -173,24 +171,20 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     SQL(s"update pickee set price = $price where league_id = $leagueId and external_pickee_id = $externalPickeeId").executeUpdate()
   }
 
-  override def getRandomPickeesFromDifferentFactions(leagueId: Long)(implicit c: Connection): Iterable[Long] = {
+  override def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long] = {
     // TODO better name than distinct pickee
     val parser: RowParser[DistinctPickee] = Macro.namedParser[DistinctPickee](ColumnNaming.SnakeCase)
-    var seenLimits = Set[Long]()
-    var chosenOnes = Set[Long]()
     // TODO dont need get all rows
-    var pickees = SQL(
-      """select limit_id, pickee_id, pickee_name, l.max::float / team_size as ratio, random() as rando from pickee
+    val pickees = SQL"""select limit_id, pickee_id, pickee_name, l.max::float / team_size as ratio, random() as rando from pickee
         join league using(league_id)
         join pickee_limit pl using(pickee_id)
         join "limit" l using(limit_id)
-        join limit_type lt on (l.limit_type_id = lt.limit_type_id AND lt.card_generation_chance_match_faction_ratio)
-        where league.league_id = {leagueId} order by rando"""
-    ).on("leagueId" -> leagueId).as(parser.*)//.iterator
+        join limit_type lt using(limit_type_id)
+        where league.league_id = $leagueId and pickee.active order by rando""".as(parser.*)//.iterator
     if (pickees.isEmpty){
       return SQL"""select pickee_id, random() as rando from pickee
              where league_id = $leagueId order by rando
-           """.as(SqlParser.long("pickeeId").*).slice(0, 7)
+           """.as(SqlParser.long("pickeeId").*).slice(0, packSize)
     }
     val groupedPickees: Map[Long, List[DistinctPickee]] = pickees.groupBy(_.limitId)
 
@@ -214,12 +208,12 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         found
       })
     }
-    val limitIds: Map[Long, Int] = sample(groupedPickees.mapValues(_.head.ratio), 7).groupBy(identity).mapValues(_.size)
+    val limitIds: Map[Long, Int] = sample(groupedPickees.mapValues(_.head.ratio), packSize).groupBy(identity).mapValues(_.size)
     logger.error(limitIds.mkString(","))
-    val out = limitIds.map({case (limitId, count) =>
+    val out = limitIds.flatMap({case (limitId, count) =>
       logger.error(groupedPickees(limitId).mkString(","))
       groupedPickees(limitId).slice(0, count).map(_.pickeeId)
-    }).flatten
+    })
     logger.error("out")
     logger.error(out.mkString(","))
     out

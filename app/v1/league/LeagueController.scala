@@ -34,7 +34,8 @@ case class LimitTypeInput(name: String, description: Option[String], max: Option
 case class TransferInput(
                           transferLimit: Option[Int], transferWildcard: Option[Boolean],
                           forceFullTeams: Boolean, noWildcardForLateRegister: Option[Boolean], isCardSystem: Boolean,
-                          recycleValue: Option[BigDecimal], cardPackCost: Option[BigDecimal], cardPackSize: Option[Int]
+                          recycleValue: Option[BigDecimal], cardPackCost: Option[BigDecimal], cardPackSize: Option[Int],
+                          predictionWinMoney: Option[BigDecimal]
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
@@ -95,7 +96,8 @@ class LeagueController @Inject()(
           "isCardSystem" -> boolean,
           "recycleValue" -> optional(bigDecimal(10, 1)),
           "cardPackCost" -> optional(bigDecimal(10, 1)),
-          "cardPackSize" -> optional(number)
+          "cardPackSize" -> optional(number),
+          "predictionWinMoney" -> optional(bigDecimal(10, 1))
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
           "name" -> nonEmptyText,
@@ -136,7 +138,7 @@ class LeagueController @Inject()(
         )(UserFormInput.apply)(UserFormInput.unapply)),
         "apiKey" -> nonEmptyText,
         "applyPointsAtStartTime" -> default(boolean, true),
-        "url" -> optional(nonEmptyText)
+        "url" -> optional(nonEmptyText),
       )(LeagueFormInput.apply)(LeagueFormInput.unapply)
     )
   }
@@ -227,10 +229,11 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         val users = request.getQueryString("users").map(_.split(",").map(_.toLong))
         val showTeam = request.getQueryString("team").isDefined
-        val secondaryOrdering = request.getQueryString("secondary").map(_.split(",").toList.map(s => leagueRepo.getStatFieldId(request.league.leagueId, s).get))
         (for {
+          secondaryOrdering <- tryOrResponse(request.getQueryString("secondary").map(_.split(",").
+            toList.map(s => leagueRepo.getStatFieldId(request.league.leagueId, s).get)), BadRequest("Unknown secondary stat field"))
           statFieldId <- leagueRepo.getStatFieldId(request.league.leagueId, statFieldName).toRight(BadRequest("Unknown stat field"))
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          period <- tryOrResponse[Option[Int]](request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           rankings = userRepo.getRankings(request.league, statFieldId, period, users, secondaryOrdering, showTeam)
         } yield Ok(Json.toJson(rankings))).fold(identity, identity)
       }
@@ -284,7 +287,7 @@ class LeagueController @Inject()(
     def success(input: UpdatePeriodInput) = {
       db.withConnection { implicit c =>
         (for {
-          updatedPeriodId <- tryOrResponse(() => leagueRepo.updatePeriod(
+          updatedPeriodId <- tryOrResponse(leagueRepo.updatePeriod(
             leagueId, periodValue, input.start, input.end, input.multiplier, input.onStartCloseTransferWindow, input.onEndOpenTransferWindow
           ), BadRequest("Invalid leagueId or period value"))
           out = Ok(Json.toJson("Successfully updated"))

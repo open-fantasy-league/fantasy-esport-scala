@@ -233,8 +233,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     }
     logger.info("oOOooooooOOOOoooOOOooo")
     logger.info(targetedAtTstamp.toString)
-    tryOrResponse(() => {
-      leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value}, InternalServerError("Cannot add result outside of period"))
+    tryOrResponse(
+      leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value,
+      InternalServerError("Cannot add result outside of period")
+    )
   }
 
   private def getTargetedAtTstamp(targetAtTstamp: Option[LocalDateTime], startTstamp: Option[LocalDateTime], league: LeagueRow, now: LocalDateTime): LocalDateTime = {
@@ -247,26 +249,26 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
   private def newMatch(input: MatchFormInput, seriesId: Long, period: Int, targetAt: LocalDateTime, now: LocalDateTime)
                       (implicit c: Connection): Either[Result, Long] = {
-    tryOrResponse[Long](() => resultRepo.insertMatch(
+    tryOrResponse[Long](resultRepo.insertMatch(
       seriesId, period, input, now, targetAt
     ), InternalServerError("Internal server error adding match"))
   }
 
   private def newSeries(input: SeriesFormInput, league: LeagueRow, period: Int, startTstamp: LocalDateTime)
                       (implicit c: Connection): Either[Result, Long] = {
-    tryOrResponse[Long](() => resultRepo.insertSeries(
+    tryOrResponse[Long](resultRepo.insertSeries(
       league.leagueId, period, input, startTstamp
     ), InternalServerError("Internal server error adding match"))
   }
 
   private def newResults(input: MatchFormInput, league: LeagueRow, matchId: Long, pickees: List[InternalPickee])
                         (implicit c: Connection): Either[Result, Iterable[Long]] = {
-    tryOrResponseRollback(() => pickees.map(p => resultRepo.insertResult(matchId, p)), c, InternalServerError("Internal server error adding result"))
+    tryOrResponseRollback(pickees.map(p => resultRepo.insertResult(matchId, p)), c, InternalServerError("Internal server error adding result"))
   }
 
   private def newStats(league: LeagueRow, resultIds: List[Long], pickees: List[InternalPickee])
                       (implicit c: Connection): Either[Result, List[(StatsRow, Long)]] = {
-    tryOrResponseRollback(() => {
+    tryOrResponseRollback({
       // TODO tidy same code in branches
       if (league.manuallyCalculatePoints) {
         pickees.zip(resultIds).flatMap({ case (ip, resultId) => ip.stats.map(s => {
@@ -301,7 +303,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     // dont need to worry about race conditions, because we use targetat tstamp, so it always updates against a consistent team
     // i.e. transfer between update calls, cant let it add points for hafl of one team, then half of a another for other update call
     // TODO can we just remove the transfer table if we're allowing future teams, with future timespans to exist?
-    tryOrResponseRollback(() =>
+    tryOrResponseRollback(
       newStats.foreach({ case (s, pickeeId) => {
         logger.info(s"Updating stats: $s, ${s.value} for internal pickee id: $pickeeId")
         println(s"Updating stats: $s, ${s.value} for internal pickee id: $pickeeId. targeting $targetedAtTstamp")
@@ -343,7 +345,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     Future{
       db.withConnection { implicit c =>
         (for {
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          period <- tryOrResponse[Option[Int]](request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           results = resultRepo.getSeries(request.league.leagueId, period).toList
           success = Ok(Json.toJson(results))
         } yield success).fold(identity, identity)
@@ -356,7 +358,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       Future{
         (for {
           // TODO getOrElse next period?
-          period <- tryOrResponse[Option[Int]](() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          period <- tryOrResponse[Option[Int]](request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           results = db.withConnection { implicit c => resultRepo.getUserPredictions(request.user.userId, period.getOrElse(1)).toList}
           success = Ok(Json.toJson(results))
         } yield success).fold(identity, identity)

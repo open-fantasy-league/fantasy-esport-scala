@@ -57,6 +57,10 @@ object MatchRow{
         "addedTime" -> m.addedDbTstamp,
         "targetedAtTime" -> m.targetedAtTstamp,
         "matchId" -> m.externalMatchId,
+        // adding match prefix seems redundant, but avoids annoying bugs where accidentally copy paste series rather than match
+        // and dont realise as score attrs the same
+        "matchTeamOneFinalScore" -> m.matchTeamOneFinalScore,
+        "matchTeamTwoFinalScore" -> m.matchTeamTwoFinalScore
       )
     }
   }

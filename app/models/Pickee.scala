@@ -21,12 +21,21 @@ case class CardWithBonusRowAndLimits(cardId: Long, internalPickeeId: Long, exter
                             statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
                                      limitName: Option[String], limitTypeName: Option[String])
 
+case class CardWithBonusRowAndLimitsAndStats(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+                                     statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
+                                     limitName: Option[String], limitTypeName: Option[String], statFieldName2: Option[String],
+                                             period: Option[Int], value: Option[Double])
+
 object CardWithBonusRow{
   val parser: RowParser[CardWithBonusRow] = Macro.namedParser[CardWithBonusRow](ColumnNaming.SnakeCase)
 }
 
 object CardWithBonusRowAndLimits{
   val parser: RowParser[CardWithBonusRowAndLimits] = Macro.namedParser[CardWithBonusRowAndLimits](ColumnNaming.SnakeCase)
+}
+
+object CardWithBonusRowAndLimitsAndStats{
+  val parser: RowParser[CardWithBonusRowAndLimitsAndStats] = Macro.namedParser[CardWithBonusRowAndLimitsAndStats](ColumnNaming.SnakeCase)
 }
 
 object CardBonusMultiplierRow{
@@ -43,7 +52,21 @@ object CardBonusMultiplierRow{
 }
 
 case class CardOut(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
-                   bonuses: Iterable[CardBonusMultiplierRow], limits: Map[String, String])
+                   bonuses: Iterable[CardBonusMultiplierRow], limits: Map[String, String],
+                   overallStats: Map[String, Double] = Map(), recentPeriodStats: Map[Int, Map[String, Double]] = Map())
+
+// necessary as json doesnt allow numerical dict keys
+case class recentPeriodStats(period: Int, stats: Map[String, Double])
+object recentPeriodStats{
+  implicit val implicitWrites = new Writes[recentPeriodStats] {
+    def writes(t: recentPeriodStats): JsValue = {
+      Json.obj(
+        "period" -> t.period,
+        "stats" -> t.stats
+      )
+    }
+  }
+}
 
 object CardOut{
     implicit val implicitWrites = new Writes[CardOut] {
@@ -57,7 +80,11 @@ object CardOut{
           "colour" -> t.colour,
           "pickeeId" -> t.externalPickeeId,
           "bonuses" -> t.bonuses,
-          "limitTypes" -> t.limits
+          "limitTypes" -> t.limits,
+          "overallStats" -> t.overallStats,
+          "recentPeriodStats" -> t.recentPeriodStats.map({case (k, v) => {
+            recentPeriodStats(k, v)
+          }}).toList
         )
       }
     }

@@ -25,7 +25,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     Future {
       db.withConnection { implicit c =>
         (for {
-          period <- tryOrResponse(() => request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
+          period <- tryOrResponse(request.getQueryString("period").map(_.toInt), BadRequest("Invalid period format"))
           out = Ok(Json.toJson(pickeeRepo.getPickeeStat(request.league.leagueId, Option.empty[Long], period)))
         } yield out).fold(identity, identity)
       }
