@@ -21,8 +21,11 @@ class PickeeRouter @Inject()(controller: PickeeController) extends SimpleRouter 
     case POST(p"/leagues/$leagueId/updatePrices") =>
       controller.recalibratePickees(leagueId)
 
+    case POST(p"/leagues/$leagueId/updates") =>
+      controller.updatePickees(leagueId)
+
     case POST(p"/leagues/$leagueId/add") =>
-      controller.addPickee(leagueId)
+      controller.addPickees(leagueId)
 
   }
 

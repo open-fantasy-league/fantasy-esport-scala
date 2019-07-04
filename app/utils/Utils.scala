@@ -10,6 +10,8 @@ import java.io._
 import java.sql.Connection
 import java.time.format.DateTimeFormatter
 
+case class NameValueInput(name: String, value: String)
+
 object IdParser {
   def parseLongId(id: String, idName: String): Either[Result, Long] = {
     Try(id.toLong).toOption.toRight(BadRequest(f"Invalid $idName ID: $id"))

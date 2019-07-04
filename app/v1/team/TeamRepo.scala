@@ -130,7 +130,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
                     """
       }
       else{
-        extraSelects += ", null as stat_field_name_2, null as period, null as value"
+        extraSelects += ", null as stat_field_name2, null as period, null as value"
       }
     }
     else{
@@ -150,11 +150,12 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     }
     val periodValues = ((currentPeriodValue.getOrElse(0) - showLastXPeriodStats.getOrElse(0)) to currentPeriodValue.getOrElse(0)).
       filter(_ > 0).toList
+    logger.info(s"showLastXPeriodStats: ${showLastXPeriodStats.mkString("")}")
+    logger.warn(s"currentPeriodValue: ${currentPeriodValue.mkString("")}")
     val rows =
       SQL(s"""select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
         c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
-        l.name as limit_name, lt.name as limit_type_name,
-        sf2.name as stat_field_name2, psp.period, psp.value
+        l.name as limit_name, lt.name as limit_type_name
          $extraSelects
          from card c
         join pickee p using(pickee_id)
@@ -169,21 +170,25 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     rows.groupBy(_.cardId).map({
       case (cardId, v) => {
         val head = v.head
-        val limits: Map[String, String] = v.withFilter(_.limitName.isDefined).
-          map(row => row.limitTypeName.get -> row.limitName.get).toMap
+        val limits: Map[String, String] = v.filter(_.limitName.isDefined).groupBy(_.limitTypeName).
+          map({case (limitTypeName, rows) => {
+            val row = rows.head
+            limitTypeName.get -> row.limitName.get
+          }})
         // TODO hacky get or else. do i need fix?
         val recentPeriodStats: Map[Int, Map[String, Double]] = if (showOverallStats || showingRecentPeriodStats) {
-          v.groupBy(_.period.getOrElse(0)).
+          v.filter(_.period.isDefined).groupBy(_.period.get).
             mapValues(rows => rows.map(row => row.statFieldName2.get -> row.value.get).toMap)
         } else Map()
         // TODO is this most efficient way?
         val overallStats: Map[String, Double] = recentPeriodStats.getOrElse(0, Map())
+        val bonuses = v.filter(_.statFieldId.isDefined).
+          groupBy(row => (row.statFieldId.get, row.statFieldName.get, row.multiplier.get)).keys.map(t => {
+          CardBonusMultiplierRow(t._1, t._2, t._3)
+        })
         CardOut(
           cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
-          // if have multiple limits, get the bonus for each row, so need to filter them out of map to not get dupes
-          v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
-            v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
-          ), limits, overallStats, if (showingRecentPeriodStats) recentPeriodStats else Map()
+          bonuses, limits, overallStats, if (showingRecentPeriodStats) recentPeriodStats else Map()
         )
       }
     })

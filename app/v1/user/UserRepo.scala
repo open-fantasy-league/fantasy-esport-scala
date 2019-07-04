@@ -17,9 +17,8 @@ import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
-import utils.GroupByOrderedImplicit._
 
-case class Ranking(userId: Long, username: String, value: Double, rank: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]],
+case class Ranking(userId: Long, username: String, value: Double, ranking: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]],
                    showTeam: Boolean = true)
 
 case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
@@ -29,7 +28,7 @@ case class LeagueWithUser(league: LeagueRow, info: UserRow)
 case class RankingRow(
                        externalUserId: Long, username: String, userId: Long, value: Double, previousRank: Option[Int],
                        internalPickeeId: Option[Long], externalPickeeId: Option[Long],
-                       pickeeName: Option[String], price: Option[BigDecimal]
+                       pickeeName: Option[String], price: Option[BigDecimal], active: Option[Boolean], ranking: Int
                      )
 
 object LeagueWithUser {
@@ -50,7 +49,7 @@ object Ranking{
         "userId" -> ranking.userId,
         "username" -> ranking.username,
         "value" -> ranking.value,
-        "rank" -> ranking.rank,
+        "rank" -> ranking.ranking,
         "previousRank" -> ranking.previousRank,
         "team" ->  ranking.team
       )
@@ -107,14 +106,12 @@ trait UserRepo{
                    league: LeagueRow, statFieldId: Long, period: Option[Int], userIds: Option[Array[Long]],
                    secondaryOrdering: Option[List[Long]], showTeam: Boolean
                  )(implicit c: Connection): LeagueRankings
-  def userStatsAndTeamQuery(leagueId: Long, statFieldId: Long, period: Option[Int], secondaryOrdering: Option[List[Long]]
-                                 )(implicit c: Connection): Iterable[RankingRow]
   def getUserStats(
                           leagueId: Option[Long], userId: Option[Long], statFieldId: Option[Long], period: Option[Int],
                           orderByValue: Boolean
                         )(implicit c: Connection): Iterable[UserStatDailyRow]
   def getUserStatsAndTeam(
-                                 league: LeagueRow, statFieldId: Long, period: Option[Int],
+                           leagueId: Long, statFieldId: Long, period: Option[Int],
                                  secondaryOrdering: Option[List[Long]])(implicit c: Connection): Iterable[RankingRow]
   def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
@@ -216,28 +213,17 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
                             userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]], showTeam: Boolean
                           )(implicit c: Connection): LeagueRankings = {
     println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
-    val qResult = getUserStatsAndTeam(league, statFieldId, period, secondaryOrdering).toList
+    val qResult = getUserStatsAndTeam(league.leagueId, statFieldId, period, secondaryOrdering).toList
     val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
-    val stats = filteredByUsers.groupByOrdered(_.externalUserId).toList
-    //https://stackoverflow.com/a/14696410
-    var lastScore = Double.MaxValue
-    var lastScoreRank = 0
-    val userStatsAndTeam: Iterable[(RankingRow, Iterable[PickeeRow])] = stats.map({case (u, v) => {
-      val team = v.withFilter(_.internalPickeeId.isDefined).map(v2 => PickeeRow(
-        v2.internalPickeeId.get, v2.externalPickeeId.get, v2.pickeeName.get, v2.price.get)
-      )
-      (v.head, team)}
-    })
-    val rankings = userStatsAndTeam.zipWithIndex.map({case ((q, team), i) => {
-      println(f"i: $i")
-      val value = q.value
-      println(f"value: $value")
-      val rank = if (value == lastScore) lastScoreRank else i + 1
-      println(f"rank: $rank")
-      lastScore = value
-      lastScoreRank = rank
-      Ranking(q.externalUserId, q.username, value, rank, q.previousRank, if (showTeam) Some(team) else None)
-    }})
+    val stats = filteredByUsers.groupBy(_.externalUserId)
+    val rankings: Iterable[Ranking] = stats.map({case (externalUserId, rows) => {
+      val row = rows.head
+      val team = if (showTeam) Some(rows.withFilter(_.internalPickeeId.isDefined).map(v2 => PickeeRow(
+        v2.internalPickeeId.get, v2.externalPickeeId.get, v2.pickeeName.get, v2.price.get, v2.active.get)
+      )) else None
+      Ranking(externalUserId, row.username, row.value, row.ranking, row.previousRank, team)
+    }
+    }).toList.sortBy(- _.value)
 
     LeagueRankings(
       league.leagueId, league.leagueName, leagueRepo.getStatFieldName(statFieldId).get, rankings
@@ -267,57 +253,48 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
     SQL(sql).as(UserStatDailyRow.parser.*)
   }
 
-  override def userStatsAndTeamQuery(
+  override def getUserStatsAndTeam(
                                             leagueId: Long, statFieldId: Long, period: Option[Int],
                                             secondaryOrdering: Option[List[Long]]
                                           )(implicit c: Connection): Iterable[RankingRow] = {
+    // Duplicate rankings not possible as gave it an order by userId
+    // as have to use dense ranks because of multi rows for each user
     val rankingParser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
     println(period)
     val teamPeriodFilter = if (period.isDefined) "t.timespan @> {period}" else "upper(t.timespan) is NULL"
     val statPeriodFilter = if (period.isDefined) "usp.period = {period}" else "usp.period is NULL"
     val q = secondaryOrdering match {
       case None => s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank,
-                  pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, p.price from useru u
+                  pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, p.price, active,
+                  dense_rank() OVER (order by value desc, u.user_id) as ranking
+                  from useru u
                   join card c using(user_id)
            join team t on (c.card_id = t.card_id and $teamPeriodFilter)
            join pickee p using(pickee_id)
            join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
            join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
-           order by usp.value desc;
            """
       case Some(secondary) => {
         val extraJoins = secondary.map(s =>
           s"""join user_stat us$s on (us$s.user_id = u.user_id and us$s.stat_field_id = $s)
             join user_stat_period usp$s on (usd$s.user_stat_id = us$s.user_stat_id and $statPeriodFilter)
             """).mkString(" ")
-        val extraOrder = secondary.map(s => s"lusd$s.value desc").mkString(" ")
+        val extraOrder = secondary.map(s => s"lusd$s.value desc,").mkString(" ")
         s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank, pickee_id as internal_pickee_id, external_pickee_id
-            p.pickee_name, p.price from useru u
+            p.pickee_name, p.price, active,
+            dense_rank() OVER (order by value desc, $extraOrder u.user_id) as ranking
+             from useru u
              join card c using(user_id)
              join team t on (t.card_id = c.card_id and $teamPeriodFilter)
              join pickee p using(pickee_id)
              join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
              join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
              $extraJoins
-             order by usp.value desc $extraOrder;
              """
       }
     }
     println(q)
     SQL(q).on("period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
-  }
-
-  override def getUserStatsAndTeam(
-                                          league: LeagueRow, statFieldId: Long, period: Option[Int], secondaryOrdering: Option[List[Long]]
-                                        )(implicit c: Connection):
-  Iterable[RankingRow] = {
-    // hahaha. rofllwefikl!s
-    (period, leagueRepo.getCurrentPeriod(league)) match {
-      case (None, _) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, secondaryOrdering)
-      case (_, None) => this.userStatsAndTeamQuery(league.leagueId, statFieldId, None, secondaryOrdering)
-      case (Some(periodVal), Some(currentPeriod)) if periodVal == currentPeriod.value =>
-        this.userStatsAndTeamQuery(league.leagueId, statFieldId, Some(periodVal),secondaryOrdering)
-    }
   }
 
   override def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit = {

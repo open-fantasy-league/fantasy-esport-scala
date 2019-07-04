@@ -10,7 +10,7 @@ case class StatDailyRow(
                                    period: Option[Int]
                                  )
 
-case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal)
+case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, active: Boolean)
 
 case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, multiplier: Double)
 
@@ -90,10 +90,12 @@ object CardOut{
     }
 }
 
-case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: String, limitName: String, max: Int)
+case class PickeeLimitsRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal,
+                           active: Boolean, limitType: Option[String], limitName: Option[String], max: Option[Int])
 
 case class PickeeLimitsAndStatsRow(
-                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, limitType: Option[String],
+                                    internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal,
+                                    active: Boolean, limitType: Option[String],
                                     limitName: Option[String], max: Option[Int], statFieldName: String, value: Double, previousRank: Int)
 case class CardRow(cardId: Long, userId: Long, pickeeId: Long, colour: String)
 
@@ -108,7 +110,8 @@ object PickeeRow {
       Json.obj(
         "id" -> x.externalPickeeId,
         "name" -> x.pickeeName,
-        "price" -> x.price
+        "price" -> x.price,
+        "active" -> x.active
       )
     }
   }

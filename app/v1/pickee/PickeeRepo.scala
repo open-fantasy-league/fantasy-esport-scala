@@ -11,6 +11,7 @@ import anorm._
 import anorm.{Macro, RowParser}
 import Macro.ColumnNaming
 import play.api.Logger
+import utils.NameValueInput
 
 class PickeeExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -19,6 +20,8 @@ case class PickeeFormInput(id: Long, name: String, value: BigDecimal, active: Bo
 case class RepricePickeeFormInput(id: Long, price: BigDecimal)
 
 case class RepricePickeeFormInputList(isInternalId: Boolean, pickees: List[RepricePickeeFormInput])
+
+case class UpdatePickeeFormInput(id: Long, active: Option[Boolean], limitTypes: List[NameValueInput])
 
 case class PickeeLimitsOut(pickee: PickeeRow, limits: Map[String, String])
 
@@ -31,6 +34,7 @@ object PickeeLimitsOut {
         "id" -> x.pickee.externalPickeeId,
         "name" -> x.pickee.pickeeName,
         "price" -> x.pickee.price,
+        "active" -> x.pickee.active,
         "limitTypes" -> x.limits,
       )
     }
@@ -46,6 +50,9 @@ trait PickeeRepo{
   def insertPickeeLimits(
                           pickees: Iterable[PickeeFormInput], newPickeeIds: Seq[Long], limitNamesToIds: Map[String, Long]
                         )(implicit c: Connection): Unit
+  def addLimitToPickee(
+                        leagueId: Long, pickeeId: Long, limitNames: List[String]
+                      )(implicit c: Connection): Unit
   def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow]
   def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut]
   def getPickeeLimits(pickeeId: Long)(implicit c: Connection): PickeeLimitsOut
@@ -55,6 +62,8 @@ trait PickeeRepo{
                    )(implicit c: Connection): Iterable[PickeeStatsOut]
   def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long]
   def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long
+  def updateInactive(leagueId: Long, externalPickeeId: Long, setTo: Boolean)(implicit c: Connection): Long
+  def updateLimits(leagueId: Long, externalPickeeId: Long, updatedLimits: List[NameValueInput])(implicit c: Connection)
   def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long]
   def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
 }
@@ -93,15 +102,27 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     })
   }
 
+  override def addLimitToPickee(
+                                   leagueId: Long, pickeeId: Long, limitNames: List[String]
+                                 )(implicit c: Connection): Unit = {
+    limitNames.foreach(x => {
+      SQL"""insert into pickee_limit(limit_id, pickee_id) values (
+            (select limit_id from "limit" l join limit_type using(limit_type_id) where league_id = $leagueId AND l.name = $x LIMIT 1),
+            $pickeeId
+        returning pickee_limit_id
+        """.executeInsert().get
+    })
+  }
+
   override def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
-    SQL(s"select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price from pickee where league_id = $leagueId;").as(PickeeRow.parser.*)
+    SQL(s"select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price, active from pickee where league_id = $leagueId;").as(PickeeRow.parser.*)
  }
 
 
   override def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut] = {
     val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
     SQL(
-      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, active, lt.name as limit_type, l.name as limit_name,
          |coalesce(lt.max, l.max) as "max"
         |from pickee p
         |left join pickee_limit pl using(pickee_id)
@@ -109,15 +130,15 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         |left join limit_type lt using(limit_type_id)
         |where p.league_id = $leagueId;""".stripMargin).as(rowParser.*).groupBy(_.internalPickeeId).map({case(internalPickeeId, v) => {
       PickeeLimitsOut(PickeeRow(
-        internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price
-      ), v.map(lim => lim.limitType -> lim.limitName).toMap)
+        internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price, v.head.active
+      ), v.withFilter(_.limitType.isDefined).map(lim => lim.limitType.get -> lim.limitName.get).toMap)
     }})
   }
 
   override def getPickeeLimits(pickeeId: Long)(implicit c: Connection): PickeeLimitsOut = {
     val rowParser: RowParser[PickeeLimitsRow] = Macro.namedParser[PickeeLimitsRow](ColumnNaming.SnakeCase)
     val rows = SQL(
-      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+      s"""select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, active, lt.name as limit_type, l.name as limit_name,
          | coalesce(lt.max, l.max) as "max"
          |from pickee p
          |left join pickee_limit using(pickee_id)
@@ -125,8 +146,8 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
          |left join limit_type lt using(limit_type_id)
          |where pickee_id = $pickeeId;""".stripMargin).as(rowParser.*)
       PickeeLimitsOut(PickeeRow(
-        rows.head.internalPickeeId, rows.head.externalPickeeId, rows.head.pickeeName, rows.head.price
-      ), rows.map(lim => lim.limitType -> lim.limitName).toMap)
+        rows.head.internalPickeeId, rows.head.externalPickeeId, rows.head.pickeeName, rows.head.price, rows.head.active
+      ), rows.withFilter(_.limitType.isDefined).map(lim => lim.limitType.get -> lim.limitName.get).toMap)
   }
 
   override def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long] = {
@@ -142,7 +163,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     //order by p.price desc
     SQL(
       """
-        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, lt.name as limit_type, l.name as limit_name,
+        |select pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, price, active, lt.name as limit_type, l.name as limit_name,
         |coalesce(lt.max, l.max) as "max",
         |sf.name as stat_field_name, psd.value, ps.previous_rank
         |from pickee p join pickee_stat ps using(pickee_id) join pickee_stat_period psd using(pickee_stat_id)
@@ -153,7 +174,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       """.stripMargin).on("leagueId" -> leagueId, "period" -> period, "statFieldId" -> statFieldId).
       as(rowParser.*).groupBy(_.externalPickeeId).map({case(internalPickeeId, v) => {
       PickeeStatsOut(
-        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price),
+        PickeeRow(internalPickeeId, v.head.externalPickeeId, v.head.pickeeName, v.head.price, v.head.active),
         v.withFilter(_.limitType.isDefined).map(lim => lim.limitType.get -> lim.limitName.get).toMap,
       v.map(s => s.statFieldName -> s.value).toMap
       )
@@ -161,14 +182,31 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getInternalId(leagueId: Long, externalPickeeId: Long)(implicit c: Connection): Option[Long] = {
-    SQL(
-      s"select pickee_id from pickee where league_id = $leagueId and external_pickee_id = $externalPickeeId;"
-    ).as(SqlParser.long("pickee_id").singleOpt)
+    SQL"select pickee_id from pickee where league_id = $leagueId and external_pickee_id = $externalPickeeId"
+      .as(SqlParser.long("pickee_id").singleOpt)
   }
 
   // TODO bulk func
   override def updatePrice(leagueId: Long, externalPickeeId: Long, price: BigDecimal)(implicit c: Connection): Long = {
-    SQL(s"update pickee set price = $price where league_id = $leagueId and external_pickee_id = $externalPickeeId").executeUpdate()
+    SQL"update pickee set price = $price where league_id = $leagueId and external_pickee_id = $externalPickeeId".executeUpdate()
+  }
+
+  override def updateInactive(leagueId: Long, externalPickeeId: Long, setTo: Boolean)(implicit c: Connection): Long = {
+    SQL"update pickee set active = $setTo where league_id = $leagueId and external_pickee_id = $externalPickeeId".executeUpdate()
+  }
+
+  override def updateLimits(leagueId: Long, externalPickeeId: Long, updatedLimits: List[NameValueInput])(implicit c: Connection) = {
+    updatedLimits.foreach(x => {
+      SQL"""
+        update pickee_limit pl set limit_id = l2.limit_id
+        from "limit" l
+        join limit_type lt using(limit_type_id)
+        join "limit" l2 on (l2.limit_type_id = lt.limit_type_id AND l2.name = ${x.value})
+        where l.limit_id = pl.limit_id AND
+         pl.pickee_id = (select pickee_id from pickee where league_id = $leagueId and external_pickee_id = $externalPickeeId limit 1)
+         AND lt.name = ${x.name}
+        """.executeUpdate()
+    })
   }
 
   override def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long] = {

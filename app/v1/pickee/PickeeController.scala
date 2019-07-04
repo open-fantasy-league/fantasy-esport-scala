@@ -10,6 +10,7 @@ import play.api.libs.json._
 import play.api.data.format.Formats._
 import play.api.db.Database
 import utils.TryHelper.tryOrResponse
+import utils.NameValueInput
 import auth.{LeagueAction, AuthAction, Auther}
 import v1.league.LeagueRepo
 
@@ -45,8 +46,24 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     )
   }
 
-  private val newPickeeForm: Form[PickeeFormInput] = {
+  private val updateForm: Form[List[UpdatePickeeFormInput]] = {
+    Form(
+      list(
+          mapping(
+            "id" -> of(longFormat), "active" -> optional(boolean),
+            "limitTypes" -> list(mapping(
+              "name" -> nonEmptyText,
+              "value" -> nonEmptyText
+            )(utils.NameValueInput.apply)(utils.NameValueInput.unapply))
+          )
+          (UpdatePickeeFormInput.apply)(UpdatePickeeFormInput.unapply)
+        )
+    )
+  }
+
+  private val newPickeeForm: Form[List[PickeeFormInput]] = {
       Form(
+        list(
         mapping(
           "id" -> of(longFormat),
           "name" -> nonEmptyText,
@@ -54,6 +71,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
           "active" -> default(boolean, true),
           "limits" -> list(nonEmptyText)
           )(PickeeFormInput.apply)(PickeeFormInput.unapply)
+        )
       )
   }
 
@@ -79,18 +97,45 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     repriceForm.bindFromRequest().fold(failure, success)
   }
 
-  def addPickee(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+  def updatePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
 
-    def failure(badForm: Form[PickeeFormInput]) = {
+    def failure(badForm: Form[List[UpdatePickeeFormInput]]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
-    def success(input: PickeeFormInput) = {
+    def success(inputs: List[UpdatePickeeFormInput]) = {
+      Future {
+        val leagueId = request.league.leagueId
+        db.withConnection { implicit c =>
+          inputs.withFilter(_.active.isDefined).foreach(x => pickeeRepo.updateInactive(leagueId, x.id, x.active.get))
+          inputs.withFilter(_.limitTypes.nonEmpty).foreach(x => pickeeRepo.updateLimits(leagueId, x.id, x.limitTypes))
+//          val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
+//          leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
+//            pickeeRepo.updatePrice(leagueId, p.externalPickeeId, pickees(p.externalPickeeId).price)
+//          })
+          // TODO print out pickees that changed
+          Ok("Successfully updated pickees")
+        }
+      }
+    }
+    updateForm.bindFromRequest().fold(failure, success)
+  }
+
+  def addPickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+
+    def failure(badForm: Form[List[PickeeFormInput]]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(inputs: List[PickeeFormInput]) = {
       Future {
         db.withConnection { implicit c =>
             // TODO print out pickees that changed
+          Created(Json.toJson(inputs.map(input => {
             val newPickeeId = pickeeRepo.insertPickee(request.league.leagueId, input)
-            Created(s"{'id': $newPickeeId}")
+            pickeeRepo.addLimitToPickee(request.league.leagueId, newPickeeId, input.limits)
+            newPickeeId
+          })))
         }
       }
     }
