@@ -22,7 +22,8 @@ case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Option[Long], 
                          matchStartTstamp: Option[LocalDateTime], addedDbTstamp: Option[LocalDateTime],
                          targetedAtTstamp: Option[LocalDateTime], period: Int, resultId: Option[Long], isTeamOne: Option[Boolean],
                          statsValue: Option[Double],
-                         statFieldName: Option[String], externalPickeeId: Option[Long], pickeeName: Option[String], pickeePrice: Option[BigDecimal])
+                         statFieldName: Option[String], statFieldDescription: Option[String],
+                         externalPickeeId: Option[Long], pickeeName: Option[String], pickeePrice: Option[BigDecimal])
 
 
 trait ResultRepo{
@@ -61,6 +62,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         ser.series_team_one_final_score, ser.series_team_two_final_score, m.match_team_one_final_score, m.match_team_two_final_score,
         ser.tournament_id, m.start_tstamp as match_start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
         m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
+        sf.description as stat_field_description,
         pck.external_pickee_id,
         pck.pickee_name, pck.price as pickee_price
         from series ser left join matchu m using(series_id) left join resultu r using(match_id)

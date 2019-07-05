@@ -1,7 +1,6 @@
 package v1.league
 
 import java.io.{PrintWriter, StringWriter}
-import java.sql.Connection
 import java.time.LocalDateTime
 
 import javax.inject.Inject
@@ -40,7 +39,7 @@ case class TransferInput(
 
 case class FactionSpecificScoring(name: String, value: Double)
 case class StatInput(
-                      name: String, allFactionPoints: Option[Double], noCardBonus: Boolean,
+                      name: String, description: Option[String], allFactionPoints: Option[Double], noCardBonus: Boolean,
                       separateFactionPoints: List[FactionSpecificScoring]
                     )
 
@@ -116,6 +115,7 @@ class LeagueController @Inject()(
         "stats" -> list(mapping(
           // TODO find how to put dynamic mappings into play input
           "name" -> nonEmptyText,
+          "description" -> optional(nonEmptyText),
           "allFactionPoints" -> optional(of(doubleFormat)),
           "noCardBonus" -> default(boolean, value=false),
           "separateFactionPoints" -> list(mapping(
@@ -319,10 +319,10 @@ class LeagueController @Inject()(
             val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
             pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
 
-            val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points")
+            val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points", None)
             val statFieldIds = List(pointsFieldId) ++ input.stats.map({
               es => {
-                val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name)
+                val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name, es.description)
                 if (!input.manuallyCalculatePoints) {
                   if (es.allFactionPoints.isDefined) {
                     leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get, es.noCardBonus)

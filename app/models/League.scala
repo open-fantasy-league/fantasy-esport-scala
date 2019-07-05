@@ -43,6 +43,7 @@ case class DetailedLeagueRow(
                             currentPeriodOnStartCloseTransferWindow: Option[Boolean],
                             currentPeriodOnEndOpenTransferWindow: Option[Boolean],
                              statFieldName: Option[String],
+                            statFieldDescription: Option[String],
                              limitTypeName: Option[String],
                              description: Option[String],
                              limitName: Option[String],
@@ -154,7 +155,7 @@ case class LeagueRow(leagueId: Long,
                      predictionWinMoney: Option[BigDecimal] = None
 )
 
-case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String)
+case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String, description: Option[String])
 
 case class LimitRow(name: String, max: Int)
 

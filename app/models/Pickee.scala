@@ -12,19 +12,19 @@ case class StatDailyRow(
 
 case class PickeeRow(internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, active: Boolean)
 
-case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, multiplier: Double)
+case class CardBonusMultiplierRow(statFieldId: Long, statFieldName: String, multiplier: Double, statFieldDescription: Option[String]=None)
 
 case class CardWithBonusRow(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
-                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double])
+                   statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double], statFieldDescription: Option[String]=None)
 
 case class CardWithBonusRowAndLimits(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                             statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
-                                     limitName: Option[String], limitTypeName: Option[String])
+                                     limitName: Option[String], limitTypeName: Option[String], statFieldDescription: Option[String]=None)
 
 case class CardWithBonusRowAndLimitsAndStats(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                                      statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
                                      limitName: Option[String], limitTypeName: Option[String], statFieldName2: Option[String],
-                                             period: Option[Int], value: Option[Double])
+                                             period: Option[Int], value: Option[Double], statFieldDescription: Option[String]=None)
 
 object CardWithBonusRow{
   val parser: RowParser[CardWithBonusRow] = Macro.namedParser[CardWithBonusRow](ColumnNaming.SnakeCase)
@@ -45,6 +45,7 @@ object CardBonusMultiplierRow{
         // TODO conditionally dont print colour/price if/not-if card
         "statFieldId" -> t.statFieldId,
         "name" -> t.statFieldName,
+        "description" -> t.statFieldDescription,
         "multiplier" ->  Utils.trunc(t.multiplier, 2),
       )
     }
@@ -124,7 +125,7 @@ case class TeamRow(externalUserId: Long, username: String, userId: Long, start: 
                    externalPickeeId: Long, pickeeName: String,
                    pickeePrice: BigDecimal, colour: String,
                    statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
-                   limitName: Option[String], limitTypeName: Option[String]
+                   limitName: Option[String], limitTypeName: Option[String], statFieldDescription: Option[String] = None
                   )
 
 

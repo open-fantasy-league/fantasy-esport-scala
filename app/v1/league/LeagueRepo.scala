@@ -17,9 +17,22 @@ import models._
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
+case class NameAndDescription(name: String, description: Option[String])
+
+object NameAndDescription{
+  implicit val implicitWrites = new Writes[NameAndDescription] {
+    def writes(x: NameAndDescription): JsValue = {
+      Json.obj(
+        "name" -> x.name,
+        "description" -> x.description
+      )
+    }
+  }
+}
+
 case class LeagueFull(
                        league: PublicLeagueRow, limits: Map[String, Iterable[LimitRow]], periods: Iterable[PeriodRow],
-                       currentPeriod: Option[PeriodRow], statFields: Iterable[String], scoring: Map[String, Map[String, Double]])
+                       currentPeriod: Option[PeriodRow], statFields: Iterable[NameAndDescription], scoring: Map[String, Map[String, Double]])
 
 object LeagueFull{
   implicit val implicitWrites = new Writes[LeagueFull] {
@@ -69,7 +82,7 @@ trait LeagueRepo{
   def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def getScoringStatFieldsForPickee(leagueId: Long, pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def isStarted(league: LeagueRow): Boolean
-  def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long
+  def insertStatField(leagueId: Long, name: String, description: Option[String])(implicit c: Connection): Long
   def insertLeaguePrize(leagueId: Long, description: String, email: String)(implicit c: Connection): Long
   def insertPeriod(leagueId: Long, input: PeriodInput, period: Int, nextPeriodId: Option[Long])(implicit c: Connection): Long
   def insertScoringField(statFieldId: Long, limitId: Option[Long], value: Double, noCardBonus: Boolean)(implicit c: Connection): Long
@@ -132,9 +145,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }
     if (showStatfields){
       extraJoins += " left join stat_field sf on(l.league_id = sf.league_id) "
-      extraSelects += ",sf.name as stat_field_name"
+      extraSelects += ",sf.name as stat_field_name, sf.description as stat_field_description"
     } else {
-      extraSelects += ",null as stat_field_name"
+      extraSelects += ",null as stat_field_name, null as stat_field_description"
     }
     if (showLimits){
       extraJoins += """  left join limit_type lt on(l.league_id = lt.league_id)  left join "limit" lim using(limit_type_id) """
@@ -303,10 +316,10 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     SQL(q).on("leagueId" -> leagueId, "description" -> description, "email" -> email).executeInsert().get
   }
 
-  override def insertStatField(leagueId: Long, name: String)(implicit c: Connection): Long = {
+  override def insertStatField(leagueId: Long, name: String, description: Option[String])(implicit c: Connection): Long = {
     println("inserting stat field")
-    val q = "insert into stat_field(league_id, name) values ({leagueId}, {name}) returning stat_field_id;"
-    val out = SQL(q).on("leagueId" -> leagueId, "name" -> name).executeInsert().get
+    val q = "insert into stat_field(league_id, name, description) values ({leagueId}, {name}, {description}) returning stat_field_id;"
+    val out = SQL(q).on("leagueId" -> leagueId, "name" -> name, "description" -> description).executeInsert().get
     println("inserted stat field")
     out
   }
@@ -387,7 +400,8 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
                                             showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean
                                            ): LeagueFull = {
     val league =  PublicLeagueRow.fromDetailedRow(rows.head)
-    val statFields = if (showStatfields) rows.flatMap(_.statFieldName).toSet else Set[String]()
+    val statFields = if (showStatfields) rows.withFilter(_.statFieldName.isDefined).
+      map(r => NameAndDescription(r.statFieldName.get, r.statFieldDescription)).toSet else Set[NameAndDescription]()
     //TODO sort
     val periods: Iterable[PeriodRow] = if (showPeriods) rows.groupBy(_.periodValue).map({ case (k, v) =>
       val r = v.head

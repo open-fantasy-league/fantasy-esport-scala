@@ -50,7 +50,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     println(s"TIIIIIIIIIIME: $period")
     val q =
       """select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
-          c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+          c.colour, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description, cbm.multiplier,
           l.name as limit_name, lt.name as limit_type_name
            from team t
          join card c using(card_id)
@@ -70,7 +70,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
       CardOut(
         cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
         v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
-          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
+          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get, v2.statFieldDescription)
         ), limits
       )
     }})
@@ -84,7 +84,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     // TODO transfer delay for in-period new users
     val q =
       """select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
-          c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+          c.colour, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description, cbm.multiplier,
           l.name as limit_name, lt.name as limit_type_name
            from team t
          join card c using(card_id)
@@ -106,7 +106,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
       CardOut(
         cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
         v.withFilter(row => row.multiplier.isDefined && row.limitName == head.limitName).map(
-          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
+          v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get, v2.statFieldDescription)
         ), limits
       )
     }})
@@ -154,7 +154,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     logger.warn(s"currentPeriodValue: ${currentPeriodValue.mkString("")}")
     val rows =
       SQL(s"""select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
-        c.colour, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+        c.colour, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description, cbm.multiplier,
         l.name as limit_name, lt.name as limit_type_name
          $extraSelects
          from card c
@@ -183,8 +183,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
         // TODO is this most efficient way?
         val overallStats: Map[String, Double] = recentPeriodStats.getOrElse(0, Map())
         val bonuses = v.filter(_.statFieldId.isDefined).
-          groupBy(row => (row.statFieldId.get, row.statFieldName.get, row.multiplier.get)).keys.map(t => {
-          CardBonusMultiplierRow(t._1, t._2, t._3)
+          groupBy(row => (row.statFieldId.get, row.statFieldName.get, row.multiplier.get, row.statFieldDescription)).keys.map(t => {
+          CardBonusMultiplierRow(t._1, t._2, t._3, t._4)
         })
         CardOut(
           cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
@@ -198,7 +198,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     val q =
       """select c.card_id, u.external_user_id, u.username, user_id, lower(t.timespan) as start, upper(t.timespan) as "end",
         true, p.pickee_id as internal_pickee_id, p.external_pickee_id, c.colour,
-        p.pickee_name, p.price as pickee_price, sf.stat_field_id, sf.name as stat_field_name, cbm.multiplier,
+        p.pickee_name, p.price as pickee_price, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description,
+        cbm.multiplier,
         l.name as limit_name, lt.name as limit_type_name
         from team t
         join card c using(card_id)
@@ -228,7 +229,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
             cardId, head2.internalPickeeId, head2.externalPickeeId, head2.pickeeName, head2.pickeePrice, head2.colour,
             // if have multiple limits, get the bonus for each row, so need to filter them out of map to not get dupes
             rows.withFilter(row => row.multiplier.isDefined && row.limitName == head2.limitName).map(
-              v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get)
+              v2 => CardBonusMultiplierRow(v2.statFieldId.get, v2.statFieldName.get, v2.multiplier.get, v2.statFieldDescription)
             ), limits
           )
         }))
