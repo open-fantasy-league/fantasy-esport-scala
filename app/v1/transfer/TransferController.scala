@@ -96,16 +96,19 @@ class TransferController @Inject()(
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
-      (for {
-        cardIdLong <- IdParser.parseLongId(cardId, "card id")
-        succeeded <- db.withTransaction { implicit c =>
-          tryOrResponseRollback(transferRepo.recycleCard(
-            request.league.leagueId, request.user.userId, cardIdLong, request.league.recycleValue.get
-          ), c,
-            InternalServerError("Something went wrong recycling card"))
-        }
-        out <- if(succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
-      } yield out).fold(identity, identity)
+      db.withTransaction { implicit c =>
+        (for {
+          cardIdLong <- IdParser.parseLongId(cardId, "card id")
+          _ <- if (teamRepo.cardInTeam(cardIdLong, leagueRepo.getCurrentPeriod(request.league).map(_.value)))
+            Left(BadRequest("Cannot recycle as currently in team")) else Right(true)
+          succeeded <-
+            tryOrResponseRollback(transferRepo.recycleCard(
+              request.league.leagueId, request.user.userId, cardIdLong, request.league.recycleValue.get
+            ), c,
+              InternalServerError("Something went wrong recycling card"))
+          out <- if (succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
+        } yield out).fold(identity, identity)
+      }
     }
   }
 
