@@ -21,8 +21,8 @@ import v1.team.TeamRepo
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 
-case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean, applyStart: Option[LocalDateTime],
-                             applyEnd: Option[LocalDateTime], applyStartPeriod: Option[Int], applyEndPeriod: Option[Int])
+case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean, wildcard: Boolean,
+                             applyStartPeriod: Option[Int], applyEndPeriod: Option[Int], overrideLimitChecks: Boolean)
 
 case class TransferSuccess(updatedMoney: BigDecimal, remainingTransfers: Option[Int])
 
@@ -51,11 +51,9 @@ class TransferController @Inject()(
     "sell" -> default(list(of(longFormat)), List()),
     "isCheck" -> boolean,
     "wildcard" -> default(boolean, false),
-      "applyStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
-      "applyEnd" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
       "applyStartPeriod" -> optional(number),
-      "applyEndPeriod" -> optional(number)
-    //  "delaySeconds" -> optional(number)
+      "applyEndPeriod" -> optional(number),
+    "overrideLimitChecks" -> default(boolean, false)
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
   }
@@ -152,7 +150,7 @@ class TransferController @Inject()(
               _ = println(s"newTeamCardIds: ${newTeamCardIds.mkString(",")}")
               newTeamPickeeIdsSet <- validateUniquePickees(newTeamPickeeIdsList)
               _ <- updatedTeamSize(newTeamPickeeIdsSet, league.teamSize, input.isCheck, league.forceFullTeams)
-              _ <- validateLimits(newTeamPickeeIdsSet, league.leagueId)
+              _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamPickeeIdsSet, league.leagueId)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(user.money, None)))) else
                 updateDBCardTransfer(
                   sell, buy, currentTeamIds, user, periodStart, periodEnd, userIsLateStart
@@ -186,7 +184,7 @@ class TransferController @Inject()(
             newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
             _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
             _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
-            _ <- validateLimits(newTeamIds, league.leagueId)
+            _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamIds, league.leagueId)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
               updateDBTransfer(
                 league.leagueId, sellOrWildcard, buy, pickees, user,
