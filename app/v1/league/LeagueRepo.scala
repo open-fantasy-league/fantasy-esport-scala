@@ -226,7 +226,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         |url, url_verified, current_period_id, apply_points_at_start_time,
         |is_card_system, prediction_win_money) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription},
-        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, null,
+        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, false, null,
         |  {applyPointsAtStartTime}, {cardSystem}, {predictionWinMoney}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
