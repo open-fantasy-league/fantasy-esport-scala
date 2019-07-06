@@ -107,6 +107,7 @@ trait LeagueRepo{
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
   def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
   def getStatFieldName(statFieldId: Long)(implicit c: Connection): Option[String]
+  def getStatField(statFieldId: Long)(implicit c: Connection): Option[LeagueStatFieldRow]
   def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double]
   def getScoringRules(leagueId: Long)(implicit c: Connection): Iterable[ScoringRow]
 }
@@ -199,8 +200,14 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
 
   override def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
     val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
-    val q = s"select stat_field_id, league_id, name from stat_field where league_id = $leagueId;"
+    val q = s"select stat_field_id, league_id, name, description from stat_field where league_id = $leagueId;"
     SQL(q).as(lsfParser.*)
+  }
+
+  override def getStatField(statFieldId: Long)(implicit c: Connection): Option[LeagueStatFieldRow] = {
+    val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
+    val q = s"select stat_field_id, league_id, name, description from stat_field where stat_field_id = $statFieldId;"
+    SQL(q).as(lsfParser.singleOpt)
   }
 
   override def getScoringStatFieldsForPickee(leagueId: Long, pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow] = {
@@ -209,7 +216,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val lsfParser: RowParser[LeagueStatFieldRow] = Macro.namedParser[LeagueStatFieldRow](ColumnNaming.SnakeCase)
     // todo handle safely for if people do put 0.0 values in?
     SQL"""
-           select stat_field_id, stat_field.league_id, stat_field.name from stat_field join scoring s using(stat_field_id)
+           select stat_field_id, stat_field.league_id, stat_field.name, stat_field.description from stat_field join scoring s using(stat_field_id)
            left join "limit" lim using(limit_id)
            left join pickee_limit using(limit_id)
            left join pickee using(pickee_id)
