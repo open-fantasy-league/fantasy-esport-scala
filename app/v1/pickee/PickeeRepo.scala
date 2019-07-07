@@ -25,8 +25,6 @@ case class UpdatePickeeFormInput(id: Long, active: Option[Boolean], limitTypes: 
 
 case class PickeeLimitsOut(pickee: PickeeRow, limits: Map[String, String])
 
-case class DistinctPickee(pickeeId: Long, limitId: Long, pickeeName: String, ratio: Double)
-
 object PickeeLimitsOut {
   implicit val implicitWrites = new Writes[PickeeLimitsOut] {
     def writes(x: PickeeLimitsOut): JsValue = {
@@ -210,60 +208,12 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
   }
 
   override def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long] = {
-    // TODO better name than distinct pickee
-    val parser: RowParser[DistinctPickee] = Macro.namedParser[DistinctPickee](ColumnNaming.SnakeCase)
     // TODO dont need get all rows
-    val pickees = SQL"""select limit_id, pickee_id, pickee_name, l.max::float / team_size as ratio, random() as rando from pickee
-        join league using(league_id)
-        join pickee_limit pl using(pickee_id)
-        join "limit" l using(limit_id)
-        join limit_type lt using(limit_type_id)
-        where league.league_id = $leagueId and pickee.active order by rando""".as(parser.*)//.iterator
-    if (pickees.isEmpty){
-      return SQL"""select pickee_id, random() as rando from pickee
-             where league_id = $leagueId order by rando
-           """.as(SqlParser.long("pickeeId").*).slice(0, packSize)
-    }
-    val groupedPickees: Map[Long, List[DistinctPickee]] = pickees.groupBy(_.limitId)
-
-    def sample[A](dist: Map[A, Double], numSamples: Int): Seq[A] = {
-      (0 until numSamples).flatMap(_ => {
-        logger.error(dist.mkString(","))
-        val p = scala.util.Random.nextDouble
-        val it = dist.iterator
-        var accum = 0.0
-        var found: Option[A] = None
-        while (it.hasNext && found.isEmpty) {
-          val (item, itemProb) = it.next
-          logger.error(itemProb.toString)
-          logger.error(p.toString)
-          logger.error(item.toString)
-          accum += itemProb
-          if (accum >= p)
-            // return so that we don't have to search through the whole distribution
-            found = Some(item)
-        }
-        found
-      })
-    }
-    val limitIds: Map[Long, Int] = sample(groupedPickees.mapValues(_.head.ratio), packSize).groupBy(identity).mapValues(_.size)
-    logger.error(limitIds.mkString(","))
-    val out = limitIds.flatMap({case (limitId, count) =>
-      logger.error(groupedPickees(limitId).mkString(","))
-      groupedPickees(limitId).slice(0, count).map(_.pickeeId)
-    })
-    logger.error("out")
-    logger.error(out.mkString(","))
-    out
-//    while (chosenOnes.size < 7){
-//      val nextPickee = pickees.next()
-//      logger.info(s"pickee: ${nextPickee.pickeeId}, limit: ${nextPickee.limitId}")
-//      if (!seenLimits.contains(nextPickee.limitId)){
-//        chosenOnes = chosenOnes + nextPickee.pickeeId
-//        seenLimits = seenLimits + nextPickee.limitId
-//      }
-//    }
-//    chosenOnes
+    // although this isnt most efficient, its hard work to be efficient, whilst also filtering on league and active
+    // and this isnt even that slow for the table size.
+    SQL"""select pickee_id from pickee where league_id = $leagueId AND pickee.active
+          order by random() limit $packSize
+      """.as(SqlParser.long("pickee_id").*)
   }
 
   override def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow] = {
