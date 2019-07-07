@@ -56,6 +56,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
           .executeUpdate()
       }
       else{
+        SQL"""delete from team where lower(timespan) = $periodStart AND card_id in ($toSellCardIds)""".executeUpdate()
         val q =
           """update team set timespan = int4range(lower(timespan), {periodStart}) where card_id in ({toSellIds})
             |AND timespan @> int4range({periodStart}, {periodEnd})""".stripMargin
@@ -73,7 +74,6 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   }
 
   override def pickeeLimitsInvalid(leagueId: Long, newTeamIds: Set[Long])(implicit c: Connection): Option[(String, Int)] = {
-    // TODO need to check this againbst something. doesnt work right now
     if (newTeamIds.isEmpty) return None
     val parser =
       (SqlParser.str("name") ~ SqlParser.int("limmax")).map {
