@@ -107,6 +107,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
       SQL"""insert into pickee_limit(limit_id, pickee_id) values (
             (select limit_id from "limit" l join limit_type using(limit_type_id) where league_id = $leagueId AND l.name = $x LIMIT 1),
             $pickeeId
+         )
         returning pickee_limit_id
         """.executeInsert().get
     })
