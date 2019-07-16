@@ -51,7 +51,7 @@ case class StatsFormInput(field: String, value: Double)
 
 case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
-case class FindByTeamsFormInput(teamOne: String, teamTwo: String)
+case class FindByTeamsFormInput(teamOne: String, teamTwo: String, includeReversedTeams: Boolean)
 
 case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
 case class PredictionsFormInput(predictions: List[PredictionFormInput])
@@ -108,7 +108,8 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   private val findByTeamsForm: Form[FindByTeamsFormInput] = {
     Form(mapping(
       "teamOne" -> nonEmptyText,
-      "teamTwo" -> nonEmptyText
+      "teamTwo" -> nonEmptyText,
+      "includeReversedTeams" -> default(boolean, false)
     )(FindByTeamsFormInput.apply)(FindByTeamsFormInput.unapply))
   }
 
@@ -408,7 +409,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       def success(input: FindByTeamsFormInput) = {
         Future {
           val match_ = db.withConnection { implicit c => resultRepo.findSeriesByTeams(
-            request.league.leagueId, input.teamOne, input.teamTwo
+            request.league.leagueId, input.teamOne, input.teamTwo, input.includeReversedTeams
           )}
           Ok(Json.toJson(match_))
         }

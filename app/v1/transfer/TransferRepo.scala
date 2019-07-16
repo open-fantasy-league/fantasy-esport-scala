@@ -14,7 +14,7 @@ import v1.pickee.PickeeRepo
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait TransferRepo{
-  def getUserTransfer(userId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow]
+  def getUserTransfer(userId: Long)(implicit c: Connection): Iterable[TransferRow]
   def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
                  oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]
                 )(implicit c: Connection): Unit
@@ -33,14 +33,13 @@ trait TransferRepo{
 
 @Singleton
 class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferExecutionContext, leagueRepo: LeagueRepo) extends TransferRepo{
-  override def getUserTransfer(userId: Long, processed: Option[Boolean])(implicit c: Connection): Iterable[TransferRow] = {
-    val processedFilter = if (processed.isEmpty) "" else s"and processed = ${processed.get}"
+  override def getUserTransfer(userId: Long)(implicit c: Connection): Iterable[TransferRow] = {
     SQL(
       s"""
         |select transfer_id, user_id, p.pickee_id as internal_pickee_id, p.external_pickee_id,
         | p.pickee_name, is_buy,
-        | time_made, scheduled_for, processed, transfer.price, was_wildcard
-        | from transfer join pickee p using(pickee_id) where user_id = $userId $processedFilter;
+        | time_made, transfer.price, was_wildcard
+        | from transfer join pickee p using(pickee_id) where user_id = $userId;
       """.stripMargin).as(TransferRow.parser.*)
   }
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');

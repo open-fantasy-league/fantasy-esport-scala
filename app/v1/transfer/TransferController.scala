@@ -15,6 +15,7 @@ import utils.TryHelper.{tryOrResponse, tryOrResponseRollback}
 import models._
 import play.api.db._
 import auth._
+import play.api.Logger
 import utils.IdParser
 import v1.user.UserRepo
 import v1.team.TeamRepo
@@ -42,7 +43,7 @@ class TransferController @Inject()(
                                     userRepo: UserRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)
                                   (implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
-
+  private val logger = Logger("application")
   private val transferForm: Form[TransferFormInput] = {
 
     Form(
@@ -70,8 +71,7 @@ class TransferController @Inject()(
     new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
     Future{
       db.withConnection { implicit c =>
-        val processed = request.getQueryString("processed").map(_ (0) == 't')
-        Ok(Json.toJson(transferRepo.getUserTransfer(request.user.userId, processed)))
+        Ok(Json.toJson(transferRepo.getUserTransfer(request.user.userId)))
       }
     }
   }
@@ -222,6 +222,11 @@ class TransferController @Inject()(
                                  currentTeamIds: Set[Long], availableIds: Set[Long], toSell: Set[Long],
                                  toBuy: Set[Long]): Either[Result, Boolean] = {
     // TODO return what ids are invalid
+    logger.info("ValidateIds")
+    logger.info(s"""availableIds: ${availableIds.mkString(",")}""")
+    logger.info(s"""currentTeamIds: ${currentTeamIds.mkString(",")}""")
+    logger.info(s"""toSell: ${toSell.mkString(",")}""")
+    logger.info(s"""toBuy: ${toBuy.mkString(",")}""")
     (toSell ++ toBuy).subsetOf(availableIds) match {
       case true => {
         toBuy.intersect(currentTeamIds).isEmpty match {

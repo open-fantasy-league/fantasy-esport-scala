@@ -153,7 +153,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
         Some(teamRepo.getUserTeam(user.userId, period))
       }
     }
-    val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getUserTransfer(user.userId, Some(false))) else None
+    val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getUserTransfer(user.userId)) else None
     val stats = if (showStats) {
       Some(getUserStats(
         Option.empty[Long], Some(user.userId), None, None, false

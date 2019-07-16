@@ -47,7 +47,8 @@ trait ResultRepo{
   def upsertUserPredictions(userId: Long, leagueId: Long, predictions: List[PredictionFormInput])(
     implicit c: Connection): Either[String, Iterable[PredictionRow]]
   def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean
-  def findSeriesByTeams(leagueId: Long, teamOne: String, teamTwo: String)(implicit c: Connection): Iterable[SeriesOut]
+  def findSeriesByTeams(leagueId: Long, teamOne: String, teamTwo: String, includeReversedTeams: Boolean)
+                       (implicit c: Connection): Iterable[SeriesOut]
 }
 
 @Singleton
@@ -199,7 +200,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
       """.as(SqlParser.bool("started").single)
   }
 
-  override def findSeriesByTeams(leagueId: Long, teamOne: String, teamTwo: String)(implicit c: Connection): Iterable[SeriesOut] = {
+  override def findSeriesByTeams(leagueId: Long, teamOne: String, teamTwo: String, includeReversedTeams: Boolean)(
+    implicit c: Connection): Iterable[SeriesOut] = {
     // iterable as maybe there are 2 home and 2 away fixtures in the season?
     // TODO uses pretty much same query as getMatches
     val q =
@@ -211,7 +213,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         | m.targeted_at_tstamp, period
         |  from series s
         |  left join matchu m using(series_id)
-        | where league_id = {leagueId} and team_one = {teamOne} and team_two = {teamTwo}
+        | where league_id = {leagueId} and ((team_one = {teamOne} and team_two = {teamTwo}) or
+        | ({includeReversedTeams} AND team_one = {teamTwo} and team_two = {teamOne}))
         | order by m.targeted_at_tstamp;
       """.stripMargin
     val rows = SQL(q).on("leagueId" -> leagueId, "teamOne" -> teamOne, "teamTwo" -> teamTwo).as(SeriesAndMatchRow.parser.*)

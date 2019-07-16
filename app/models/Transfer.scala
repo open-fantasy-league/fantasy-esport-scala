@@ -8,7 +8,7 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 case class TransferRow(
                         transferId: Long, userId: Long, internalPickeeId: Long, externalPickeeId: Long,
                         pickeeName: String, isBuy: Boolean, timeMade: LocalDateTime,
-                        scheduledFor: LocalDateTime, processed: Boolean, price: BigDecimal, wasWildcard: Boolean
+                        price: BigDecimal, wasWildcard: Boolean
               )
 
 object TransferRow{
@@ -17,8 +17,6 @@ object TransferRow{
       Json.obj(
         "isBuy" -> t.isBuy,
         "timeMade" -> t.timeMade,
-        "scheduledFor" -> t.scheduledFor,
-        "processed" -> t.processed,
         "price" -> t.price,
         "wasWildcard" -> t.wasWildcard,
         "pickeeId" -> t.externalPickeeId,
