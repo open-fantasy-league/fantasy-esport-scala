@@ -130,7 +130,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                           )(implicit c: Connection): Long = {
     SQL"""
          insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, best_of,
-         |series_team_two_current_score, series_team_two_current_score, series_team_one_final_score, series_team_two_final_score,
+         series_team_one_current_score, series_team_two_current_score, series_team_one_final_score, series_team_two_final_score,
          start_tstamp)
          VALUES($leagueId, ${input.seriesId}, $period, ${input.tournamentId}, ${input.teamOne}, ${input.teamTwo},
          ${input.bestOf}, ${input.seriesTeamOneCurrentScore}, ${input.seriesTeamTwoCurrentScore},
