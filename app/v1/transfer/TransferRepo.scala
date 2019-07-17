@@ -136,6 +136,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
           val multiplier = if (isNegative) (rnd.nextInt(3) + 2).toDouble * 0.2 else {
             (((rnd.nextInt(3) + 1) * 5).toDouble / 100.0) + 1.0
           }
+          insertCardBonus(newCard.cardId, sfid, multiplier)
           val statField = leagueRepo.getStatField(sfid).get
           CardBonusMultiplierRow(sfid, statField.name, multiplier, statField.description)
         }).toList
