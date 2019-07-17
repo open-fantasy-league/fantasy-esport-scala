@@ -11,6 +11,9 @@ case class SeriesRow(
                       tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
                       teamOne: String,
                       teamTwo: String,
+                      bestOf: Int,
+                      seriesTeamOneCurrentScore: Int,
+                      seriesTeamTwoCurrentScore: Int,
                       seriesTeamOneFinalScore: Option[Int],
                       seriesTeamTwoFinalScore: Option[Int],
                       startTstamp: LocalDateTime,
@@ -28,6 +31,9 @@ object SeriesRow{
         "seriesId" -> m.externalSeriesId,
         "teamOne" -> m.teamOne,
         "teamTwo" -> m.teamTwo,
+        "bestOf" -> m.bestOf,
+        "seriesTeamOneCurrentScore" -> m.seriesTeamOneCurrentScore,
+        "seriesTeamTwoCurrentScore" -> m.seriesTeamTwoCurrentScore,
         "seriesTeamOneFinalScore" -> m.seriesTeamOneFinalScore,
         "seriesTeamTwoFinalScore" -> m.seriesTeamTwoFinalScore,
       )
@@ -74,6 +80,9 @@ case class SeriesAndMatchRow(
                               tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
                               teamOne: String,
                               teamTwo: String,
+                              bestOf: Int,
+                              seriesTeamOneCurrentScore: Int,
+                              seriesTeamTwoCurrentScore: Int,
                               seriesTeamOneFinalScore: Option[Int],
                               seriesTeamTwoFinalScore: Option[Int],
                               seriesStartTstamp: LocalDateTime,
@@ -92,7 +101,8 @@ object SeriesAndMatchRow{
     rows.groupBy(_.externalSeriesId).map({case (externalSeriesId, rows) => {
       val head = rows.head
       SeriesOut(SeriesRow(
-        externalSeriesId, head.period,head.tournamentId, head.teamOne, head.teamTwo,
+        externalSeriesId, head.period,head.tournamentId, head.teamOne, head.teamTwo, head.bestOf,
+        head.seriesTeamOneCurrentScore, head.seriesTeamTwoCurrentScore,
         head.seriesTeamOneFinalScore,
         head.seriesTeamTwoFinalScore,
         head.seriesStartTstamp), rows.withFilter(_.externalMatchId.isDefined).map(row => MatchOut(

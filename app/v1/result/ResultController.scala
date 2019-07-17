@@ -33,6 +33,7 @@ case class MatchFormInput(
 
 case class SeriesFormInput(
                             seriesId: Long, tournamentId: Option[Long], teamOne: Option[String], teamTwo: Option[String],
+                            bestOf: Int, seriesTeamOneCurrentScore: Int, seriesTeamTwoCurrentScore: Int,
                             seriesTeamOneFinalScore: Option[Int], seriesTeamTwoFinalScore: Option[Int],
                             startTstamp: Option[LocalDateTime], matches: List[MatchFormInput]
                           )
@@ -69,6 +70,9 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
         "tournamentId" -> optional(of(longFormat)),
         "teamOne" -> optional(nonEmptyText),
         "teamTwo" -> optional(nonEmptyText),
+        "bestOf" -> default(number, 1),
+        "seriesTeamOneCurrentScore" -> default(number, 0),
+        "seriesTeamTwoCurrentScore" -> default(number, 0),
         "seriesTeamOneFinalScore" -> optional(number),
         "seriesTeamTwoFinalScore" -> optional(number),
         "startTstamp" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
@@ -201,8 +205,11 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
   private def updatedSeries(seriesId: Long, input: SeriesFormInput)(implicit c: Connection): Either[Result, Any] = {
     if (input.seriesTeamOneFinalScore.isDefined) {
+      // TODO this forces you to always send through current score, or it will set back to 0-0
       val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneFinalScore},
-                          series_team_two_final_score = ${input.seriesTeamTwoFinalScore}
+                          series_team_two_final_score = ${input.seriesTeamTwoFinalScore},
+                          series_team_one_current_score = ${input.seriesTeamOneCurrentScore},
+                          series_team_two_current_score = ${input.seriesTeamTwoCurrentScore}
          where series_id = $seriesId and series_team_one_final_score is null
        """.executeUpdate()
       if (updatedCount == 0) return Left(BadRequest("Cannot update final series score after setting"))

@@ -15,7 +15,8 @@ import javax.inject.{Inject, Singleton}
 class ResultExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Option[Long], teamOne: String, teamTwo: String,
-                         seriesStartTstamp: LocalDateTime,
+                         bestOf: Int,
+                         seriesStartTstamp: LocalDateTime, seriesTeamOneCurrentScore: Int, seriesTeamTwoCurrentScore: Int,
                          seriesTeamOneFinalScore: Option[Int], seriesTeamTwoFinalScore: Option[Int], matchTeamOneFinalScore: Option[Int],
                          matchTeamTwoFinalScore: Option[Int],
                          tournamentId: Long,
@@ -59,7 +60,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   override def getSeries(leagueId: Long, period: Option[Int])(implicit c: Connection): Iterable[SeriesOut] = {
     val q =
       """
-        select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two,
+        select m.external_match_id, ser.external_series_id, ser.team_one, ser.team_two, ser.best_of,
+        ser.series_team_one_current_score, ser.series_team_two_current_score,
         ser.series_team_one_final_score, ser.series_team_two_final_score, m.match_team_one_final_score, m.match_team_two_final_score,
         ser.tournament_id, m.start_tstamp as match_start_tstamp, ser.start_tstamp as series_start_tstamp, m.added_db_tstamp,
         m.targeted_at_tstamp, ser.period, result_id, r.is_team_one, s.value as stats_value, sf.name as stat_field_name,
@@ -71,7 +73,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         left join stat_field sf on (sf.stat_field_id = s.stat_field_id)
         left join pickee pck using(pickee_id)
         where ser.league_id = {leagueId} and ({period} is null or period = {period})
-        order by m.targeted_at_tstamp desc, s.value;
+        order by m.start_tstamp, s.value;
       """
     val r = SQL(q).on("leagueId" -> leagueId, "period" -> period).as(fullSeriesParser.*)
     seriesQueryExtractor(r)
@@ -105,7 +107,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
           head.targetedAtTstamp.get), results)
       }}).toList.sortBy(_.matchu.startTstamp)
         SeriesOut(SeriesRow(
-          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.seriesTeamOneFinalScore,
+          head.externalSeriesId, head.period, head.tournamentId, head.teamOne, head.teamTwo, head.bestOf,
+          head.seriesTeamOneCurrentScore, head.seriesTeamTwoCurrentScore, head.seriesTeamOneFinalScore,
           head.seriesTeamTwoFinalScore, head.seriesStartTstamp
         ), matches)
     }}).toList.sortBy(_.series.startTstamp)
@@ -126,9 +129,11 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
                             leagueId: Long, period: Int, input: SeriesFormInput, startTstamp: LocalDateTime
                           )(implicit c: Connection): Long = {
     SQL"""
-         insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, series_team_one_final_score, series_team_two_final_score,
+         insert into series(league_id, external_series_id, period, tournament_id, team_one, team_two, best_of,
+         |series_team_two_current_score, series_team_two_current_score, series_team_one_final_score, series_team_two_final_score,
          start_tstamp)
          VALUES($leagueId, ${input.seriesId}, $period, ${input.tournamentId}, ${input.teamOne}, ${input.teamTwo},
+         ${input.bestOf}, ${input.seriesTeamOneCurrentScore}, ${input.seriesTeamTwoCurrentScore},
           ${input.seriesTeamOneFinalScore}, ${input.seriesTeamTwoFinalScore}, $startTstamp) returning series_id
       """.executeInsert().get
   }
@@ -215,7 +220,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         |  left join matchu m using(series_id)
         | where league_id = {leagueId} and ((team_one = {teamOne} and team_two = {teamTwo}) or
         | ({includeReversedTeams} AND team_one = {teamTwo} and team_two = {teamOne}))
-        | order by m.targeted_at_tstamp;
+        | order by m.start_tstamp;
       """.stripMargin
     val rows = SQL(q).on("leagueId" -> leagueId, "teamOne" -> teamOne, "teamTwo" -> teamTwo).as(SeriesAndMatchRow.parser.*)
     SeriesAndMatchRow.out(rows)
