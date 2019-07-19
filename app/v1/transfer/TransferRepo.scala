@@ -15,6 +15,7 @@ class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends Custo
 
 trait TransferRepo{
   def getUserTransfer(userId: Long)(implicit c: Connection): Iterable[TransferRow]
+  def getNextPeriodScheduledChanges(userId: Long, currentPeriod: Int)(implicit c: Connection): ScheduledChangesOut
   def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
                  oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]
                 )(implicit c: Connection): Unit
@@ -42,6 +43,20 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
         | from transfer join pickee p using(pickee_id) where user_id = $userId;
       """.stripMargin).as(TransferRow.parser.*)
   }
+
+  override def getNextPeriodScheduledChanges(userId: Long, currentPeriod: Int)(implicit c: Connection): ScheduledChangesOut = {
+    val toSell = SQL""" select card_id, pickee_id from team
+                    join card using(card_id) where user_id = $userId and upper(timespan) = ${currentPeriod + 1}
+      """.as((SqlParser.long("card_id") ~ SqlParser.long("pickee_id")).*)
+    val toBuy = SQL""" select card_id, pickee_id from team
+                    join card using(card_id) where user_id = $userId and lower(timespan) = ${currentPeriod + 1}
+      """.as((SqlParser.long("card_id") ~ SqlParser.long("pickee_id")).*)
+    ScheduledChangesOut(
+      toBuy.map({case cardId ~ pickeeId => ChangeOut(pickeeId, cardId)}),
+      toSell.map({case cardId ~ pickeeId => ChangeOut(pickeeId, cardId)})
+    )
+  }
+
   // ALTER TABLE team ALTER COLUMN id SET DEFAULT nextval('team_seq');
   override def changeTeam(userId: Long, toBuyCardIds: Set[Long], toSellCardIds: Set[Long],
                            oldTeamCardIds: Set[Long], periodStart: Int, periodEnd: Option[Int]

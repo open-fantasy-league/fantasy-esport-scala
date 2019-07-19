@@ -209,18 +209,15 @@ class LeagueController @Inject()(
     andThen new UserAction(userRepo, db)(userId).apply()).async { implicit request =>
     Future {
       val showTeam = request.getQueryString("team").isDefined
-      val periodResult: Either[Result, Option[Int]] = IdParser.parseIntId(request.getQueryString("period"), "period")
+      val periods = request.getQueryString("periods").getOrElse("").split(",").map(_.toInt)//IdParser.parseIntId(request.getQueryString("period"), "period")
       val showScheduledTransfers = request.getQueryString("scheduledTransfers").isDefined
       val stats = request.getQueryString("stats").isDefined
-      periodResult match {
-        case Left(bad) => bad
-        case Right(time) => {
-          db.withConnection {
-            implicit c =>
-              Ok(Json.toJson(userRepo.detailedUser(request.user, showTeam, showScheduledTransfers, stats, time)))
-          }
+        db.withConnection {
+          implicit c =>
+            Ok(Json.toJson(userRepo.detailedUser(
+              request.user, showTeam, showScheduledTransfers, stats, periods, leagueRepo.getCurrentPeriod(request.league).map(_.value)
+            )))
         }
-      }
     }
   }
 

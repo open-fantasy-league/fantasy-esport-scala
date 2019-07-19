@@ -76,10 +76,9 @@ object CardOut{
           // TODO conditionally dont print colour/price if/not-if card
           "cardId" -> t.cardId,
           "name" -> t.pickeeName,
-          "pickeeId" -> t.externalPickeeId,
+          "id" -> t.externalPickeeId,
           "price" -> t.price,
           "colour" -> t.colour,
-          "pickeeId" -> t.externalPickeeId,
           "bonuses" -> t.bonuses,
           "limitTypes" -> t.limits,
           "overallStats" -> t.overallStats,

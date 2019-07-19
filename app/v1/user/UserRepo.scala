@@ -31,6 +31,18 @@ case class RankingRow(
                        pickeeName: Option[String], price: Option[BigDecimal], active: Option[Boolean], ranking: Int
                      )
 
+case class TeamWithPeriod(team: Iterable[CardOut], period: Int)
+object TeamWithPeriod {
+  implicit val implicitWrites = new Writes[TeamWithPeriod] {
+    def writes(x: TeamWithPeriod): JsValue = {
+      Json.obj(
+        "team" -> x.team,
+        "period" -> x.period
+      )
+    }
+  }
+}
+
 object LeagueWithUser {
   implicit val implicitWrites = new Writes[LeagueWithUser] {
     def writes(x: LeagueWithUser): JsValue = {
@@ -70,7 +82,7 @@ object LeagueRankings{
   }
 }
 
-case class DetailedUser(user: UserRow, team: Option[Iterable[CardOut]], scheduledTransfers: Option[Iterable[TransferRow]], stats: Option[Map[String, Double]])
+case class DetailedUser(user: UserRow, team: Option[Iterable[TeamWithPeriod]], scheduledTransfers: Option[ScheduledChangesOut], stats: Option[Map[String, Double]])
 
 object DetailedUser{
   implicit val implicitWrites = new Writes[DetailedUser] {
@@ -93,7 +105,7 @@ trait UserRepo{
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
   def detailedUser(
                           user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                          stats: Boolean, period: Option[Int])(implicit c: Connection): DetailedUser
+                          stats: Boolean, periods: Iterable[Int], currentPeriod: Option[Int])(implicit c: Connection): DetailedUser
   def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
@@ -146,21 +158,24 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def detailedUser(
                                    user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                                   showStats: Boolean, period: Option[Int])(implicit c: Connection): DetailedUser = {
-    val team = showTeam match {
+                                   showStats: Boolean, periods: Iterable[Int], currentPeriod: Option[Int])
+                           (implicit c: Connection): DetailedUser = {
+    val teams = showTeam match {
       case false => None
       case true => {
-        Some(teamRepo.getUserTeam(user.userId, period))
+        Some(periods.map(p => TeamWithPeriod(teamRepo.getUserTeam(user.userId, Some(p)), p)))
       }
     }
-    val scheduledTransfers = if (showScheduledTransfers) Some(transferRepo.getUserTransfer(user.userId)) else None
+    val scheduledTransfers = if (showScheduledTransfers && currentPeriod.isDefined) Some(
+      transferRepo.getNextPeriodScheduledChanges(user.userId, currentPeriod.get)
+    ) else None
     val stats = if (showStats) {
       Some(getUserStats(
         Option.empty[Long], Some(user.userId), None, None, false
       ).map(x => x.statFieldName -> x.value).toMap)
     }
     else None
-    DetailedUser(user, team, scheduledTransfers, stats)
+    DetailedUser(user, teams, scheduledTransfers, stats)
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
@@ -204,7 +219,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
                        appliedWildcard: Boolean
                      )(implicit c: Connection): Unit = {
     val usedWildcardSet = if (appliedWildcard) ", used_wildcard = true" else ""
-    SQL(s"""update user set money = {money}, remaining_transfers = {remainingTransfers} $usedWildcardSet where user_id = {userId}""")
+    SQL(s"""update useru set money = {money}, remaining_transfers = {remainingTransfers} $usedWildcardSet where user_id = {userId}""")
       .on("money" -> money, "remainingTransfers" -> remainingTransfers, "userId" -> userId).executeUpdate()
   }
 

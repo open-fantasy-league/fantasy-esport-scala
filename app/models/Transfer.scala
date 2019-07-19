@@ -27,3 +27,27 @@ object TransferRow{
 
   val parser: RowParser[TransferRow] = Macro.namedParser[TransferRow](ColumnNaming.SnakeCase)
 }
+case class ChangeOut(pickeeId: Long, cardId: Long)
+
+object ChangeOut{
+  implicit val implicitWrites = new Writes[ChangeOut] {
+    def writes(t: ChangeOut): JsValue = {
+      Json.obj(
+        "id" -> t.pickeeId,
+        "cardId" -> t.cardId
+      )
+    }
+  }
+}
+case class ScheduledChangesOut(toBuy: Iterable[ChangeOut], toSell: Iterable[ChangeOut])
+
+object ScheduledChangesOut{
+  implicit val implicitWrites = new Writes[ScheduledChangesOut] {
+    def writes(t: ScheduledChangesOut): JsValue = {
+      Json.obj(
+        "toBuy" -> t.toBuy,
+        "toSell" -> t.toSell
+      )
+    }
+  }
+}

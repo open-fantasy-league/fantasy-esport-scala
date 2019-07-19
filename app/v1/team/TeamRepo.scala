@@ -61,7 +61,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
           left join pickee_limit pl using(pickee_id)
           left join "limit" l using(limit_id)
           left join limit_type lt using(limit_type_id)
-    where c.user_id = {userId} and timespan @> {period};
+    where c.user_id = {userId} and (({period} is null and upper(timespan) is null) OR timespan @> {period});
     """
     println(q)
     val rows = SQL(q).on("userId" -> userId, "period" -> period).as(CardWithBonusRowAndLimits.parser.*)
