@@ -54,7 +54,7 @@ case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, 
 
 case class FindByTeamsFormInput(teamOne: String, teamTwo: String, includeReversedTeams: Boolean)
 
-case class PredictionFormInput(matchId: Long, teamOneScore: Int, teamTwoScore: Int)
+case class PredictionFormInput(seriesId: Option[Long], matchId: Option[Long], teamOneScore: Int, teamTwoScore: Int)
 case class PredictionsFormInput(predictions: List[PredictionFormInput])
 
 case class InternalIdMaybeChildId(internalId: Long, childId: Option[Long], startTstamp: LocalDateTime)
@@ -96,14 +96,16 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
 
   private val predictionForm: Form[PredictionFormInput] = {
     Form(mapping(
-      "matchId" -> of(longFormat),
+      "seriesId" -> optional(of(longFormat)),
+      "matchId" -> optional(of(longFormat)),
       "teamOneScore" -> of(intFormat),
       "teamTwoScore" -> of(intFormat)
     )(PredictionFormInput.apply)(PredictionFormInput.unapply))
   }
   private val predictionsForm: Form[PredictionsFormInput] = {
     Form(mapping("predictions" -> list(mapping(
-      "matchId" -> of(longFormat),
+      "seriesId" -> optional(of(longFormat)),
+      "matchId" -> optional(of(longFormat)),
       "teamOneScore" -> of(intFormat),
       "teamTwoScore" -> of(intFormat)
     )(PredictionFormInput.apply)(PredictionFormInput.unapply)))(PredictionsFormInput.apply)(PredictionsFormInput.unapply))
@@ -383,7 +385,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       def success(input: PredictionFormInput) = {
         Future {
           val results = db.withConnection { implicit c => resultRepo.upsertUserPrediction(
-            request.user.userId, request.league.leagueId, input.matchId, input.teamOneScore, input.teamTwoScore
+            request.user.userId, request.league.leagueId, input.seriesId, input.matchId, input.teamOneScore, input.teamTwoScore
           )}
           results.fold(l => BadRequest(l), r => Ok(Json.toJson(r)))
         }

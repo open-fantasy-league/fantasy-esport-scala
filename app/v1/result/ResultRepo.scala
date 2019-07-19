@@ -43,11 +43,13 @@ trait ResultRepo{
   def insertResult(matchId: Long, pickee: InternalPickee)(implicit c: Connection): Long
   def insertStats(resultId: Long, statFieldId: Long, stats: Double)(implicit c: Connection): Long
   def getUserPredictions(userId: Long, periodValue: Int)(implicit c: Connection): Iterable[PredictionRow]
-  def upsertUserPrediction(userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int)(
+  def upsertUserPrediction(userId: Long, leagueId: Long, externalSeriesId: Option[Long], externalMatchId: Option[Long],
+                           teamOneScore: Int, teamTwoScore: Int)(
     implicit c: Connection): Either[String, PredictionRow]
   def upsertUserPredictions(userId: Long, leagueId: Long, predictions: List[PredictionFormInput])(
     implicit c: Connection): Either[String, Iterable[PredictionRow]]
   def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean
+  def isSeriesStarted(leagueId: Long, externalSeriesId: Long)(implicit c: Connection): Boolean
   def findSeriesByTeams(leagueId: Long, teamOne: String, teamTwo: String, includeReversedTeams: Boolean)
                        (implicit c: Connection): Iterable[SeriesOut]
 }
@@ -161,47 +163,76 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   }
 
   override def getUserPredictions(userId: Long, periodVal: Int)(implicit c: Connection): Iterable[PredictionRow] = {
-    SQL"""select m.external_match_id, p.team_one_score, p.team_two_score, user_id, paid_out from prediction p
-         join matchu m using(match_id)
-         join series s on m.series_id = s.series_id
-         where user_id = $userId and period = $periodVal"""
+    SQL"""select m.external_match_id, s.external_series_id, p.team_one_score, p.team_two_score, user_id, paid_out
+           from prediction p
+         left join matchu m using(match_id)
+         left join series s on p.series_id = s.series_id
+         left join series s2 on m.series_id = s2.series_id
+         where user_id = $userId and
+         ((s.period is null and s2.period = $periodVal) or (s2.period is null and s.period = $periodVal))"""
   }.as(PredictionRow.parser.*)
-
   override def upsertUserPrediction(
-                                      userId: Long, leagueId: Long, externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int
+                                      userId: Long, leagueId: Long, externalSeriesIdOpt: Option[Long],
+                                      externalMatchIdOpt: Option[Long], teamOneScore: Int, teamTwoScore: Int
                                     )(implicit c: Connection): Either[String, PredictionRow] = {
-    if (isMatchStarted(leagueId, externalMatchId)) Left(s"Match $externalMatchId already started. Prediction closed")
-    else {
-      Right {
-        SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
-           VALUES ((SELECT match_id from matchu join series using(series_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
-         $teamOneScore, $teamTwoScore, $userId)
-         on conflict (user_id, match_id) do update
-         set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
-         returning $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
-          .executeInsert(PredictionRow.parser.single)
+    (externalSeriesIdOpt, externalMatchIdOpt) match {
+      case (None, Some(externalMatchId)) => {
+        if (isMatchStarted (leagueId, externalMatchId) ) Left (s"Match $externalMatchId already started. Prediction closed")
+        else {
+          Right {
+            SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
+             VALUES ((SELECT match_id from matchu join series using(series_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
+           $teamOneScore, $teamTwoScore, $userId)
+           on conflict (user_id, series_id, match_id) do update
+           set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
+           returning null as external_series_id, $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
+              .executeInsert(PredictionRow.parser.single)
+          }
+        }
       }
+      case (Some(externalSeriesId), None) => {
+        if (isSeriesStarted (leagueId, externalSeriesId) ) Left (s"Match $externalSeriesId already started. Prediction closed")
+        else {
+          Right {
+            SQL"""insert into prediction(series_id, team_one_score, team_two_score, user_id)
+             VALUES ((SELECT series_id from series where external_series_id = $externalSeriesId and league_id = $leagueId LIMIT 1),
+           $teamOneScore, $teamTwoScore, $userId)
+           on conflict (user_id, series_id, match_id) do update
+           set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
+           returning $externalSeriesId as external_series_id,
+           null as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
+              .executeInsert(PredictionRow.parser.single)
+          }
+        }
+
+      }
+      case (None, None) => Left(s"Must specify either match id or series id")
+      case (Some(_), Some(_)) => Left(s"Specify either matchId OR seriesId, not both.")
     }
   }
 
   override def upsertUserPredictions(
                                       userId: Long, leagueId: Long, predictions: List[PredictionFormInput]
                                     )(implicit c: Connection): Either[String, Iterable[PredictionRow]] = {
-    Right(predictions.map(p => {
-      if (isMatchStarted(leagueId, p.matchId)) return Left(s"Match ${p.matchId} already started. Prediction closed")
-      SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
-         VALUES ((SELECT match_id from matchu join series using(series_id) where external_match_id = ${p.matchId} and league_id = $leagueId LIMIT 1),
-       ${p.teamOneScore}, ${p.teamTwoScore}, $userId)
-       on conflict (user_id, match_id) do update
-       set team_one_score = ${p.teamOneScore}, team_two_score = ${p.teamTwoScore}
-       returning ${p.matchId} as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
-        .executeInsert(PredictionRow.parser.single)
-    }))
+    val preds: List[Either[String, PredictionRow]] = predictions.map(p => {
+      upsertUserPrediction(
+        userId, leagueId, p.seriesId,
+        p.matchId, p.teamOneScore, p.teamTwoScore
+      )
+    })
+    preds.foldRight(Right(Nil): Either[String, List[PredictionRow]]) { (elem, acc) =>
+        acc.right.flatMap(list => elem.right.map(_ :: list))}
   }
 
   override def isMatchStarted(leagueId: Long, externalMatchId: Long)(implicit c: Connection): Boolean = {
     SQL"""
          select now() > m.start_tstamp as started from matchu m join series using(series_id) where league_id = $leagueId AND external_match_id = $externalMatchId limit 1
+      """.as(SqlParser.bool("started").single)
+  }
+
+  override def isSeriesStarted(leagueId: Long, externalSeriesId: Long)(implicit c: Connection): Boolean = {
+    SQL"""
+         select now() > start_tstamp as started from series where league_id = $leagueId AND external_series_id = $externalSeriesId limit 1
       """.as(SqlParser.bool("started").single)
   }
 

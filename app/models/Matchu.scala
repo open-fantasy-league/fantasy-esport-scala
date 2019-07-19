@@ -155,7 +155,8 @@ object SeriesOut{
   }
 }
 
-case class PredictionRow(externalMatchId: Long, teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)
+case class PredictionRow(externalMatchId: Option[Long], externalSeriesId: Option[Long],
+                         teamOneScore: Int, teamTwoScore: Int, userId: Long, paidOut: Boolean)
 
 object PredictionRow{
 
@@ -163,6 +164,7 @@ object PredictionRow{
     def writes(x: PredictionRow): JsValue = {
       Json.obj(
         "matchId" -> x.externalMatchId,
+        "seriesId" -> x.externalSeriesId,
         "teamOneScore" -> x.teamOneScore,
         "teamTwoScore" -> x.teamTwoScore,
         "userId" -> x.userId,
