@@ -63,7 +63,7 @@ object recentPeriodStats{
     def writes(t: recentPeriodStats): JsValue = {
       Json.obj(
         "period" -> t.period,
-        "stats" -> t.stats
+        "stats" -> t.stats.mapValues(Utils.trunc(_, 1))
       )
     }
   }
@@ -156,7 +156,7 @@ object PickeeStatsOut{
       Json.obj(
         "id" -> p.pickee.externalPickeeId,
         "name" -> p.pickee.pickeeName,
-        "stats" -> p.stats,
+        "stats" -> p.stats.mapValues(Utils.trunc(_, 1)),
         "limitTypes" -> p.limits,
         "price" -> p.pickee.price,
         "active" -> true //p.pickee.active  TODO reimplement active

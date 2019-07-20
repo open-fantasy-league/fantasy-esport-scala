@@ -114,3 +114,5 @@ check groupbyorderereds
 for dota, average points over day, not sum
 sort of show team on leaderboards
 return stats of cards ....stats can be list of last X periods?  !!!!!!!!!!!!!!!!!!!!
+
+is matchfinalscore broken?

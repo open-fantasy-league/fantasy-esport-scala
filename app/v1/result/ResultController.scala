@@ -50,7 +50,7 @@ case class InternalPickee(id: Long, isTeamOne: Boolean, stats: List[StatsFormInp
 
 case class StatsFormInput(field: String, value: Double)
 
-case class FixtureFormInput(matchId: Long, tournamentId: Long, teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
+case class FixtureFormInput(matchId: Long, tournamentId: Option[Long], teamOne: String, teamTwo: String, startTstamp: LocalDateTime)
 
 case class FindByTeamsFormInput(teamOne: String, teamTwo: String, includeReversedTeams: Boolean)
 
@@ -143,7 +143,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
               newSeries(input, league, correctPeriod, startTstamp)
             _ <- if (existingSeries.isDefined) updatedSeries(seriesId, input) else Right(true)
             _ = if (input.seriesTeamOneFinalScore.isDefined)
-              awardPredictions(None, Some(seriesId), input.seriesTeamOneFinalScore.get, input.seriesTeamTwoFinalScore.get)
+              awardPredictions(Some(seriesId), None, input.seriesTeamOneFinalScore.get, input.seriesTeamTwoFinalScore.get)
             // TODO ideally would bail on first error
             _ <- input.matches.map(matchu => for {
               existingMatch <- existingMatchInfo(league.leagueId, matchu.matchId)
@@ -206,16 +206,14 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   }
 
   private def updatedSeries(seriesId: Long, input: SeriesFormInput)(implicit c: Connection): Either[Result, Any] = {
-    if (input.seriesTeamOneFinalScore.isDefined) {
-      // TODO this forces you to always send through current score, or it will set back to 0-0
-      val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneFinalScore},
-                          series_team_two_final_score = ${input.seriesTeamTwoFinalScore},
-                          series_team_one_current_score = ${input.seriesTeamOneCurrentScore},
-                          series_team_two_current_score = ${input.seriesTeamTwoCurrentScore}
-         where series_id = $seriesId and series_team_one_final_score is null
-       """.executeUpdate()
-      if (updatedCount == 0) return Left(BadRequest("Cannot update final series score after setting"))
-    }
+    // TODO this forces you to always send through current score, or it will set back to 0-0
+    val updatedCount = SQL"""update series set series_team_one_final_score = ${input.seriesTeamOneFinalScore},
+                        series_team_two_final_score = ${input.seriesTeamTwoFinalScore},
+                        series_team_one_current_score = ${input.seriesTeamOneCurrentScore},
+                        series_team_two_current_score = ${input.seriesTeamTwoCurrentScore}
+       where series_id = $seriesId and series_team_one_final_score is null
+     """.executeUpdate()
+    if (updatedCount == 0) return Left(BadRequest("Cannot update final series score after setting"))
     Right(true)
   }
 

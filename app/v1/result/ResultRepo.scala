@@ -19,7 +19,7 @@ case class FullSeriesRow(externalSeriesId: Long, externalMatchId: Option[Long], 
                          seriesStartTstamp: LocalDateTime, seriesTeamOneCurrentScore: Int, seriesTeamTwoCurrentScore: Int,
                          seriesTeamOneFinalScore: Option[Int], seriesTeamTwoFinalScore: Option[Int], matchTeamOneFinalScore: Option[Int],
                          matchTeamTwoFinalScore: Option[Int],
-                         tournamentId: Long,
+                         tournamentId: Option[Long],
                          matchStartTstamp: Option[LocalDateTime], addedDbTstamp: Option[LocalDateTime],
                          targetedAtTstamp: Option[LocalDateTime], period: Int, resultId: Option[Long], isTeamOne: Option[Boolean],
                          statsValue: Option[Double],
@@ -180,7 +180,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         if (isMatchStarted (leagueId, externalMatchId) ) Left (s"Match $externalMatchId already started. Prediction closed")
         else {
           Right {
-            SQL"""insert into prediction(match_id, team_one_score, team_two_score, user_id)
+            SQL"""insert into prediction_match(match_id, team_one_score, team_two_score, user_id)
              VALUES ((SELECT match_id from matchu join series using(series_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
            $teamOneScore, $teamTwoScore, $userId)
            on conflict (user_id, series_id, match_id) do update
@@ -194,7 +194,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         if (isSeriesStarted (leagueId, externalSeriesId) ) Left (s"Match $externalSeriesId already started. Prediction closed")
         else {
           Right {
-            SQL"""insert into prediction(series_id, team_one_score, team_two_score, user_id)
+            SQL"""insert into prediction_series(series_id, team_one_score, team_two_score, user_id)
              VALUES ((SELECT series_id from series where external_series_id = $externalSeriesId and league_id = $leagueId LIMIT 1),
            $teamOneScore, $teamTwoScore, $userId)
            on conflict (user_id, series_id, match_id) do update
@@ -244,7 +244,8 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
       """
         | select s.external_series_id, s.tournament_id, s.period, s.start_tstamp as series_start_tstamp,
         | series_team_one_final_score, series_team_two_final_score, m.external_match_id,
-        | team_one, team_two, m.match_team_one_final_score, m.match_team_two_final_score,
+        | team_one, team_two, best_of, series_team_one_current_score,
+        | series_team_two_current_score, m.match_team_one_final_score, m.match_team_two_final_score,
         |  tournament_id, m.start_tstamp, m.added_db_tstamp,
         | m.targeted_at_tstamp, period
         |  from series s
@@ -253,7 +254,9 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
         | ({includeReversedTeams} AND team_one = {teamTwo} and team_two = {teamOne}))
         | order by m.start_tstamp;
       """.stripMargin
-    val rows = SQL(q).on("leagueId" -> leagueId, "teamOne" -> teamOne, "teamTwo" -> teamTwo).as(SeriesAndMatchRow.parser.*)
+    val rows = SQL(q).on(
+      "leagueId" -> leagueId, "teamOne" -> teamOne, "teamTwo" -> teamTwo, "includeReversedTeams" -> includeReversedTeams
+    ).as(SeriesAndMatchRow.parser.*)
     SeriesAndMatchRow.out(rows)
   }
 

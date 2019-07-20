@@ -8,7 +8,7 @@ import anorm.{ Macro, RowParser }, Macro.ColumnNaming
 case class SeriesRow(
                       externalSeriesId: Long,
                       period: Int,
-                      tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
+                      tournamentId: Option[Long], // for displaying link to tournament page. tournament can differ from league
                       teamOne: String,
                       teamTwo: String,
                       bestOf: Int,
@@ -77,7 +77,7 @@ object MatchRow{
 case class SeriesAndMatchRow(
                               externalSeriesId: Long,
                               period: Int,
-                              tournamentId: Long, // for displaying link to tournament page. tournament can differ from league
+                              tournamentId: Option[Long], // for displaying link to tournament page. tournament can differ from league
                               teamOne: String,
                               teamTwo: String,
                               bestOf: Int,

@@ -13,6 +13,7 @@ import Macro.ColumnNaming
 import models._
 import play.api.Logger
 import play.api.db.Database
+import utils.Utils
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 import v1.team.TeamRepo
@@ -60,7 +61,7 @@ object Ranking{
       Json.obj(
         "userId" -> ranking.userId,
         "username" -> ranking.username,
-        "value" -> ranking.value,
+        "value" -> Utils.trunc(ranking.value, 1),
         "rank" -> ranking.ranking,
         "previousRank" -> ranking.previousRank,
         "team" ->  ranking.team
@@ -91,7 +92,7 @@ object DetailedUser{
         "user" -> x.user,
         "team" -> x.team,
         "scheduledTransfers" -> x.scheduledTransfers,
-        "stats" -> x.stats
+        "stats" -> x.stats.map(_.mapValues(Utils.trunc(_, 1)))
       )
     }
   }

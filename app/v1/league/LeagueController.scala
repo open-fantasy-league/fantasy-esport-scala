@@ -43,7 +43,7 @@ case class StatInput(
                       separateFactionPoints: List[FactionSpecificScoring]
                     )
 
-case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Long, periodDescription: String,
+case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Option[Long], periodDescription: String,
                            periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
                            stats: List[StatInput], manuallyCalculatePoints: Boolean,
@@ -76,7 +76,7 @@ class LeagueController @Inject()(
         "name" -> nonEmptyText,
         "gameId" -> optional(of(longFormat)),
         "isPrivate" -> boolean,
-        "tournamentId" -> of(longFormat),
+        "tournamentId" -> optional(of(longFormat)),
         "periodDescription" -> nonEmptyText,
         "periods" -> list(mapping(
           "start" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),

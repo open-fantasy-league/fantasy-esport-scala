@@ -1,7 +1,6 @@
 package utils
 
 import java.time.LocalDateTime
-import java.text.SimpleDateFormat
 
 import scala.util.Try
 import play.api.mvc.Result
