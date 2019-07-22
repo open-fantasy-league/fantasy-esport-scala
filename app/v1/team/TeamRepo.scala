@@ -196,7 +196,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
   }
 
   override def cardsInTeam(cardIds: List[Long], currentPeriod: Option[Int])(implicit c: Connection): Boolean = {
-    SQL"""select 1 as yeppers from team where card_id = ANY($cardIds) AND ($currentPeriod IS NULL OR lower(timespan) <= $currentPeriod)""".
+    SQL"""select 1 as yeppers from team where card_id IN ($cardIds) AND ($currentPeriod IS NULL OR lower(timespan) <= $currentPeriod)""".
       as(SqlParser.int("yeppers").singleOpt).isDefined
   }
 

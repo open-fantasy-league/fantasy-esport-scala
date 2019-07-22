@@ -206,7 +206,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
   }
 
   override def recycleCards(leagueId: Long, userId: Long, cardIds: List[Long], recycleValue: BigDecimal)(implicit c: Connection): Boolean = {
-    val updatedCount = SQL"""update card set recycled = true where card_id = ANY($cardIds) and user_id = $userId""".executeUpdate()
+    val updatedCount = SQL"""update card set recycled = true where card_id IN ($cardIds) and user_id = $userId""".executeUpdate()
     if (updatedCount == 0){
       return false
     }
