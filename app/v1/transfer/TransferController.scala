@@ -38,6 +38,8 @@ object TransferSuccess{
   }
 }
 
+case class RecycleCardsFormInput(cardIds: List[Long])
+
 class TransferController @Inject()(
                                     cc: ControllerComponents, Auther: Auther, transferRepo: TransferRepo,
                                     userRepo: UserRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)
@@ -57,6 +59,10 @@ class TransferController @Inject()(
     "overrideLimitChecks" -> default(boolean, false)
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
+  }
+  // prob not really necessary to use form here. could just be raw array
+  private val recycleCardsForm: Form[RecycleCardsFormInput] = {
+    Form(mapping("cardIds" -> list(of(longFormat)))(RecycleCardsFormInput.apply)(RecycleCardsFormInput.unapply))
   }
   implicit val parser = parse.default
 
@@ -97,17 +103,44 @@ class TransferController @Inject()(
       db.withTransaction { implicit c =>
         (for {
           cardIdLong <- IdParser.parseLongId(cardId, "card id")
-          _ <- if (teamRepo.cardInTeam(cardIdLong, leagueRepo.getCurrentPeriod(request.league).map(_.value)))
+          _ <- if (teamRepo.cardsInTeam(List(cardIdLong), leagueRepo.getCurrentPeriod(request.league).map(_.value)))
             Left(BadRequest("Cannot recycle as currently in team")) else Right(true)
           succeeded <-
-            tryOrResponseRollback(transferRepo.recycleCard(
-              request.league.leagueId, request.user.userId, cardIdLong, request.league.recycleValue.get
+            tryOrResponseRollback(transferRepo.recycleCards(
+              request.league.leagueId, request.user.userId, List(cardIdLong), request.league.recycleValue.get
             ), c,
               InternalServerError("Something went wrong recycling card"))
           out <- if (succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card: $cardId does not exist or user: $userId does not own card"))
         } yield out).fold(identity, identity)
       }
     }
+  }
+
+  def recycleCardsReq(userId: String, leagueId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+
+    def failure(badForm: Form[RecycleCardsFormInput]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+    def success(input: RecycleCardsFormInput) = {
+      Future {
+        db.withTransaction { implicit c =>
+          (for {
+            _ <- if (teamRepo.cardsInTeam(input.cardIds, leagueRepo.getCurrentPeriod(request.league).map(_.value)))
+              Left(BadRequest("Cannot recycle as currently in team")) else Right(true)
+            succeeded <-
+              tryOrResponseRollback(transferRepo.recycleCards(
+                request.league.leagueId, request.user.userId, input.cardIds, request.league.recycleValue.get
+              ), c,
+                InternalServerError("Something went wrong recycling card"))
+            out <- if (succeeded) Right(Ok(Json.toJson("success" -> true))) else Left(BadRequest(s"Card from: ${input.cardIds} does not exist or user: $userId does not own card"))
+          } yield out).fold(identity, identity)
+        }
+      }
+    }
+
+    recycleCardsForm.bindFromRequest().fold(failure, success)
   }
 
   private def makeTransfer[A](league: LeagueRow, user: UserRow)(implicit request: Request[A]): Future[Result] = {

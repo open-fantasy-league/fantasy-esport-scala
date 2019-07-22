@@ -242,7 +242,10 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
     logger.info("oOOooooooOOOOoooOOOooo")
     logger.info(targetedAtTstamp.toString)
     tryOrResponse(
-      leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value,
+      {val out = leagueRepo.getPeriodFromTimestamp(league.leagueId, targetedAtTstamp).get.value
+        logger.info(s"Adding results for period $out")
+        out
+      },
       InternalServerError("Cannot add result outside of period")
     )
   }

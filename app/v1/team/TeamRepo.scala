@@ -37,7 +37,7 @@ trait TeamRepo{
   def getUserCards(userId: Long, showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats:Boolean)
                   (implicit c: Connection): Iterable[CardOut]
   def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut]
-  def cardInTeam(cardId: Long, currentPeriod: Option[Int])(implicit c: Connection): Boolean
+  def cardsInTeam(cardIds: List[Long], currentPeriod: Option[Int])(implicit c: Connection): Boolean
   def getUserTeamForPeriod(
                             userId: Long, startPeriod: Int,
                             endPeriod: Option[Int]
@@ -195,8 +195,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     })
   }
 
-  override def cardInTeam(cardId: Long, currentPeriod: Option[Int])(implicit c: Connection): Boolean = {
-    SQL"""select 1 as yeppers from team where card_id = $cardId AND ($currentPeriod IS NULL OR lower(timespan) <= $currentPeriod)""".
+  override def cardsInTeam(cardIds: List[Long], currentPeriod: Option[Int])(implicit c: Connection): Boolean = {
+    SQL"""select 1 as yeppers from team where card_id = ANY($cardIds) AND ($currentPeriod IS NULL OR lower(timespan) <= $currentPeriod)""".
       as(SqlParser.int("yeppers").singleOpt).isDefined
   }
 

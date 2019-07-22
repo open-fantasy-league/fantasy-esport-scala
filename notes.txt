@@ -116,3 +116,13 @@ sort of show team on leaderboards
 return stats of cards ....stats can be list of last X periods?  !!!!!!!!!!!!!!!!!!!!
 
 is matchfinalscore broken?
+alter table prediction_series add unique (series_id, user_id);
+create index prediction_series_paid_out_idx on prediction_series(paid_out);
+create table prediction_series(series_id bigint references series) inherits(prediction2);
+create table prediction2(prediction_id bigserial primary key, user_id bigint references useru, team_one_score integer not null, team_two_score integer not null, paid_out boolean default false);
+alter table league alter column tournament_id drop not null;
+
+so all games of a series go into same period
+
+-- no popup when make transfer, turn button into a tick
+-- wildcard when group stage ends

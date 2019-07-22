@@ -29,7 +29,7 @@ trait TransferRepo{
   def buyCardPack(leagueId: Long, userId: Long, packSize: Int, packCost: BigDecimal)(implicit c: Connection): Either[String, Iterable[CardOut]]
   def generateCardPack(leagueId: Long, userId: Long, packSize: Int)(implicit c: Connection): Iterable[CardOut]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
-  def recycleCard(leagueId: Long, userId: Long, cardId: Long, recycleValue: BigDecimal)(implicit c: Connection): Boolean
+  def recycleCards(leagueId: Long, userId: Long, cardId: List[Long], recycleValue: BigDecimal)(implicit c: Connection): Boolean
 }
 
 @Singleton
@@ -205,12 +205,12 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     ).on ("cardId" -> cardId, "statFieldId" -> statFieldId, "multiplier" -> multiplier).executeInsert()
   }
 
-  override def recycleCard(leagueId: Long, userId: Long, cardId: Long, recycleValue: BigDecimal)(implicit c: Connection): Boolean = {
-    val updatedCount = SQL"""update card set recycled = true where card_id = $cardId and user_id = $userId""".executeUpdate()
+  override def recycleCards(leagueId: Long, userId: Long, cardIds: List[Long], recycleValue: BigDecimal)(implicit c: Connection): Boolean = {
+    val updatedCount = SQL"""update card set recycled = true where card_id = ANY($cardIds) and user_id = $userId""".executeUpdate()
     if (updatedCount == 0){
       return false
     }
-    SQL"""update useru set money = money + $recycleValue WHERE user_id = $userId""".executeUpdate()
+    SQL"""update useru set money = money + $recycleValue * $updatedCount WHERE user_id = $userId""".executeUpdate()
     true
   }
 }

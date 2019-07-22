@@ -23,6 +23,9 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
 
     case POST(p"/leagues/$leagueId/users/$userId/recycleCard/$cardId") =>
       controller.recycleCardReq(userId, leagueId, cardId)
+
+    case POST(p"/leagues/$leagueId/users/$userId/recycleCards") =>
+      controller.recycleCardsReq(userId, leagueId)
   }
 
 }
