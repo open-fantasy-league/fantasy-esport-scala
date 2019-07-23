@@ -131,3 +131,4 @@ so all games of a series go into same period
 -- more for assists support
 -- much less obs
 -- more for assists and kills offlane
+260, 182, -832, -310
