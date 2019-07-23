@@ -19,7 +19,6 @@ class ResultRouter @Inject()(controller: ResultController) extends SimpleRouter 
 
     case GET(p"/leagues/$leagueId/predictions/$userId") => controller.getPredictionsReq(leagueId, userId)
 
-    case POST(p"/leagues/$leagueId/prediction/$userId") => controller.upsertPredictionReq(leagueId, userId)
     case POST(p"/leagues/$leagueId/predictions/$userId") => controller.upsertPredictionsReq(leagueId, userId)
   }
 

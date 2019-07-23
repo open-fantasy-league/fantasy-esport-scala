@@ -376,24 +376,6 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
       }
   }
 
-  def upsertPredictionReq(leagueId: String, userId: String) = (new AuthAction() andThen
-    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
-    new UserAction(userRepo, db)(userId).auth()).async{
-    implicit request =>
-
-      def failure(badForm: Form[PredictionFormInput]) = {Future.successful(BadRequest(badForm.errorsAsJson))}
-
-      def success(input: PredictionFormInput) = {
-        Future {
-          val results = db.withConnection { implicit c => resultRepo.upsertUserPrediction(
-            request.user.userId, request.league.leagueId, input.seriesId, input.matchId, input.teamOneScore, input.teamTwoScore
-          )}
-          results.fold(l => BadRequest(l), r => Ok(Json.toJson(r)))
-        }
-      }
-      predictionForm.bindFromRequest().fold(failure, success)
-  }
-
   def upsertPredictionsReq(leagueId: String, userId: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async{
