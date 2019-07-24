@@ -108,16 +108,16 @@ class TransferController @Inject()(
         db.withTransaction { implicit c =>
           (for {
             _ <- if (teamRepo.cardsInTeam(input.cardIds, leagueRepo.getCurrentPeriod(request.league).map(_.value)))
-              Left(BadRequest("Cannot recycle as currently in team")) else Right(true)
+              Left(BadRequest(Json.obj("success" -> false, "message" -> "Cannot recycle as currently in team"))) else Right(true)
             numRecycled <-
               tryOrResponseRollback(transferRepo.recycleCards(
                 request.league.leagueId, request.user.userId, input.cardIds, request.league.recycleValue.get
               ), c,
-                InternalServerError("Something went wrong recycling card"))
+                InternalServerError(Json.obj("success" -> false, "message" -> "Something went wrong recycling card")))
             // TODO can return user money rather than adhoc calc it
             out <- if (numRecycled > 0) Right(Ok(Json.toJson(TransferSuccess(
               request.user.money + request.league.recycleValue.get, None
-            )))) else Left(BadRequest(s"Card from: ${input.cardIds} does not exist or user: $userId does not own any of these cards"))
+            )))) else Left(BadRequest(Json.obj("success" -> false, "message" -> s"Card from: ${input.cardIds} does not exist or user: $userId does not own any of these cards")))
           } yield out).fold(identity, identity)
         }
       }
