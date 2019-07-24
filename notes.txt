@@ -124,7 +124,6 @@ alter table league alter column tournament_id drop not null;
 
 so all games of a series go into same period
 
--- no popup when make transfer, turn button into a tick
 -- wildcard when group stage ends
 -- different points for kills/assists/deaths offlane/support/core
 -- more punish deaths core

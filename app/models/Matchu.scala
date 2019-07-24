@@ -124,7 +124,7 @@ object SingleResult{
     def writes(r: SingleResult): JsValue = {
       Json.obj(
         "isTeamOne" -> r.isTeamOne,
-        "pickee" -> r.pickeeName,
+        "name" -> r.pickeeName,
         "stats" -> r.results,
       )
     }
