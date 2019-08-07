@@ -218,11 +218,13 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
   }
 
   private def awardPredictions(seriesId: Option[Long], matchId: Option[Long], teamOneScore: Int, teamTwoScore: Int)(implicit c: Connection) = {
-    val winningUsers = SQL"""select user_id, prediction_id from prediction where ($matchId IS NULL OR match_id = $matchId)
-                             AND ($seriesId IS NULL OR series_id = $seriesId)
+    val sql = if (matchId.isDefined) SQL"""select user_id, prediction_id from prediction_match where match_id = $matchId
                          AND team_one_score = $teamOneScore AND team_two_score = $teamTwoScore
-         AND paid_out = false FOR UPDATE
-       """.as((SqlParser.long("user_id") ~ SqlParser.long("prediction_id")).*)
+         AND paid_out = false FOR UPDATE"""
+    else SQL"""select user_id, prediction_id from prediction_series where series_id = $seriesId
+                         AND team_one_score = $teamOneScore AND team_two_score = $teamTwoScore
+         AND paid_out = false FOR UPDATE"""
+       val winningUsers = sql.as((SqlParser.long("user_id") ~ SqlParser.long("prediction_id")).*)
     winningUsers.map({case userId ~ predictionId =>
       SQL"""update useru u set money = money + prediction_win_money from league l
            where u.league_id = l.league_id AND u.user_id = $userId""".executeUpdate()

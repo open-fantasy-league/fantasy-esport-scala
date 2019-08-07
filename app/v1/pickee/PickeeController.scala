@@ -75,7 +75,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
       )
   }
 
-  def recalibratePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+  def recalibratePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
 
     def failure(badForm: Form[RepricePickeeFormInputList]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
@@ -97,7 +97,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     repriceForm.bindFromRequest().fold(failure, success)
   }
 
-  def updatePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.           PermissionCheckAction).async { implicit request =>
+  def updatePickees(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
 
     def failure(badForm: Form[List[UpdatePickeeFormInput]]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
