@@ -122,7 +122,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     var showingRecentPeriodStats = false
     if (showLastXPeriodStats.isEmpty || currentPeriodValue.isEmpty){
       if (showOverallStats) {
-        extraSelects += ",sf2.name as stat_field_name2, null as period, psp.value as value"
+        extraSelects += ",sf2.name as stat_field_name2, 0 as period, psp.value as value"
         extraJoins += """
                     left join pickee_stat ps using(pickee_id)
                     left join pickee_stat_period psp
@@ -136,7 +136,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     }
     else{
       showingRecentPeriodStats = true
-      extraSelects += ",sf2.name as stat_field_name2, psp.period, psp.value as value"
+      extraSelects += ",sf2.name as stat_field_name2, CASE WHEN psp.period IS NULL THEN 0 ELSE psp.period END as period, psp.value as value"
       extraJoins += """
                     left join pickee_stat ps using(pickee_id)
                     left join pickee_stat_period psp

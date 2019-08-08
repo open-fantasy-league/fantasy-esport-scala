@@ -81,7 +81,7 @@ object CardOut{
           "colour" -> t.colour,
           "bonuses" -> t.bonuses,
           "limitTypes" -> t.limits,
-          "overallStats" -> t.overallStats,
+          "overallStats" -> t.overallStats.mapValues(Utils.trunc(_, 1)),
           "recentPeriodStats" -> t.recentPeriodStats.map({case (k, v) => {
             recentPeriodStats(k, v)
           }}).toList
