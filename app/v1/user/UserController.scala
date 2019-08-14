@@ -85,7 +85,7 @@ class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo, aut
           (for {
             userId <- parseLongId(userId, "User")
             user <- userRepo.get(request.league.leagueId, userId).toRight(BadRequest("User does not exist"))
-            updateUser <- tryOrResponse(userRepo.update(userId, input), InternalServerError("Could not update user"))
+            updateUser <- tryOrResponse(userRepo.update(userId, request.league.leagueId, input), InternalServerError("Could not update user"))
             finished = Ok("User updated")
           } yield finished).fold(identity, identity)
         }

@@ -102,7 +102,7 @@ object DetailedUser{
 class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait UserRepo{
-  def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
+  def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
   def detailedUser(
                           user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
@@ -137,7 +137,7 @@ trait UserRepo{
 class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)(implicit ec: UserExecutionContext, leagueRepo: LeagueRepo) extends UserRepo{
   private val logger = Logger("application")
 
-  override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
+  override def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
     val setString = (input.username, input.externalUserId) match {
       case (Some(username), Some(externalId)) => "set username = {username}, external_user_id = {externalUserId}"
       case (None, Some(externalId)) => "set external_user_id = {externalUserId}"
@@ -145,7 +145,7 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
       case (None, None) => ""
     }
     SQL(
-      s"update useru $setString where external_user_id = $userId returning user_id, username, external_user_id"
+      s"update useru $setString where external_user_id = $userId and league_id = $leagueId"
     ).on("username" -> input.username, "externalUserId" -> input.externalUserId).executeUpdate()
     println("todo return stuff")
   }
