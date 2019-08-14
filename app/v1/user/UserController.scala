@@ -18,7 +18,7 @@ case class UserFormInput(username: String, userId: Long)
 
 case class UpdateUserFormInput(username: Option[String], externalUserId: Option[Long])
 
-class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo)
+class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo, auther: Auther)
                               (implicit ec: ExecutionContext, db: Database, leagueRepo: LeagueRepo) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -70,7 +70,7 @@ class UserController @Inject()(cc: ControllerComponents, userRepo: UserRepo)
   }
 
   // TODO tolerantJson?
-  def update(leagueId: String, userId: String) = (new LeagueAction(leagueId)).async  { implicit request =>
+  def update(leagueId: String, userId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async  { implicit request =>
     processJsonUpdateUser(userId)
   }
 

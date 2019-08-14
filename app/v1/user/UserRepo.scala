@@ -139,14 +139,14 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
 
   override def update(userId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
     val setString = (input.username, input.externalUserId) match {
-      case (Some(username), Some(externalId)) => s"set username = $input.username, external_user_id = $input.externalUserId"
-      case (None, Some(externalId)) => s"set external_user_id = $input.externalUserId"
-      case (Some(username), None) => s"set username = '$input.username'"
+      case (Some(username), Some(externalId)) => "set username = {username}, external_user_id = {externalUserId}"
+      case (None, Some(externalId)) => "set external_user_id = {externalUserId}"
+      case (Some(username), None) => "set username = {username}"
       case (None, None) => ""
     }
     SQL(
       s"update useru $setString where external_user_id = $userId returning user_id, username, external_user_id"
-    ).executeUpdate()
+    ).on("username" -> input.username, "externalUserId" -> input.externalUserId).executeUpdate()
     println("todo return stuff")
   }
 
