@@ -135,7 +135,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     var extraJoins = ""
     var extraSelects = ""
     if (showPeriods) {
-      extraJoins += " left join period p using(l.league_id) "
+      extraJoins += " left join period p on (l.league_id = p.league_id) "
       extraSelects +=
         """, p.value as period_value, lower(p.timespan) as start, upper(p.timespan) as "end", p.multiplier,
         p.on_start_close_transfer_window, p.on_end_open_transfer_window"""
