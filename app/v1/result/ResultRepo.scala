@@ -182,7 +182,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
             SQL"""insert into prediction_match(match_id, team_one_score, team_two_score, user_id)
              VALUES ((SELECT match_id from matchu join series using(series_id) where external_match_id = $externalMatchId and league_id = $leagueId LIMIT 1),
            $teamOneScore, $teamTwoScore, $userId)
-           on conflict (user_id, series_id, match_id) do update
+           on conflict (user_id, match_id) do update
            set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
            returning null as external_series_id, $externalMatchId as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
               .executeInsert(PredictionRow.parser.single)
@@ -196,7 +196,7 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
             SQL"""insert into prediction_series(series_id, team_one_score, team_two_score, user_id)
              VALUES ((SELECT series_id from series where external_series_id = $externalSeriesId and league_id = $leagueId LIMIT 1),
            $teamOneScore, $teamTwoScore, $userId)
-           on conflict (user_id, series_id, match_id) do update
+           on conflict (user_id, series_id) do update
            set team_one_score = $teamOneScore, team_two_score = $teamTwoScore
            returning $externalSeriesId as external_series_id,
            null as external_match_id, team_one_score, team_two_score, user_id, paid_out"""
