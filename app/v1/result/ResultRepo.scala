@@ -163,13 +163,12 @@ class ResultRepoImpl @Inject()()(implicit ec: ResultExecutionContext) extends Re
   }
 
   override def getUserPredictions(userId: Long, periodVal: Int)(implicit c: Connection): Iterable[PredictionRow] = {
-    SQL"""select m.external_match_id, s.external_series_id, p.team_one_score, p.team_two_score, user_id, paid_out
-           from prediction p
-         left join matchu m using(match_id)
+    // TODO hacked to just work with series
+    SQL"""select null as external_match_id, s.external_series_id, p.team_one_score, p.team_two_score, user_id, paid_out
+           from prediction_series p
          left join series s on p.series_id = s.series_id
-         left join series s2 on m.series_id = s2.series_id
          where user_id = $userId and
-         ((s.period is null and s2.period = $periodVal) or (s2.period is null and s.period = $periodVal))"""
+         s.period = $periodVal"""
   }.as(PredictionRow.parser.*)
   override def upsertUserPrediction(
                                       userId: Long, leagueId: Long, externalSeriesIdOpt: Option[Long],
