@@ -24,3 +24,6 @@ with res as (select targeted_at_tstamp, pickee_id, value from matchu m join resu
     15 |  123
     16 |  170
 
+
+
+with rankings as (select username, previous_rank, value, user_stat_id, rank() OVER (order by value desc, useru.user_id) as ranking from useru join user_stat using(user_id) join user_stat_period using(user_stat_id) where league_id = 2 and stat_field_id = 16 and period = 1 order by value desc) update user_stat us set previous_rank = rankings.ranking from rankings where rankings.user_stat_id = us.user_stat_id;

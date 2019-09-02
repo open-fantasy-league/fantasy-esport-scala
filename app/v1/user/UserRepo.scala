@@ -19,17 +19,14 @@ import v1.pickee.PickeeRepo
 import v1.team.TeamRepo
 import v1.transfer.TransferRepo
 
-case class Ranking(userId: Long, username: String, value: Double, ranking: Int, previousRank: Option[Int], team: Option[Iterable[PickeeRow]],
-                   showTeam: Boolean = true)
+//case class Ranking(userId: Long, username: String, value: Double, ranking: Int, previousRank: Option[Int])
 
-case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[Ranking])
+case class LeagueRankings(leagueId: Long, leagueName: String, statField: String, rankings: Iterable[RankingRow])
 
 case class LeagueWithUser(league: LeagueRow, info: UserRow)
 
 case class RankingRow(
-                       externalUserId: Long, username: String, userId: Long, value: Double, previousRank: Option[Int],
-                       internalPickeeId: Option[Long], externalPickeeId: Option[Long],
-                       pickeeName: Option[String], price: Option[BigDecimal], active: Option[Boolean], ranking: Int
+                       externalUserId: Long, username: String, userId: Long, value: Double, previousRank: Option[Int], ranking: Int = 0
                      )
 
 case class TeamWithPeriod(team: Iterable[CardOut], period: Int)
@@ -55,19 +52,29 @@ object LeagueWithUser {
   }
 }
 
-object Ranking{
-  implicit val implicitWrites = new Writes[Ranking] {
-    def writes(ranking: Ranking): JsValue = {
-      Json.obj(
-        "userId" -> ranking.userId,
-        "username" -> ranking.username,
-        "value" -> Utils.trunc(ranking.value, 1),
-        "rank" -> ranking.ranking,
-        "previousRank" -> ranking.previousRank,
-        "team" ->  ranking.team
-      )
+object RankingRow{
+  implicit val implicitWrites = new Writes[RankingRow] {
+    def writes(ranking: RankingRow): JsValue = {
+      if (ranking.ranking == 0) {
+        Json.obj(
+          "userId" -> ranking.externalUserId,
+          "username" -> ranking.username,
+          "value" -> Utils.trunc(ranking.value, 1),
+        )
+      }
+      else {
+        Json.obj(
+          "userId" -> ranking.externalUserId,
+          "username" -> ranking.username,
+          "value" -> Utils.trunc(ranking.value, 1),
+          "rank" -> ranking.ranking,
+          "previousRank" -> ranking.previousRank,
+        )
+      }
     }
   }
+
+  val parser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
 }
 
 object LeagueRankings{
@@ -83,30 +90,12 @@ object LeagueRankings{
   }
 }
 
-case class DetailedUser(user: UserRow, team: Option[Iterable[TeamWithPeriod]], scheduledTransfers: Option[ScheduledChangesOut], stats: Option[Map[String, Double]])
-
-object DetailedUser{
-  implicit val implicitWrites = new Writes[DetailedUser] {
-    def writes(x: DetailedUser): JsValue = {
-      Json.obj(
-        "user" -> x.user,
-        "team" -> x.team,
-        "scheduledTransfers" -> x.scheduledTransfers,
-        "stats" -> x.stats.map(_.mapValues(Utils.trunc(_, 1)))
-      )
-    }
-  }
-}
-
 
 class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 trait UserRepo{
   def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
-  def detailedUser(
-                          user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                          stats: Boolean, periods: Iterable[Int], currentPeriod: Option[Int])(implicit c: Connection): DetailedUser
   def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
@@ -120,12 +109,10 @@ trait UserRepo{
                    secondaryOrdering: Option[List[Long]], showTeam: Boolean
                  )(implicit c: Connection): LeagueRankings
   def getUserStats(
-                          leagueId: Option[Long], userId: Option[Long], statFieldId: Option[Long], period: Option[Int],
-                          orderByValue: Boolean
-                        )(implicit c: Connection): Iterable[UserStatDailyRow]
-  def getUserStatsAndTeam(
-                           leagueId: Long, statFieldId: Long, period: Option[Int],
-                                 secondaryOrdering: Option[List[Long]])(implicit c: Connection): Iterable[RankingRow]
+                          leagueId: Long, userId: Option[Long], statFieldId: Option[Long], period: Option[Int],
+                          secondaryOrdering: Option[List[Long]],
+                          showRanking: Boolean
+                        )(implicit c: Connection): Iterable[RankingRow]
   def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
@@ -155,28 +142,6 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
     SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard,
             late_entry_lock_ts
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
-  }
-
-  override def detailedUser(
-                                   user: UserRow, showTeam: Boolean, showScheduledTransfers: Boolean,
-                                   showStats: Boolean, periods: Iterable[Int], currentPeriod: Option[Int])
-                           (implicit c: Connection): DetailedUser = {
-    val teams = showTeam match {
-      case false => None
-      case true => {
-        Some(periods.map(p => TeamWithPeriod(teamRepo.getUserTeam(user.userId, Some(p)), p)))
-      }
-    }
-    val scheduledTransfers = if (showScheduledTransfers && currentPeriod.isDefined) Some(
-      transferRepo.getNextPeriodScheduledChanges(user.userId, currentPeriod.get)
-    ) else None
-    val stats = if (showStats) {
-      Some(getUserStats(
-        Option.empty[Long], Some(user.userId), None, None, false
-      ).map(x => x.statFieldName -> x.value).toMap)
-    }
-    else None
-    DetailedUser(user, teams, scheduledTransfers, stats)
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
@@ -229,88 +194,49 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
                             userIds: Option[Array[Long]], secondaryOrdering: Option[List[Long]], showTeam: Boolean
                           )(implicit c: Connection): LeagueRankings = {
     println(s"getrankings: userIds: ${userIds.map(_.toList.mkString(",")).getOrElse("None")}")
-    val qResult = getUserStatsAndTeam(league.leagueId, statFieldId, period, secondaryOrdering).toList
-    val filteredByUsers = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
-    val stats = filteredByUsers.groupBy(_.externalUserId)
-    val rankings: Iterable[Ranking] = stats.map({case (externalUserId, rows) => {
-      val row = rows.head
-      val team = if (showTeam) Some(rows.withFilter(_.internalPickeeId.isDefined).map(v2 => PickeeRow(
-        v2.internalPickeeId.get, v2.externalPickeeId.get, v2.pickeeName.get, v2.price.get, v2.active.get)
-      )) else None
-      Ranking(externalUserId, row.username, row.value, row.ranking, row.previousRank, team)
-    }
-    }).toList.sortBy(- _.value)
-
+    val qResult = getUserStats(league.leagueId, None, Some(statFieldId), period, secondaryOrdering, true).toList
+    val filteredUserRankings = if (userIds.isDefined) qResult.filter(q => userIds.get.toList.contains(q.externalUserId)) else qResult
     LeagueRankings(
-      league.leagueId, league.leagueName, leagueRepo.getStatFieldName(statFieldId).get, rankings
+      league.leagueId, league.leagueName, leagueRepo.getStatFieldName(statFieldId).get, filteredUserRankings
     )
   }
 
   override def getUserStats(
-                                   leagueId: Option[Long], userId: Option[Long], statFieldId: Option[Long],
-                                   period: Option[Int], orderByValue: Boolean
-                                 )(implicit c: Connection): Iterable[UserStatDailyRow] = {
+                                   leagueId: Long, userId: Option[Long], statFieldId: Option[Long],
+                                   period: Option[Int], secondaryOrdering: Option[List[Long]],
+                                   showRanking: Boolean
+                                 )(implicit c: Connection): Iterable[RankingRow] = {
     // todo assert either league or league user id non empty XOR
     // they are both nullable so that this func can work for either getting all league-users, or just one
     logger.debug("getUserStats")
-    val periodFilter = if (period.isEmpty) "is null" else s"= ${period.get}"
-    val statFieldFilter = if (statFieldId.isEmpty) "" else s"sf.stat_field_id = ${statFieldId.get} and"
-    val userFilter = if (userId.isEmpty) "" else s"u.user_id = ${userId.get} and"
-    val leagueFilter = if (leagueId.isEmpty) "" else s"league_id = ${leagueId.get} and"
-    val orderByValueStr = if (orderByValue) "" else "order by value desc"
-    val sql = s"""
-                 |select u.user_id, sf.name as stat_field_name, previous_rank, value, period from useru u join stat_field sf using(league_id)
-                 |join user_stat us on(sf.stat_field_id = us.stat_field_id and u.user_id = us.user_id)
-                 |join user_stat_period using(user_stat_id)
-                 |where $leagueFilter $userFilter $statFieldFilter period $periodFilter $orderByValueStr;
-                 |
-      """.stripMargin
-    logger.debug(s"sql: $sql")
-    SQL(sql).as(UserStatDailyRow.parser.*)
-  }
-
-  override def getUserStatsAndTeam(
-                                            leagueId: Long, statFieldId: Long, period: Option[Int],
-                                            secondaryOrdering: Option[List[Long]]
-                                          )(implicit c: Connection): Iterable[RankingRow] = {
     // Duplicate rankings not possible as gave it an order by userId
     // as have to use dense ranks because of multi rows for each user
     val rankingParser: RowParser[RankingRow] = Macro.namedParser[RankingRow](ColumnNaming.SnakeCase)
-    println(period)
-    val teamPeriodFilter = if (period.isDefined) "t.timespan @> {period}" else "upper(t.timespan) is NULL"
-    val statPeriodFilter = if (period.isDefined) "usp.period = {period}" else "usp.period is NULL"
-    val q = secondaryOrdering match {
-      case None => s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank,
-                  pickee_id as internal_pickee_id, external_pickee_id, p.pickee_name, p.price, active,
-                  dense_rank() OVER (order by value desc, u.user_id) as ranking
-                  from useru u
-                  join card c using(user_id)
-           join team t on (c.card_id = t.card_id and $teamPeriodFilter)
-           join pickee p using(pickee_id)
-           join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
-           join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
-           """
-      case Some(secondary) => {
-        val extraJoins = secondary.map(s =>
-          s"""join user_stat us$s on (us$s.user_id = u.user_id and us$s.stat_field_id = $s)
-            join user_stat_period usp$s on (usd$s.user_stat_id = us$s.user_stat_id and $statPeriodFilter)
-            """).mkString(" ")
-        val extraOrder = secondary.map(s => s"lusd$s.value desc,").mkString(" ")
-        s"""select u.external_user_id, u.username, u.user_id, usp.value, us.previous_rank, pickee_id as internal_pickee_id, external_pickee_id
-            p.pickee_name, p.price, active,
-            dense_rank() OVER (order by value desc, $extraOrder u.user_id) as ranking
-             from useru u
-             join card c using(user_id)
-             join team t on (t.card_id = c.card_id and $teamPeriodFilter)
-             join pickee p using(pickee_id)
-             join user_stat us on (us.user_id = u.user_id and us.stat_field_id = {statFieldId})
-             join user_stat_period usp on (usp.user_stat_id = us.user_stat_id and $statPeriodFilter)
-             $extraJoins
-             """
-      }
+    val periodFilter = if (period.isEmpty) "is null" else s"= ${period.get}"
+    val statFieldFilter = if (statFieldId.isEmpty) "" else s"sf.stat_field_id = ${statFieldId.get} and"
+    val userFilter = if (userId.isEmpty) "" else s"u.user_id = ${userId.get} and"
+    val (extraJoins, extraOrder) = secondaryOrdering match{
+      case Some(secondary) => (secondary.map(s =>
+        s"""join user_stat us$s on (us$s.user_id = u.user_id and us$s.stat_field_id = $s)
+            join user_stat_period usp$s on (usd$s.user_stat_id = us$s.user_stat_id and us$s.period $periodFilter)
+            """).mkString(" "),
+        secondary.map(s => s"lusd$s.value desc,").mkString(" "))
+      case None => ("", "")
     }
-    println(q)
-    SQL(q).on("period" -> period, "statFieldId" -> statFieldId).as(rankingParser.*)
+    val rankSql = if (showRanking) s"dense_rank() OVER (order by value desc, $extraOrder u.user_id) as ranking" else ""
+    val rankSqlOrder = if (showRanking) "ORDER BY ranking" else ""
+    val sql = s"""
+                 select u.user_id, sf.name as stat_field_name, previous_rank, usp.value, usp.period,
+                 $rankSql
+                 from useru u join stat_field sf using(league_id)
+                 join user_stat us on(sf.stat_field_id = us.stat_field_id and u.user_id = us.user_id)
+                 join user_stat_period usp using(user_stat_id)
+                 $extraJoins
+                 where league_id = $leagueId and $userFilter $statFieldFilter period $periodFilter
+                 $rankSqlOrder
+      """.stripMargin
+    logger.debug(s"sql: $sql")
+    SQL(sql).as(RankingRow.parser.*)
   }
 
   override def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit = {
@@ -342,29 +268,15 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
   }
 
   override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {
-    leagueRepo.getStatFields(leagueId).foreach(sf => {
-      val userStatsOverall = getUserStats(Some(leagueId), None, Some(sf.statFieldId), None, true)
-      var lastScore = Double.MaxValue
-      var lastScoreRank = 0
-      userStatsOverall.zipWithIndex.map({
-        case (row, i) => {
-          val value = row.value
-          val rank = if (value == lastScore) lastScoreRank else i + 1
-          lastScore = value
-          lastScoreRank = rank
-          val previousRank = rank
-          (row.userId, sf.statFieldId, previousRank)
-        }
-      }).foreach(x => (updatePreviousRank _).tupled(x))
-      // can do all update in one call if append then update outside loop
-      // TODO reimplement this
-      //      val pickeeStatsOverall = pickeeRepo.getPickeeStat(league.leagueId, sf.statFieldId, None).map(_._1)
-      //      val newPickeeStat = pickeeStatsOverall.zipWithIndex.map(
-      //        { case (p, i) => p.previousRank = i + 1; p }
-      //      )
-      //      // can do all update in one call if append then update outside loop
-      //      pickeeStatTable.update(newPickeeStat)
-    })
+    SQL"""
+       with rankings as (select user_stat_id, rank(PARTITION BY stat_field_id)
+       OVER (order by value desc, useru.user_id) as ranking from useru
+        join user_stat using(user_id)
+         join user_stat_period using(user_stat_id)
+          where league_id = $leagueId and period is null
+           order by value desc)
+           update user_stat us set previous_rank = rankings.ranking from rankings where rankings.user_stat_id = us.user_stat_id;
+        """.executeUpdate()
   }
 
   override def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int = {
