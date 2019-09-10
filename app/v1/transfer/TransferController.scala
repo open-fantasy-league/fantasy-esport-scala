@@ -60,6 +60,7 @@ class TransferController @Inject()(
     )(TransferFormInput.apply)(TransferFormInput.unapply)
     )
   }
+
   // prob not really necessary to use form here. could just be raw array
   private val recycleCardsForm: Form[RecycleCardsFormInput] = {
     Form(mapping("cardIds" -> list(of(longFormat)))(RecycleCardsFormInput.apply)(RecycleCardsFormInput.unapply))
@@ -78,6 +79,35 @@ class TransferController @Inject()(
     Future{
       db.withConnection { implicit c =>
         Ok(Json.toJson(transferRepo.getUserTransfer(request.user.userId)))
+      }
+    }
+  }
+
+  def appendDraftQueueReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        (for {
+          pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
+          internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get).get
+          out = transferRepo.appendDraftQueue(request.user.userId, internalPickeeId)
+        } yield Ok("ok")).fold(identity, identity)
+      }
+    }
+  }
+
+  // optional pickee id as could be time-up
+  def draftReq(userId: String, leagueId: String, pickeeIdStr: Option[String]) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        (for {
+          pickeeId <- IdParser.parseIntId(pickeeIdStr, "pickee")
+          internalPickeeId = pickeeId.flatMap(pid => pickeeRepo.getInternalId(request.league.leagueId, pid))
+          out <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId, request.user.userHighestPriorityWatchlist)
+        } yield Ok("ok")).fold(identity, identity)
       }
     }
   }
@@ -127,7 +157,6 @@ class TransferController @Inject()(
   }
 
   private def makeTransfer[A](league: LeagueRow, user: UserRow)(implicit request: Request[A]): Future[Result] = {
-    val isCard = league.isCardSystem
     def failure(badForm: Form[TransferFormInput]) = {
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
@@ -141,7 +170,7 @@ class TransferController @Inject()(
 
       Future {
         db.withTransaction { implicit c =>
-          if (isCard){
+          if (league.system == "card"){
             (for {
               // TODO does select for update lock/block other reads?
               _ <- validateDuplicates(input.sell, sell, input.buy, buy)
@@ -172,7 +201,43 @@ class TransferController @Inject()(
                   sell, buy, currentTeamIds, user, periodStart, periodEnd, userIsLateStart
                 )
             } yield out).fold(identity, identity)
-          } else{
+          }
+          else if (league.system == "draft"){
+            (for {
+              _ <- validateDuplicates(input.sell, sell, input.buy, buy)
+              leagueStarted = leagueRepo.isStarted(league)
+              _ <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
+              currentPeriod = leagueRepo.getCurrentPeriod(league)
+              userIsLateStart = currentPeriod.isDefined && user.entered.isAfter(currentPeriod.get.start)
+              defaultPeriod <- if (userIsLateStart)
+                currentPeriod.toRight(InternalServerError("Couldnt find current period")) else
+                leagueRepo.getNextPeriod(league)
+              periodStart = input.applyStartPeriod.getOrElse(defaultPeriod.value)
+              periodEnd = input.applyEndPeriod
+              _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateEntryLockTs, input.isCheck)
+              applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard.get, user.usedWildcard, sell)
+              newRemaining <- updatedRemainingTransfers(leagueStarted, user.remainingTransfers, sell)
+              pickees = pickeeRepo.getPickees(league.leagueId).toList
+              newMoney <- updatedMoney(user.money, pickees, sell, buy, applyWildcard, league.startingMoney)
+              currentTeamIds <- tryOrResponse(teamRepo.getUserTeam(user.userId).map(_.externalPickeeId).toSet
+                , InternalServerError("Missing pickee externalPickeeId"))
+              _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
+              sellOrWildcard = if (applyWildcard) currentTeamIds else sell
+              _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
+              // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
+              _ <- validateIds(if (applyWildcard) Set() else currentTeamIds, pickees.map(_.externalPickeeId).toSet, sell, buy)
+              newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+              _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
+              _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
+              _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamIds, league.leagueId)
+              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
+                updateDBTransfer(
+                  league.leagueId, sellOrWildcard, buy, pickees, user,
+                  leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
+                  newRemaining, applyWildcard, periodStart, periodEnd)
+            } yield out).fold(identity, identity)
+          }
+          else{
           (for {
             // TODO does select for update lock/block other reads?
             _ <- validateDuplicates(input.sell, sell, input.buy, buy)

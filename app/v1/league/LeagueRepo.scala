@@ -59,7 +59,7 @@ object LeagueFull{
         "pickeeDescription" -> league.league.pickeeDescription,
         "periodDescription" -> league.league.periodDescription,
         "noWildcardForLateRegister" -> league.league.noWildcardForLateRegister,
-        "isCardSystem" -> league.league.isCardSystem,
+        "system" -> league.league.system,
         "recycleValue" -> league.league.recycleValue,
         "cardPackCost" -> league.league.packCost,
         "cardPackSize" -> league.league.packSize,
@@ -110,6 +110,7 @@ trait LeagueRepo{
   def getStatField(statFieldId: Long)(implicit c: Connection): Option[LeagueStatFieldRow]
   def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double]
   def getScoringRules(leagueId: Long)(implicit c: Connection): Iterable[ScoringRow]
+  def setDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long]
 }
 
 @Singleton
@@ -123,10 +124,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       s"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
         |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, is_card_system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points
+        | no_wildcard_for_late_register, system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points,
+        | draft_start, choice_timer
         | from league l
         | left join card_system using(league_id)
         | left join transfer_system using(league_id)
+        | left join draft_system using(league_id)
         | where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
   }
 
@@ -158,8 +161,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }
     val sql = s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
           transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
-          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, is_card_system, recycle_value,
+          url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, system, recycle_value,
           pack_size, pack_cost, prediction_win_money, (current_period_id is not null) as started,
+          draft_start, choice_timer,
           (current_period_id is not null and upper(current_period.timespan) < now()) as ended,
           (select count(*) from period where league_id = $leagueId) as num_periods,
            current_period_id,
@@ -171,6 +175,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           from league l
           left join card_system using(league_id)
           left join transfer_system using(league_id)
+          left join draft_system using(league_id)
           left join period current_period on (current_period.league_id = l.league_id and current_period.period_id = l.current_period_id)
           $extraJoins where l.league_id = $leagueId"""
     val queryResult = SQL(sql).as(detailedLeagueParser.*)
@@ -231,26 +236,31 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description,
         |starting_money, team_size, force_full_teams, transfer_open,
         |url, url_verified, current_period_id, apply_points_at_start_time,
-        |is_card_system, prediction_win_money) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
+        |system, prediction_win_money) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription},
         | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, false, null,
-        |  {applyPointsAtStartTime}, {cardSystem}, {predictionWinMoney}) returning league_id;""".stripMargin
+        |  {applyPointsAtStartTime}, {system}, {predictionWinMoney}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
       "periodDescription" -> input.periodDescription, "startingMoney" -> input.startingMoney,
       "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams, "url" -> input.url.getOrElse(""),
-      "applyPointsAtStartTime" -> input.applyPointsAtStartTime, "cardSystem" -> input.transferInfo.isCardSystem,
+      "applyPointsAtStartTime" -> input.applyPointsAtStartTime, "system" -> input.transferInfo.system,
       "predictionWinMoney" -> input.transferInfo.predictionWinMoney
     )
     println(q.sql)
     println(q)
     val newLeagueId: Option[Long]= q.executeInsert()
-    if (input.transferInfo.isCardSystem){
+    if (input.transferInfo.system == "card"){
       SQL"""insert into card_system(league_id, recycle_value, pack_cost, pack_size) VALUES
             ($newLeagueId, ${input.transferInfo.recycleValue},
         ${input.transferInfo.cardPackCost}, ${input.transferInfo.cardPackSize})""".executeInsert()
     }
-    else{
+    else if (input.transferInfo.system == "draft"){
+      SQL"""insert into draft_system(league_id, draft_start, choice_timer, is_snake) VALUES
+            ($newLeagueId, ${input.transferInfo.draftStart},
+        interval('${input.transferInfo.draftChoiceSecs} seconds'), true)""".executeInsert()
+    }
+    else {
       SQL"""insert into transfer_system(league_id, transfer_limit, transfer_wildcard, no_wildcard_for_late_register) VALUES
             ($newLeagueId, ${input.transferInfo.transferLimit},
         ${input.transferInfo.transferWildcard}, ${input.transferInfo.noWildcardForLateRegister})""".executeInsert()
@@ -263,7 +273,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       input.teamSize, false, input.transferInfo.forceFullTeams,
       input.url.getOrElse(""), false, null,
       input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister, input.manuallyCalculatePoints,
-      input.transferInfo.isCardSystem, input.transferInfo.recycleValue,
+      input.transferInfo.system, input.transferInfo.recycleValue,
       input.transferInfo.cardPackCost, input.transferInfo.cardPackSize
     )
   }
@@ -587,6 +597,23 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           join stat_field using(stat_field_id)
           left join "limit" l using(limit_id)
           where league_id = $leagueId;""".as(ScoringRow.parser.*)
+  }
+
+  override def setDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long] = {
+    val randomUserIds = SQL"""select user_id, external_user_id from useru where league_id = $leagueId order by random()"""
+      .as((SqlParser.long("user_id") ~ SqlParser.long("external_user_id")).*)
+    val reversedUserIds = randomUserIds.reverse
+    var lastId = Option.empty[Long]
+    (0 to maxPickees).map(i => {
+      val userIds = if (i % 2 == 0) randomUserIds else reversedUserIds
+      userIds.map({case userId ~ externalUserId =>
+        lastId =
+          SQL"""
+           insert into draft_order(league_id, user_id, parent_draft_order_id) values ($leagueId, $userId, $lastId)
+        """.executeInsert()
+        externalUserId
+      })
+    }).toList.flatten
   }
 }
 

@@ -26,15 +26,16 @@ case class PeriodInput(
 case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double],
                              onStartCloseTransferWindow: Option[Boolean], onEndOpenTransferWindow: Option[Boolean])
 
-case class LimitInput(name: String, max: Option[Int])
+case class LimitInput(name: String, max: Option[Int], benchMax: Option[Int])
 
-case class LimitTypeInput(name: String, description: Option[String], max: Option[Int], types: List[LimitInput])
+case class LimitTypeInput(name: String, description: Option[String], max: Option[Int], benchMax: Option[Int], types: List[LimitInput])
 
 case class TransferInput(
                           transferLimit: Option[Int], transferWildcard: Option[Boolean],
-                          forceFullTeams: Boolean, noWildcardForLateRegister: Option[Boolean], isCardSystem: Boolean,
+                          forceFullTeams: Boolean, noWildcardForLateRegister: Option[Boolean], system: String,
                           recycleValue: Option[BigDecimal], cardPackCost: Option[BigDecimal], cardPackSize: Option[Int],
-                          predictionWinMoney: Option[BigDecimal]
+                          predictionWinMoney: Option[BigDecimal], draftStart: Option[LocalDateTime], draftChoiceSecs: Option[Int],
+                          //draftIsSnake: Boolean
                         )
 
 case class FactionSpecificScoring(name: String, value: Double)
@@ -92,19 +93,23 @@ class LeagueController @Inject()(
           "transferWildcard" -> optional(boolean),
           "forceFullTeams" -> default(boolean, false),
           "noWildcardForLateRegister" -> optional(boolean),
-          "isCardSystem" -> boolean,
+          "system" -> nonEmptyText,  // TODO constrain types
           "recycleValue" -> optional(bigDecimal(10, 1)),
           "cardPackCost" -> optional(bigDecimal(10, 1)),
           "cardPackSize" -> optional(number),
-          "predictionWinMoney" -> optional(bigDecimal(10, 1))
+          "predictionWinMoney" -> optional(bigDecimal(10, 1)),
+          "draftStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
+          "draftChoiceSecs" -> optional(number)
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
           "name" -> nonEmptyText,
           "description" -> optional(nonEmptyText),
           "max" -> optional(number),
+          "benchMax" -> optional(number),
           "types" -> list(mapping(
             "name" -> nonEmptyText,
-            "max" -> optional(number)
+            "max" -> optional(number),
+            "benchMax" -> optional(number),
           )(LimitInput.apply)(LimitInput.unapply))
         )(LimitTypeInput.apply)(LimitTypeInput.unapply)),
         "startingMoney" -> default(bigDecimal(10, 1), BigDecimal.decimal(50.0)),
@@ -261,6 +266,15 @@ class LeagueController @Inject()(
           periodValueInt <- IdParser.parseIntId(Some(periodValue), "period value", required=true)
           out = handleUpdatePeriodForm(request.league.leagueId, periodValueInt.get)
         } yield out).fold(identity, identity)
+      }
+    }
+  }
+
+  def setDraftOrderReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId)
+    andThen auther.PermissionCheckAction).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        Ok(Json.toJson(leagueRepo.setDraftOrder(request.league.leagueId, request.league.teamSize)))
       }
     }
   }

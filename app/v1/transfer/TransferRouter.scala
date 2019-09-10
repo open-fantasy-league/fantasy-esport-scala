@@ -18,6 +18,9 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case POST(p"/leagues/$leagueId/users/$userId/newPack") =>
       controller.generateCardPackReq(userId, leagueId)
 
+    case POST(p"/leagues/$leagueId/users/$userId/appendDraft/$pickeeId") =>
+      controller.appendDraftQueueReq(userId, leagueId, pickeeId)
+
     case GET(p"/leagues/$leagueId/users/$userId") =>
       controller.getUserTransfersReq(userId, leagueId)
 

@@ -5,11 +5,14 @@ import java.time.LocalDateTime
 
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
+import anorm.Macro.ColumnNaming
 import play.api.libs.concurrent.CustomExecutionContext
 import anorm._
 import models._
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
+
+case class DraftWatchlistRow(draftWatchlistId: Long, pickeeId: Long, childId: Option[Long])
 
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -31,6 +34,9 @@ trait TransferRepo{
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
   def recycleCards(leagueId: Long, userId: Long, cardId: List[Long], recycleValue: BigDecimal)
                   (implicit c: Connection): Int
+  def appendDraftQueue(userId: Long, pickeeId: Long)(implicit c: Connection)
+  def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Option[Long], userHighestPriorityWatchlist: Option[Long])
+                 (implicit c: Connection): Either[String, Any]
 }
 
 @Singleton
@@ -213,6 +219,55 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo)(implicit ec: TransferEx
     }
     SQL"""update useru set money = money + $recycleValue * $updatedCount WHERE user_id = $userId""".executeUpdate()
     return updatedCount
+  }
+
+  override def appendDraftQueue(userId: Long, pickeeId: Long)(implicit c: Connection) = {
+    val newId = SQL"""insert into draft_watchlist(user_id, pickee_id) values($userId, $pickeeId)""".executeInsert()
+    SQL"""
+         update draft_watchlist set child_draft_watchlist = $newId where user_id = $userId and pickee_id = $pickeeId
+         and child_draft_watchlist is NULL
+         and NOT draft_watchlist_id = $newId
+       """.executeUpdate()
+  }
+
+  override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Option[Long], userHighestPriorityWatchlist: Option[Long])(implicit c: Connection): Either[String, Any] = {
+    var pickeeId = internalPickeeId
+    val draftOrderId = SQL"select user_id from draft_order where parent_id is null and league_id = $leagueId"
+      .as(SqlParser.long("user_id").singleOpt)
+    if (draftOrderId.isEmpty)
+      return Left("User not next in draft order")
+
+    if (internalPickeeId.isEmpty){
+      val parser: RowParser[DraftWatchlistRow] = Macro.namedParser[DraftWatchlistRow](ColumnNaming.SnakeCase)
+      val watchlist = SQL"""select draft_watchlist_id, pickee_id, child_id from draft_watchlist where user_id = $userId""".as(parser.*)
+      if (watchlist.nonEmpty && userHighestPriorityWatchlist.isDefined) {
+        var currentWatchlist: DraftWatchlistRow = watchlist.find(w => w.draftWatchlistId == userHighestPriorityWatchlist.get).get
+        var found = false
+        var nothing = false
+        while (!found || !nothing) {
+          if (SQL"select 1 as yep from card where pickee_id = ${currentWatchlist.pickeeId}".as(SqlParser.long("yep").singleOpt).isEmpty){
+            found = true
+          } else{
+            if (currentWatchlist.childId.isDefined) {
+              currentWatchlist = watchlist.find(w => w.draftWatchlistId == currentWatchlist.childId.get).get
+            }
+            else nothing = true
+          }
+        }
+        if (found) {
+          pickeeId = Some(currentWatchlist.pickeeId)
+        }
+      }
+    }
+
+    if (pickeeId.isDefined) {
+      SQL"insert into card(user_id, pickee_id) values($userId, $pickeeId)".executeInsert()
+      SQL"delete from draft_watchlist where pickee_id = $pickeeId".executeUpdate()
+    }
+
+    SQL"update draft_order set parent_id = null where parent_id = $draftOrderId".executeUpdate()
+    SQL"delete from draft_order where draft_order_id = $draftOrderId".executeUpdate()
+    Right(true)
   }
 }
 
