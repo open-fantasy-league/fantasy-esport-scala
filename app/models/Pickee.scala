@@ -164,3 +164,31 @@ object PickeeStatsOut{
     }
   }
 }
+
+case class DraftWatchlistRow(pickeeName: String, externalPickeeId: Long, pickeeId: Long)
+
+object DraftWatchlistRow{
+  implicit val implicitWrites = new Writes[DraftWatchlistRow] {
+    def writes(p: DraftWatchlistRow): JsValue = {
+      Json.obj(
+        "id" -> p.externalPickeeId,
+        "name" -> p.pickeeName,
+      )
+    }
+  }
+  val parser: RowParser[DraftWatchlistRow] = Macro.namedParser[DraftWatchlistRow](ColumnNaming.SnakeCase)
+}
+
+case class DraftOrderRow(username: String, externalUserId: Long, userId: Long)
+
+object DraftOrderRow{
+  implicit val implicitWrites = new Writes[DraftOrderRow] {
+    def writes(p: DraftOrderRow): JsValue = {
+      Json.obj(
+        "id" -> p.externalUserId,
+        "username" -> p.username,
+      )
+    }
+  }
+  val parser: RowParser[DraftOrderRow] = Macro.namedParser[DraftOrderRow](ColumnNaming.SnakeCase)
+}

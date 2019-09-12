@@ -84,7 +84,7 @@ class PickeeController @Inject()(cc: ControllerComponents, pickeeRepo: PickeeRep
     def success(inputs: RepricePickeeFormInputList) = {
       Future {
         db.withConnection { implicit c =>
-            val leaguePickees = pickeeRepo.getPickees(request.league.leagueId).toList
+            val leaguePickees = pickeeRepo.getAllPickees(request.league.leagueId).toList
             val pickees: Map[Long, RepricePickeeFormInput] = inputs.pickees.map(p => p.id -> p).toMap
             leaguePickees.withFilter(p => pickees.contains(p.externalPickeeId)).map(p => {
               pickeeRepo.updatePrice(request.league.leagueId, p.externalPickeeId, pickees(p.externalPickeeId).price)

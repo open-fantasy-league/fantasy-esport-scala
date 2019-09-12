@@ -51,7 +51,8 @@ trait PickeeRepo{
   def addLimitToPickee(
                         leagueId: Long, pickeeId: Long, limitNames: List[String]
                       )(implicit c: Connection): Unit
-  def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow]
+  def getAllPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow]
+  def getPickees(pickeeIds: List[Long])(implicit c: Connection): Iterable[PickeeRow]
   def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut]
   def getPickeeLimits(pickeeId: Long)(implicit c: Connection): PickeeLimitsOut
   def getPickeeLimitIds(internalPickeeId: Long)(implicit c: Connection): Iterable[Long]
@@ -113,9 +114,14 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
     })
   }
 
-  override def getPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
+  override def getAllPickees(leagueId: Long)(implicit c: Connection): Iterable[PickeeRow] = {
     SQL(s"select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price, active from pickee where league_id = $leagueId;").as(PickeeRow.parser.*)
- }
+  }
+
+  override def getPickees(pickeeIds: List[Long])(implicit c: Connection): Iterable[PickeeRow] = {
+    SQL"""select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price, active from pickee
+          where pickee_id = ANY($pickeeIds)""".as(PickeeRow.parser.*)
+  }
 
 
   override def getPickeesLimits(leagueId: Long)(implicit c: Connection): Iterable[PickeeLimitsOut] = {

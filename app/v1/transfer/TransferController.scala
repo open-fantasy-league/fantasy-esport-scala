@@ -83,7 +83,7 @@ class TransferController @Inject()(
     }
   }
 
-  def appendDraftQueueReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
+  def appendDraftWatchlistReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
@@ -97,17 +97,49 @@ class TransferController @Inject()(
     }
   }
 
-  // optional pickee id as could be time-up
-  def draftReq(userId: String, leagueId: String, pickeeIdStr: Option[String]) = (new AuthAction() andThen
+  def deleteDraftWatchlistReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
         (for {
-          pickeeId <- IdParser.parseIntId(pickeeIdStr, "pickee")
-          internalPickeeId = pickeeId.flatMap(pid => pickeeRepo.getInternalId(request.league.leagueId, pid))
-          out <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId, request.user.userHighestPriorityWatchlist)
+          pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
+          internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get).get
+          out = transferRepo.deleteDraftQueue(request.user.userId, internalPickeeId)
         } yield Ok("ok")).fold(identity, identity)
+      }
+    }
+  }
+
+  def draftReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      db.withTransaction { implicit c =>
+        (for {
+          pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
+          internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get)
+          drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId).left.map(BadRequest(_))
+          out = Ok(Json.toJson(drafted))
+        } yield out).fold(identity, identity)
+      }
+    }
+  }
+
+  def getDraftOrderReq(leagueId: String) = new LeagueAction(leagueId).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        Ok(Json.toJson(transferRepo.getDraftOrder(request.league.leagueId)))
+      }
+    }
+  }
+
+  def getDraftWatchlistReq(userId: String, leagueId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        Ok(Json.toJson(transferRepo.getDraftWatchlist(request.user.userId)))
       }
     }
   }
@@ -217,7 +249,7 @@ class TransferController @Inject()(
               _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateEntryLockTs, input.isCheck)
               applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard.get, user.usedWildcard, sell)
               newRemaining <- updatedRemainingTransfers(leagueStarted, user.remainingTransfers, sell)
-              pickees = pickeeRepo.getPickees(league.leagueId).toList
+              pickees = pickeeRepo.getAllPickees(league.leagueId).toList
               newMoney <- updatedMoney(user.money, pickees, sell, buy, applyWildcard, league.startingMoney)
               currentTeamIds <- tryOrResponse(teamRepo.getUserTeam(user.userId).map(_.externalPickeeId).toSet
                 , InternalServerError("Missing pickee externalPickeeId"))
@@ -253,7 +285,7 @@ class TransferController @Inject()(
             _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateEntryLockTs, input.isCheck)
             applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard.get, user.usedWildcard, sell)
             newRemaining <- updatedRemainingTransfers(leagueStarted, user.remainingTransfers, sell)
-            pickees = pickeeRepo.getPickees(league.leagueId).toList
+            pickees = pickeeRepo.getAllPickees(league.leagueId).toList
             newMoney <- updatedMoney(user.money, pickees, sell, buy, applyWildcard, league.startingMoney)
             currentTeamIds <- tryOrResponse(teamRepo.getUserTeam(user.userId).map(_.externalPickeeId).toSet
             , InternalServerError("Missing pickee externalPickeeId"))

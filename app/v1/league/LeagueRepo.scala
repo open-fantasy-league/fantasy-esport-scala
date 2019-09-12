@@ -111,6 +111,7 @@ trait LeagueRepo{
   def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double]
   def getScoringRules(leagueId: Long)(implicit c: Connection): Iterable[ScoringRow]
   def setDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long]
+  def setWaiverOrder(leagueId: Long, userIds: Iterable[Long~Long])(implicit c: Connection): Iterable[Long]
 }
 
 @Singleton
@@ -256,9 +257,10 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         ${input.transferInfo.cardPackCost}, ${input.transferInfo.cardPackSize})""".executeInsert()
     }
     else if (input.transferInfo.system == "draft"){
-      SQL"""insert into draft_system(league_id, draft_start, choice_timer, is_snake) VALUES
+      SQL"""insert into draft_system(league_id, draft_start, choice_timer, next_draft_deadline, is_snake) VALUES
             ($newLeagueId, ${input.transferInfo.draftStart},
-        interval('${input.transferInfo.draftChoiceSecs} seconds'), true)""".executeInsert()
+        interval('${input.transferInfo.draftChoiceSecs} seconds'),
+        ${input.transferInfo.draftStart} + interval('${input.transferInfo.draftChoiceSecs} seconds'), true)""".executeInsert()
     }
     else {
       SQL"""insert into transfer_system(league_id, transfer_limit, transfer_wildcard, no_wildcard_for_late_register) VALUES
@@ -606,6 +608,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     var lastId = Option.empty[Long]
     (0 to maxPickees).map(i => {
       val userIds = if (i % 2 == 0) randomUserIds else reversedUserIds
+      if (i == 1){
+        setWaiverOrder(leagueId, userIds)  // TODO this shouldnt be confined to setdraftorder
+      }
       userIds.map({case userId ~ externalUserId =>
         lastId =
           SQL"""
@@ -614,6 +619,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         externalUserId
       })
     }).toList.flatten
+  }
+
+  override def setWaiverOrder(leagueId: Long, userIds: Iterable[Long~Long])(implicit c: Connection): Iterable[Long] = {
+    // TODO can more efficient than map twice
+    SQL"""insert into waiver_order(league_id, user_ids) values($leagueId, ${userIds.map(_._1).toList})""".executeInsert()
+    userIds.map(_._2)
   }
 }
 

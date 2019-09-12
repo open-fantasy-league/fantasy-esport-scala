@@ -17,7 +17,6 @@ import utils.Utils
 import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 import v1.team.TeamRepo
-import v1.transfer.TransferRepo
 
 //case class Ranking(userId: Long, username: String, value: Double, ranking: Int, previousRank: Option[Int])
 
@@ -96,6 +95,7 @@ class UserExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 trait UserRepo{
   def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
+  def getUsers(userIds: List[Long])(implicit c: Connection): Iterable[UserRow]
   def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
@@ -121,7 +121,7 @@ trait UserRepo{
 }
 
 @Singleton
-class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)(implicit ec: UserExecutionContext, leagueRepo: LeagueRepo) extends UserRepo{
+class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: PickeeRepo)(implicit ec: UserExecutionContext, leagueRepo: LeagueRepo) extends UserRepo{
   private val logger = Logger("application")
 
   override def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit = {
@@ -144,9 +144,15 @@ class UserRepoImpl @Inject()(db: Database, transferRepo: TransferRepo, teamRepo:
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
   }
 
+  override def getUsers(userIds: List[Long])(implicit c: Connection): Iterable[UserRow] = {
+    // TODO check ANY handling
+    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts
+      from useru where user_id = ANY($userIds)""".as(UserRow.parser.*)
+  }
+
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL("select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts" +
-      "from useru where league_id = $leagueId").as(UserRow.parser.*)
+    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts
+      from useru where league_id = $leagueId""".as(UserRow.parser.*)
   }
 
   override def insertUser(league: LeagueRow, externalUserId: Long, username: String)(implicit c: Connection): UserRow = {
