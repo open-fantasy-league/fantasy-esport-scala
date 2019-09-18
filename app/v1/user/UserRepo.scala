@@ -113,10 +113,8 @@ trait UserRepo{
                           secondaryOrdering: Option[List[Long]],
                           showRanking: Boolean
                         )(implicit c: Connection): Iterable[RankingRow]
-  def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
-  def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
   def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int
 }
 
@@ -140,18 +138,18 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
   override def get(leagueId: Long, externalUserId: Long)
                           (implicit c: Connection): Option[UserRow] = {
     SQL(s"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard,
-            late_entry_lock_ts
+            late_entry_lock_ts, eliminated
       from useru where league_id = $leagueId and external_user_id = $externalUserId;""").as(UserRow.parser.singleOpt)
   }
 
   override def getUsers(userIds: List[Long])(implicit c: Connection): Iterable[UserRow] = {
     // TODO check ANY handling
-    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts
+    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
       from useru where user_id = ANY($userIds)""".as(UserRow.parser.*)
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts
+    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
       from useru where league_id = $leagueId""".as(UserRow.parser.*)
   }
 
@@ -245,12 +243,6 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
     SQL(sql).as(RankingRow.parser.*)
   }
 
-  override def updatePreviousRank(userId: Long, statFieldId: Long, previousRank: Int)(implicit c: Connection): Unit = {
-    SQL(
-      "update user_stat set previous_rank = {previousRank} where user_id = {userId} and stat_field_id = {statFieldId};"
-    ).on("previousRank" -> previousRank, "userId" -> userId, "statFieldId" -> statFieldId).executeUpdate()
-  }
-
   override def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow = {
     db.withConnection { implicit c: Connection =>
       println("in joinuser")
@@ -271,18 +263,6 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
   override def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean = {
     SQL(s"select 1 from useru where league_id = $leagueId and external_user_id = $externalUserId").
       as(SqlParser.scalar[Int].singleOpt).isDefined
-  }
-
-  override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {
-    SQL"""
-       with rankings as (select user_stat_id, rank(PARTITION BY stat_field_id)
-       OVER (order by value desc, useru.user_id) as ranking from useru
-        join user_stat using(user_id)
-         join user_stat_period using(user_stat_id)
-          where league_id = $leagueId and period is null
-           order by value desc)
-           update user_stat us set previous_rank = rankings.ranking from rankings where rankings.user_stat_id = us.user_stat_id;
-        """.executeUpdate()
   }
 
   override def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int = {

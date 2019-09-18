@@ -38,6 +38,7 @@ case class DetailedLeagueRow(
                              multiplier: Option[Double],
                              onStartCloseTransferWindow: Option[Boolean],
                              onEndOpenTransferWindow: Option[Boolean],
+                            onEndEliminateUsersTo: Option[Int],
                             currentPeriodId: Option[Long],
                             currentPeriodValue: Option[Int],
                             currentPeriodStart: Option[LocalDateTime],
@@ -190,6 +191,7 @@ case class PeriodRow(periodId: Long,
                      onEndOpenTransferWindow: Boolean = false,
                      nextPeriodId: Option[Long] = None,
                      ended: Boolean = false,
+                     onEndEliminateUsersTo: Option[Int] = None
                     )
 
 object PeriodRow{
@@ -201,7 +203,8 @@ object PeriodRow{
         "end" -> f.end,
         "multiplier" -> f.multiplier,
         "onStartCloseTransferWindow" -> f.onStartCloseTransferWindow,
-        "onEndOpenTransferWindow" -> f.onEndOpenTransferWindow
+        "onEndOpenTransferWindow" -> f.onEndOpenTransferWindow,
+        "onEndEliminateUsersTo" -> f.onEndEliminateUsersTo
       )
     }
   }

@@ -341,7 +341,7 @@ class ResultController @Inject()(cc: ControllerComponents, userRepo: UserRepo, r
          where (period is NULL or period = {period}) and us.user_stat_id = usp.user_stat_id and
                 t.timespan @> {period} and p.pickee_id = {pickeeId} and us.stat_field_id = {statFieldId}
                and l.league_id = {leagueId} and
-               (u.late_entry_lock_ts is NULL OR u.late_entry_lock_ts < {targetedAtTstamp});
+               (u.late_entry_lock_ts is NULL OR u.late_entry_lock_ts < {targetedAtTstamp}) and NOT u.eliminated;
               """
           //(select count(*) from team_pickee where team_pickee.team_id = t.team_id) = l.team_size;
           val sql = SQL(q).on(

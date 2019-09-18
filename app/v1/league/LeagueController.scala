@@ -21,10 +21,12 @@ import v1.pickee.{PickeeFormInput, PickeeRepo}
 
 case class PeriodInput(
                         start: LocalDateTime, end: LocalDateTime, multiplier: Double, onStartCloseTransferWindow: Boolean,
-                        onEndOpenTransferWindow: Boolean
+                        onEndOpenTransferWindow: Boolean, onEndEliminateUsersTo: Option[Int]
                       )
 case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDateTime], multiplier: Option[Double],
-                             onStartCloseTransferWindow: Option[Boolean], onEndOpenTransferWindow: Option[Boolean])
+                             onStartCloseTransferWindow: Option[Boolean], onEndOpenTransferWindow: Option[Boolean],
+                             onEndEliminateUsersTo: Option[Int]
+                            )
 
 case class LimitInput(name: String, max: Option[Int], benchMax: Option[Int])
 
@@ -84,7 +86,8 @@ class LeagueController @Inject()(
           "end" -> of(localDateTimeFormat("yyyy-MM-dd HH:mm")),
           "multiplier" -> default(of(doubleFormat), 1.0),
           "onStartCloseTransferWindow" -> default(boolean, false),
-          "onEndOpenTransferWindow" -> default(boolean, false)
+          "onEndOpenTransferWindow" -> default(boolean, false),
+          "onEndEliminateUsersTo" -> optional(number(min=0)),
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
         "benchSize" -> default(number(min=0, max=20), 0),
@@ -176,7 +179,8 @@ class LeagueController @Inject()(
         "end" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
         "multiplier" -> optional(of(doubleFormat)),
         "onStartCloseTransferWindow" -> optional(boolean),
-        "onEndOpenTransferWindow" -> optional(boolean)
+        "onEndOpenTransferWindow" -> optional(boolean),
+        "onEndEliminateUsersTo" -> optional(number(min=0))
       )(UpdatePeriodInput.apply)(UpdatePeriodInput.unapply)
     )
   }
@@ -250,7 +254,6 @@ class LeagueController @Inject()(
     Future {
       // hacky way to avoid circular dependency
       db.withConnection { implicit c =>
-        implicit val implUpdateHistoricRanksFunc: Long => Unit = userRepo.updateHistoricRanks
         (for {
           newPeriod <- leagueRepo.getNextPeriod(request.league, requireCurrentPeriodEnded = true)
           _ = leagueRepo.postStartPeriodHook(request.league.leagueId, newPeriod.periodId, newPeriod.value, LocalDateTime.now())
@@ -289,7 +292,8 @@ class LeagueController @Inject()(
       db.withConnection { implicit c =>
         (for {
           updatedPeriodId <- tryOrResponse(leagueRepo.updatePeriod(
-            leagueId, periodValue, input.start, input.end, input.multiplier, input.onStartCloseTransferWindow, input.onEndOpenTransferWindow
+            leagueId, periodValue, input.start, input.end, input.multiplier, input.onStartCloseTransferWindow,
+            input.onEndOpenTransferWindow, input.onEndEliminateUsersTo
           ), BadRequest("Invalid leagueId or period value"))
           out = Ok(Json.toJson("Successfully updated"))
         } yield out).fold(identity, identity)
