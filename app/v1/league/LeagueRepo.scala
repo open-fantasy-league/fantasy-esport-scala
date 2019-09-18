@@ -45,6 +45,7 @@ object LeagueFull{
         "isPrivate" -> league.league.isPrivate,
         "tournamentId" -> league.league.tournamentId,
         "teamSize" -> league.league.teamSize,
+        "benchSize" -> league.league.benchSize,
         "transferLimit" -> league.league.transferLimit, // use -1 for no transfer limit I think. only applies after period 1 start
         "transferWildcard" -> league.league.transferWildcard,
         "transferOpen" -> league.league.transferOpen,
@@ -123,7 +124,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def get(leagueId: Long)(implicit c: Connection): Option[LeagueRow] = {
     SQL(
       s"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
-        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open,
+        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open,
         |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
         | no_wildcard_for_late_register, system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points,
         | draft_start, choice_timer
@@ -161,7 +162,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       extraSelects += """,null as limit_type_name, null as description, null as limit_name, null as limit_max"""
     }
     val sql = s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
-          transfer_limit, transfer_wildcard, starting_money, team_size, transfer_open, force_full_teams,
+          transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, system, recycle_value,
           pack_size, pack_cost, prediction_win_money, (current_period_id is not null) as started,
           draft_start, choice_timer,
@@ -235,16 +236,16 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     println("Inserting new league")
     val q = SQL(
       """insert into league(league_name, api_key, game_id, is_private, tournament_id, pickee_description, period_description,
-        |starting_money, team_size, force_full_teams, transfer_open,
+        |starting_money, team_size, bench_size, force_full_teams, transfer_open,
         |url, url_verified, current_period_id, apply_points_at_start_time,
         |system, prediction_win_money) values ({name}, {apiKey}, {gameId}, {isPrivate}, {tournamentId},
         | {pickeeDescription}, {periodDescription},
-        | {startingMoney}, {teamSize}, {forceFullTeams}, false, {url}, false, null,
+        | {startingMoney}, {teamSize}, {benchSize}, {forceFullTeams}, false, {url}, false, null,
         |  {applyPointsAtStartTime}, {system}, {predictionWinMoney}) returning league_id;""".stripMargin
     ).on("name" -> input.name, "apiKey" -> input.apiKey, "gameId" -> input.gameId, "isPrivate" -> input.isPrivate,
       "tournamentId" -> input.tournamentId, "pickeeDescription" -> input.pickeeDescription,
       "periodDescription" -> input.periodDescription, "startingMoney" -> input.startingMoney,
-      "teamSize" -> input.teamSize, "forceFullTeams" -> input.transferInfo.forceFullTeams, "url" -> input.url.getOrElse(""),
+      "teamSize" -> input.teamSize, "benchSize" -> input.benchSize, "forceFullTeams" -> input.transferInfo.forceFullTeams, "url" -> input.url.getOrElse(""),
       "applyPointsAtStartTime" -> input.applyPointsAtStartTime, "system" -> input.transferInfo.system,
       "predictionWinMoney" -> input.transferInfo.predictionWinMoney
     )
@@ -272,7 +273,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
        input.tournamentId,  input.pickeeDescription,
       input.periodDescription, input.transferInfo.transferLimit,
       input.transferInfo.transferWildcard, input.startingMoney,
-      input.teamSize, false, input.transferInfo.forceFullTeams,
+      input.teamSize, input.benchSize, false, input.transferInfo.forceFullTeams,
       input.url.getOrElse(""), false, null,
       input.applyPointsAtStartTime, input.transferInfo.noWildcardForLateRegister, input.manuallyCalculatePoints,
       input.transferInfo.system, input.transferInfo.recycleValue,

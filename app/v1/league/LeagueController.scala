@@ -45,7 +45,7 @@ case class StatInput(
                     )
 
 case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolean, tournamentId: Option[Long], periodDescription: String,
-                           periods: List[PeriodInput], teamSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
+                           periods: List[PeriodInput], teamSize: Int, benchSize: Int, transferInfo: TransferInput, limits: List[LimitTypeInput],
                            startingMoney: BigDecimal, prizeDescription: Option[String], prizeEmail: Option[String],
                            stats: List[StatInput], manuallyCalculatePoints: Boolean,
                            pickeeDescription: String, pickees: List[PickeeFormInput], users: List[UserFormInput], apiKey: String,
@@ -87,6 +87,7 @@ class LeagueController @Inject()(
           "onEndOpenTransferWindow" -> default(boolean, false)
         )(PeriodInput.apply)(PeriodInput.unapply)),
         "teamSize" -> default(number(min=1, max=20), 5),
+        "benchSize" -> default(number(min=0, max=20), 0),
         //"captain" -> default(boolean, false),
         "transferInfo" -> mapping(
           "transferLimit" -> optional(number),
@@ -274,7 +275,7 @@ class LeagueController @Inject()(
     andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        Ok(Json.toJson(leagueRepo.setDraftOrder(request.league.leagueId, request.league.teamSize)))
+        Ok(Json.toJson(leagueRepo.setDraftOrder(request.league.leagueId, request.league.teamSize + request.league.benchSize)))
       }
     }
   }
