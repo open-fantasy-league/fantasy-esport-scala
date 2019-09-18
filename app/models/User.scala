@@ -39,3 +39,16 @@ object UserStatDailyRow{
 
   val parser: RowParser[UserStatDailyRow] = Macro.namedParser[UserStatDailyRow](ColumnNaming.SnakeCase)
 }
+
+case class UserPickee(user: UserRow, pickee: PickeeRow)
+
+object UserPickee {
+  implicit val implicitWrites = new Writes[UserPickee] {
+    def writes(u: UserPickee): JsValue = {
+      Json.obj(
+        "user" -> u.user,
+        "pickee" -> u.pickee,
+      )
+    }
+  }
+}

@@ -83,7 +83,7 @@ class TransferController @Inject()(
     }
   }
 
-  def appendDraftWatchlistReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
+  def appendDraftQueueReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
@@ -97,7 +97,7 @@ class TransferController @Inject()(
     }
   }
 
-  def deleteDraftWatchlistReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
+  def deleteDraftQueueReq(userId: String, leagueId: String, pickeeIdStr: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
@@ -116,10 +116,11 @@ class TransferController @Inject()(
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
       db.withTransaction { implicit c =>
+        // TODO rollback!
         (for {
           pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
           internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get)
-          drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId).left.map(BadRequest(_))
+          drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId.get).left.map(BadRequest(_))
           out = Ok(Json.toJson(drafted))
         } yield out).fold(identity, identity)
       }
@@ -134,12 +135,20 @@ class TransferController @Inject()(
     }
   }
 
-  def getDraftWatchlistReq(userId: String, leagueId: String) = (new AuthAction() andThen
+  def getDraftOrderCountReq(leagueId: String) = new LeagueAction(leagueId).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        Ok(Json.toJson(transferRepo.getDraftOrderCount(request.league.leagueId)))
+      }
+    }
+  }
+
+  def getDraftQueueReq(userId: String, leagueId: String) = (new AuthAction() andThen
     Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        Ok(Json.toJson(transferRepo.getDraftWatchlist(request.user.userId)))
+        Ok(Json.toJson(transferRepo.getDraftQueue(request.user.userId)))
       }
     }
   }

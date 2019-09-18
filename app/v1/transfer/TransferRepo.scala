@@ -13,7 +13,7 @@ import v1.league.LeagueRepo
 import v1.pickee.PickeeRepo
 import v1.user.UserRepo
 
-case class DraftWatchlistInternalRow(draftWatchlistId: Long, pickeeId: Long, childId: Option[Long])
+case class DraftQueueInternalRow(draftQueueId: Long, pickeeId: Long, childId: Option[Long])
 case class DraftInfo(numMissed: Int, unstarted: Boolean, draftStart: LocalDateTime)
 
 class TransferExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -38,12 +38,13 @@ trait TransferRepo{
                   (implicit c: Connection): Int
   def appendDraftQueue(userId: Long, pickeeId: Long)(implicit c: Connection)
   def deleteDraftQueue(userId: Long, pickeeId: Long)(implicit c: Connection)
-  def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Option[Long])
-                 (implicit c: Connection): Either[String, Iterable[(UserRow, PickeeRow)]]
-  def draftUsersRecursivelyIfHaveWatchlist(leagueId: Long, userIds: Iterable[Long], takenCardIds: Set[Long])
+  def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Long)
+                 (implicit c: Connection): Either[String, UserPickee]
+  def draftUsersRecursivelyIfHaveQueue(leagueId: Long, userIds: Iterable[Long], takenCardIds: Set[Long])
                                           (implicit c: Connection): Map[Long, Long]
-  def getDraftWatchlist(userId: Long)(implicit c: Connection): Iterable[DraftWatchlistRow]
+  def getDraftQueue(userId: Long)(implicit c: Connection): Iterable[DraftQueueRow]
   def getDraftOrder(leagueId: Long)(implicit c: Connection): Iterable[DraftOrderRow]
+  def getDraftOrderCount(leagueId: Long)(implicit c: Connection): Int
 
 }
 
@@ -242,8 +243,64 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo)(imp
     SQL"""update draft_watchlist set pickee_ids = array_remove(pickee_ids, $pickeeId) where user_id = $userId"""
   }
 
-  override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Option[Long])
-                          (implicit c: Connection): Either[String, Iterable[(UserRow, PickeeRow)]] = {
+//  override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Long)
+//                          (implicit c: Connection): Either[String, Iterable[(UserRow, PickeeRow)]] = {
+//    // FInd out since the last call how many users must have missed their go
+//    val parser: RowParser[DraftInfo] = Macro.namedParser[DraftInfo](ColumnNaming.SnakeCase)
+//    val draftInfo =
+//      SQL"""
+//           select (extract epoch from (next_draft_deadline - now()) / choice_timer) as num_missed, draft_start > now() as unstarted,
+//           draft_start
+//           from draft_system where league_id = $leagueId
+//        """.as(parser.single)
+//    // Remove them all from the draft-order
+//    if (draftInfo.unstarted) {
+//      return Left(s"Draft doesn't start until ${draftInfo.draftStart}")
+//    }
+//    if (draftInfo.numMissed > 0){
+//      SQL"""update draft_order set user_ids = user_ids[${draftInfo.numMissed}:] where league_id = $leagueId".executeUpdate()""".executeUpdate()
+//    }
+//    val nextDrafterIds: List[Long] = SQL"select unnest(user_ids) as user_id from draft_order where league_id = $leagueId"
+//      .as(SqlParser.long("user_id").*).toList
+//    if (nextDrafterIds.isEmpty || nextDrafterIds.head != userId)
+//      return Left("User not next in draft order")
+//    var takenCards =
+//      SQL"""select pickee_id from card join pickee using(pickee_id) where league_id = $leagueId""".as(
+//        SqlParser.long("pickee_id").*
+//      ).toSet
+//    val pickeeId = if (internalPickeeId.isDefined){internalPickeeId}
+//    else {
+//      val watchlist = SQL"select pickee_ids from draft_watchlist where user_id = $userId".
+//        as(SqlParser.array[Long]("pickee_ids").single)
+//      val firstUntakenPickeeId = watchlist.find(w => !takenCards.contains(w))
+//
+//      firstUntakenPickeeId.map(pid => {
+//        SQL"insert into card(user_id, pickee_id) values($userId, $pid)".executeInsert()
+//        SQL"update from draft_watchlist set pickee_ids = array_remove(pickee_ids, $pid) where user_id = $userId".executeUpdate()
+//        pid
+//      })
+//    }
+//    takenCards = takenCards + pickeeId.get
+//
+//    SQL"update draft_order set user_ids = user_ids[1:] where league_id = $leagueId returning user_ids".executeUpdate()
+//    val drafted: Map[Long, Long] = if (pickeeId.isDefined) {
+//      Map(userId -> pickeeId.get) ++ draftUsersRecursivelyIfHaveQueue(leagueId, nextDrafterIds, takenCards)
+//    } else Map()
+//    // Update deadline for next user in list
+//    SQL"""update draft_system
+//         set next_draft_deadline = now() + interval '1 second' * choice_timer
+//         where league_id = $leagueId""".executeUpdate()
+//    val draftedOut = if (drafted.nonEmpty){
+//      // use fold as does in single pass (toMap variants would be double pass)
+//      val users = userRepo.getUsers(drafted.keys.toList).foldLeft(Map[Long, UserRow]()){(m, u) => m + (u.userId -> u)}
+//      val pickees = pickeeRepo.getPickees(drafted.values.toList).foldLeft(Map[Long, PickeeRow]()){(m, u) => m + (u.internalPickeeId -> u)}
+//      drafted.map({case (k, v) => (users(k), pickees(v))}).toList
+//    } else List()
+//    Right(draftedOut)
+//  }
+
+  override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Long)
+                          (implicit c: Connection): Either[String, UserPickee] = {
     // FInd out since the last call how many users must have missed their go
     val parser: RowParser[DraftInfo] = Macro.namedParser[DraftInfo](ColumnNaming.SnakeCase)
     val draftInfo =
@@ -263,42 +320,18 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo)(imp
       .as(SqlParser.long("user_id").*).toList
     if (nextDrafterIds.isEmpty || nextDrafterIds.head != userId)
       return Left("User not next in draft order")
-    var takenCards =
-      SQL"""select pickee_id from card join pickee using(pickee_id) where league_id = $leagueId""".as(
-        SqlParser.long("pickee_id").*
-      ).toSet
-    val pickeeId = if (internalPickeeId.isDefined){internalPickeeId}
-    else {
-      val watchlist = SQL"select pickee_ids from draft_watchlist where user_id = $userId".
-        as(SqlParser.array[Long]("pickee_ids").single)
-      val firstUntakenPickeeId = watchlist.find(w => !takenCards.contains(w))
-
-      firstUntakenPickeeId.map(pid => {
-        SQL"insert into card(user_id, pickee_id) values($userId, $pid)".executeInsert()
-        SQL"update from draft_watchlist set pickee_ids = array_remove(pickee_ids, $pid) where user_id = $userId".executeUpdate()
-        pid
-      })
-    }
-    takenCards = takenCards + pickeeId.get
 
     SQL"update draft_order set user_ids = user_ids[1:] where league_id = $leagueId returning user_ids".executeUpdate()
-    val drafted: Map[Long, Long] = if (pickeeId.isDefined) {
-      Map(userId -> pickeeId.get) ++ draftUsersRecursivelyIfHaveWatchlist(leagueId, nextDrafterIds, takenCards)
-    } else Map()
     // Update deadline for next user in list
     SQL"""update draft_system
          set next_draft_deadline = now() + interval '1 second' * choice_timer
          where league_id = $leagueId""".executeUpdate()
-    val draftedOut = if (drafted.nonEmpty){
-      // use fold as does in single pass (toMap variants would be double pass)
-      val users = userRepo.getUsers(drafted.keys.toList).foldLeft(Map[Long, UserRow]()){(m, u) => m + (u.userId -> u)}
-      val pickees = pickeeRepo.getPickees(drafted.values.toList).foldLeft(Map[Long, PickeeRow]()){(m, u) => m + (u.internalPickeeId -> u)}
-      drafted.map({case (k, v) => (users(k), pickees(v))}).toList
-    } else List()
-    Right(draftedOut)
+    val user = userRepo.getUsers(List(userId)).head
+    val pickee = pickeeRepo.getPickees(List(internalPickeeId)).head
+    Right(UserPickee(user, pickee))
   }
 
-  override def draftUsersRecursivelyIfHaveWatchlist(leagueId: Long, userIds: Iterable[Long], takenCardIds: Set[Long])
+  override def draftUsersRecursivelyIfHaveQueue(leagueId: Long, userIds: Iterable[Long], takenCardIds: Set[Long])
                                        (implicit c: Connection): Map[Long, Long] = {
     val userId = userIds.head
     val watchlist = SQL"select pickee_ids from draft_watchlist where user_id = $userId".
@@ -308,22 +341,26 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo)(imp
       SQL"insert into card(user_id, pickee_id) values($userId, $firstUntakenPickeeId)".executeInsert()
       SQL"update from draft_watchlist set pickee_ids = array_remove(pickee_ids, $firstUntakenPickeeId) where user_id = $userId".executeUpdate()
       Map[Long, Long](userId -> firstUntakenPickeeId.get) ++
-        draftUsersRecursivelyIfHaveWatchlist(leagueId, userIds.tail, takenCardIds + firstUntakenPickeeId.get)
+        draftUsersRecursivelyIfHaveQueue(leagueId, userIds.tail, takenCardIds + firstUntakenPickeeId.get)
     } else Map()
   }
 
-  override def getDraftWatchlist(userId: Long)(implicit c: Connection): Iterable[DraftWatchlistRow] = {
+  override def getDraftQueue(userId: Long)(implicit c: Connection): Iterable[DraftQueueRow] = {
     SQL"""
-         select external_pickee_id, pickee_name, unnest(pickee_ids) as pickee_id from draft_watchlist join pickee using(pickee_id)
-          where user_id = $userId
-      """.as(DraftWatchlistRow.parser.*)
+         select external_pickee_id, pickee_name, unnest(pickee_ids) as pickee_id from draft_queue where user_id = $userId
+      """.as(DraftQueueRow.parser.*)
   }
 
   override def getDraftOrder(leagueId: Long)(implicit c: Connection): Iterable[DraftOrderRow] = {
     SQL"""
-         select external_user_id, unnest(user_ids) as user_id, username from draft_order join useru using(user_id)
-          where leagueId = $leagueId
+         select external_user_id, unnest(user_ids) as user_id, username from draft_order where leagueId = $leagueId
       """.as(DraftOrderRow.parser.*)
+  }
+
+  override def getDraftOrderCount(leagueId: Long)(implicit c: Connection): Int = {
+    SQL"""
+         select user_ids.length as countu, username from draft_order where leagueId = $leagueId
+      """.as(SqlParser.int("countu").single)
   }
 }
 

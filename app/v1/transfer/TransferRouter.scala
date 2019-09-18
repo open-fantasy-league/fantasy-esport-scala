@@ -18,11 +18,11 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case POST(p"/leagues/$leagueId/users/$userId/newPack") =>
       controller.generateCardPackReq(userId, leagueId)
 
-    case POST(p"/leagues/$leagueId/users/$userId/appendWatchlist/$pickeeId") =>
-      controller.appendDraftWatchlistReq(userId, leagueId, pickeeId)
+    case POST(p"/leagues/$leagueId/users/$userId/appendQueue/$pickeeId") =>
+      controller.appendDraftQueueReq(userId, leagueId, pickeeId)
 
-    case POST(p"/leagues/$leagueId/users/$userId/removeWatchlist/$pickeeId") =>
-      controller.deleteDraftWatchlistReq(userId, leagueId, pickeeId)
+    case POST(p"/leagues/$leagueId/users/$userId/removeQueue/$pickeeId") =>
+      controller.deleteDraftQueueReq(userId, leagueId, pickeeId)
 
     case POST(p"/leagues/$leagueId/users/$userId/draft/$pickeeId") =>
       controller.draftReq(userId, leagueId, pickeeId)
@@ -30,8 +30,11 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case GET(p"/leagues/$leagueId/draftOrder") =>
       controller.getDraftOrderReq(leagueId)
 
-    case GET(p"/leagues/$leagueId/draftWatchlist/$userId") =>
-      controller.getDraftWatchlistReq(userId, leagueId)
+    case GET(p"/leagues/$leagueId/draftOrderCount") =>
+      controller.getDraftOrderCountReq(leagueId)
+
+    case GET(p"/leagues/$leagueId/draftQueue/$userId") =>
+      controller.getDraftQueueReq(userId, leagueId)
 
     case GET(p"/leagues/$leagueId/users/$userId") =>
       controller.getUserTransfersReq(userId, leagueId)

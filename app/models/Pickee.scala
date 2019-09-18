@@ -165,18 +165,18 @@ object PickeeStatsOut{
   }
 }
 
-case class DraftWatchlistRow(pickeeName: String, externalPickeeId: Long, pickeeId: Long)
+case class DraftQueueRow(pickeeName: String, externalPickeeId: Long, pickeeId: Long)
 
-object DraftWatchlistRow{
-  implicit val implicitWrites = new Writes[DraftWatchlistRow] {
-    def writes(p: DraftWatchlistRow): JsValue = {
+object DraftQueueRow{
+  implicit val implicitWrites = new Writes[DraftQueueRow] {
+    def writes(p: DraftQueueRow): JsValue = {
       Json.obj(
         "id" -> p.externalPickeeId,
         "name" -> p.pickeeName,
       )
     }
   }
-  val parser: RowParser[DraftWatchlistRow] = Macro.namedParser[DraftWatchlistRow](ColumnNaming.SnakeCase)
+  val parser: RowParser[DraftQueueRow] = Macro.namedParser[DraftQueueRow](ColumnNaming.SnakeCase)
 }
 
 case class DraftOrderRow(username: String, externalUserId: Long, userId: Long)
