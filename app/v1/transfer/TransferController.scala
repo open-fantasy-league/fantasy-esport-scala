@@ -131,7 +131,7 @@ class TransferController @Inject()(
         (for {
           pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
           internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get)
-          drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId.get).left.map(BadRequest(_))
+          drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId.get)
           out = Ok(Json.toJson(drafted))
         } yield out).fold(identity, identity)
       }
@@ -159,7 +159,7 @@ class TransferController @Inject()(
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        val queue = transferRepo.getDraftQueue(request.user.userId)
+        val queue = transferRepo.getDraftQueue(request.league.leagueId, request.user.userId)
         val autopick = transferRepo.getAutopick(request.user.userId)
         val json = Json.obj("queue" -> queue, "autopick" -> JsBoolean(autopick))
         Ok(json)
