@@ -18,6 +18,7 @@ import models._
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 case class NameAndDescription(name: String, description: Option[String])
+case class PostPeriodHookInfo(onEndOpenTransferWindow: Boolean, onEndEliminateUsersTo: Option[Int])
 
 object NameAndDescription{
   implicit val implicitWrites = new Writes[NameAndDescription] {
@@ -105,7 +106,7 @@ trait LeagueRepo{
   def postEndPeriodHook(leagueIds: Iterable[Long], periodIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
   def eliminateUsersTo(leagueId: Long, eliminateTo: Int)(implicit c: Connection): Unit
-  def startPeriods(currentTime: LocalDateTime)(implicit c: Connection, updateHistoricRanksFunc: Long => Unit)
+  def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
   def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
@@ -159,9 +160,9 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     }
     if (showLimits){
       extraJoins += """  left join limit_type lt on(l.league_id = lt.league_id)  left join "limit" lim using(limit_type_id) """
-      extraSelects += """,lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max"""
+      extraSelects += """,lt.name as limit_type_name, lt.description, lim.name as limit_name, lim."max" as limit_max, lim.max_bench"""
     } else {
-      extraSelects += """,null as limit_type_name, null as description, null as limit_name, null as limit_max"""
+      extraSelects += """,null as limit_type_name, null as description, null as limit_name, null as limit_max, null as limit_max_bench"""
     }
     val sql = s"""select l.league_id, league_name, game_id, is_private, tournament_id, pickee_description, period_description,
           transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open, force_full_teams,
@@ -261,10 +262,12 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         ${input.transferInfo.cardPackCost}, ${input.transferInfo.cardPackSize})""".executeInsert()
     }
     else if (input.transferInfo.system == "draft"){
-      SQL"""insert into draft_system(league_id, draft_start, choice_timer, next_draft_deadline, is_snake) VALUES
-            ($newLeagueId, ${input.transferInfo.draftStart},
-        interval('${input.transferInfo.draftChoiceSecs} seconds'),
-        ${input.transferInfo.draftStart} + interval('${input.transferInfo.draftChoiceSecs} seconds'), true)""".executeInsert()
+      val draftStart = input.transferInfo.draftStart.get
+      val draftChoiceSecs = input.transferInfo.draftChoiceSecs.get
+      val nextDraftDeadline = draftStart.plusSeconds(draftChoiceSecs)
+      SQL"""insert into draft_system(league_id, draft_start, next_draft_deadline, choice_timer, is_snake) VALUES
+            ($newLeagueId, $draftStart, $nextDraftDeadline,
+        $draftChoiceSecs, true)""".executeInsert()
     }
     else {
       SQL"""insert into transfer_system(league_id, transfer_limit, transfer_wildcard, no_wildcard_for_late_register) VALUES
@@ -423,7 +426,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val periods: Iterable[PeriodRow] = if (showPeriods) rows.groupBy(_.periodValue).map({ case (k, v) =>
       val r = v.head
       PeriodRow(-1, -1, r.periodValue.get, r.start.get, r.end.get, r.multiplier.get, r.onStartCloseTransferWindow.get,
-        r.onEndOpenTransferWindow.get, r.onEndEliminateUsersTo)
+        r.onEndOpenTransferWindow.get, onEndEliminateUsersTo=r.onEndEliminateUsersTo)
     }) else List()
     val currentPeriod = league.currentPeriod
     // TODO think this filter before group by inefficient
@@ -487,7 +490,6 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     // TODO batch
     println(s"""end period league: ${leagueIds.mkString(",")}, periodId: ${periodIds.mkString(",")}""")
 
-    case class PostPeriodHookInfo(onEndOpenTransferWindow: Boolean, onEndEliminateUsersTo: Option[Int])
     val parser = Macro.namedParser[PostPeriodHookInfo](ColumnNaming.SnakeCase)
     val hookInfo = periodIds.map(periodId => {
       val q =
@@ -555,9 +557,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     ).map(x => (x._1, x._2)).unzip
     postEndPeriodHook(leagueIds, periodIds, currentTime)
   }
-  override def startPeriods(currentTime: LocalDateTime)(
-    implicit c: Connection, updateHistoricRanksFunc: Long => Unit
-  ) = {
+  override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)
     // and is future period that should have started...so lets start it
     val parser: RowParser[(Long, Long, Int)] = (
@@ -638,25 +638,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     val randomUserIds = SQL"""select user_id, external_user_id from useru where league_id = $leagueId order by random()"""
       .as((SqlParser.long("user_id") ~ SqlParser.long("external_user_id")).*)
     val reversedUserIds = randomUserIds.reverse
-    var lastId = Option.empty[Long]
-    (0 to maxPickees).map(i => {
+    val draftOrder = (0 to maxPickees).map(i => {
       val userIds = if (i % 2 == 0) randomUserIds else reversedUserIds
       if (i == 1){
         setWaiverOrder(leagueId, userIds)  // TODO this shouldnt be confined to setdraftorder
       }
-      userIds.map({case userId ~ externalUserId =>
-        lastId =
-          SQL"""
-           insert into draft_order(league_id, user_id, parent_draft_order_id) values ($leagueId, $userId, $lastId)
-        """.executeInsert()
-        externalUserId
-      })
+      userIds
     }).toList.flatten
+    // Insert into db the internal ids
+    SQL"""insert into draft_order(league_id, user_ids) values ($leagueId, ARRAY[${draftOrder.map(_._1)}])
+        """.executeInsert()
+    draftOrder.map(_._2)  // Output the external ids
   }
 
   override def setWaiverOrder(leagueId: Long, userIds: Iterable[Long~Long])(implicit c: Connection): Iterable[Long] = {
     // TODO can more efficient than map twice
-    SQL"""insert into waiver_order(league_id, user_ids) values($leagueId, ${userIds.map(_._1).toList})""".executeInsert()
+    SQL"""insert into waiver_order(league_id, user_ids) values($leagueId, ARRAY[${userIds.map(_._1).toList}])""".executeInsert()
     userIds.map(_._2)
   }
 }

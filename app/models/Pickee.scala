@@ -21,7 +21,7 @@ case class CardWithBonusRowAndLimits(cardId: Long, internalPickeeId: Long, exter
                             statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
                                      limitName: Option[String], limitTypeName: Option[String], statFieldDescription: Option[String]=None)
 
-case class CardWithBonusRowAndLimitsAndStats(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
+case class CardWithBonusRowAndLimitsAndStats(cardId: Long, externalUserId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                                      statFieldId: Option[Long], statFieldName: Option[String], multiplier: Option[Double],
                                      limitName: Option[String], limitTypeName: Option[String], statFieldName2: Option[String],
                                              period: Option[Int], value: Option[Double], statFieldDescription: Option[String]=None)
@@ -54,7 +54,8 @@ object CardBonusMultiplierRow{
 
 case class CardOut(cardId: Long, internalPickeeId: Long, externalPickeeId: Long, pickeeName: String, price: BigDecimal, colour: String,
                    bonuses: Iterable[CardBonusMultiplierRow], limits: Map[String, String],
-                   overallStats: Map[String, Double] = Map(), recentPeriodStats: Map[Int, Map[String, Double]] = Map())
+                   overallStats: Map[String, Double] = Map(), recentPeriodStats: Map[Int, Map[String, Double]] = Map(),
+                   externalUserId: Option[Long]=None)
 
 // necessary as json doesnt allow numerical dict keys
 case class recentPeriodStats(period: Int, stats: Map[String, Double])
@@ -72,20 +73,41 @@ object recentPeriodStats{
 object CardOut{
     implicit val implicitWrites = new Writes[CardOut] {
       def writes(t: CardOut): JsValue = {
-        Json.obj(
-          // TODO conditionally dont print colour/price if/not-if card
-          "cardId" -> t.cardId,
-          "name" -> t.pickeeName,
-          "id" -> t.externalPickeeId,
-          "price" -> t.price,
-          "colour" -> t.colour,
-          "bonuses" -> t.bonuses,
-          "limitTypes" -> t.limits,
-          "overallStats" -> t.overallStats.mapValues(Utils.trunc(_, 1)),
-          "recentPeriodStats" -> t.recentPeriodStats.map({case (k, v) => {
-            recentPeriodStats(k, v)
-          }}).toList
-        )
+        if (t.externalUserId.isDefined){
+          Json.obj(
+            // TODO conditionally dont print colour/price if/not-if card
+            "cardId" -> t.cardId,
+            "name" -> t.pickeeName,
+            "id" -> t.externalPickeeId,
+            "userId" -> t.externalUserId,
+            "price" -> t.price,
+            "colour" -> t.colour,
+            "bonuses" -> t.bonuses,
+            "limitTypes" -> t.limits,
+            "overallStats" -> t.overallStats.mapValues(Utils.trunc(_, 1)),
+            "recentPeriodStats" -> t.recentPeriodStats.map({ case (k, v) => {
+              recentPeriodStats(k, v)
+            }
+            }).toList
+          )
+
+        } else {
+          Json.obj(
+            // TODO conditionally dont print colour/price if/not-if card
+            "cardId" -> t.cardId,
+            "name" -> t.pickeeName,
+            "id" -> t.externalPickeeId,
+            "price" -> t.price,
+            "colour" -> t.colour,
+            "bonuses" -> t.bonuses,
+            "limitTypes" -> t.limits,
+            "overallStats" -> t.overallStats.mapValues(Utils.trunc(_, 1)),
+            "recentPeriodStats" -> t.recentPeriodStats.map({ case (k, v) => {
+              recentPeriodStats(k, v)
+            }
+            }).toList
+          )
+        }
       }
     }
 }

@@ -92,7 +92,7 @@ class TransferController @Inject()(
           pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
           internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get).get
           out = transferRepo.appendDraftQueue(request.user.userId, internalPickeeId)
-        } yield Ok("ok")).fold(identity, identity)
+        } yield Ok(Json.obj("success" -> true))).fold(identity, identity)
       }
     }
   }
@@ -106,7 +106,18 @@ class TransferController @Inject()(
           pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
           internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get).get
           out = transferRepo.deleteDraftQueue(request.user.userId, internalPickeeId)
-        } yield Ok("ok")).fold(identity, identity)
+        } yield Ok(Json.obj("success" -> true))).fold(identity, identity)
+      }
+    }
+  }
+
+  def draftQueueAutopickReq(userId: String, leagueId: String, autopick: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction andThen
+    new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
+    Future {
+      db.withConnection { implicit c =>
+        transferRepo.draftQueueAutopick(request.user.userId, autopick.toLowerCase == "on")
+        Ok(Json.obj("success" -> true))
       }
     }
   }
@@ -148,7 +159,10 @@ class TransferController @Inject()(
     new UserAction(userRepo, db)(userId).auth()).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        Ok(Json.toJson(transferRepo.getDraftQueue(request.user.userId)))
+        val queue = transferRepo.getDraftQueue(request.user.userId)
+        val autopick = transferRepo.getAutopick(request.user.userId)
+        val json = Json.obj("queue" -> queue, "autopick" -> JsBoolean(autopick))
+        Ok(json)
       }
     }
   }
@@ -236,7 +250,7 @@ class TransferController @Inject()(
               _ = println(s"newTeamCardIds: ${newTeamCardIds.mkString(",")}")
               newTeamPickeeIdsSet <- validateUniquePickees(newTeamPickeeIdsList)
               _ <- updatedTeamSize(newTeamPickeeIdsSet, league.teamSize, input.isCheck, league.forceFullTeams)
-              _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamPickeeIdsSet, league.leagueId)
+              _ <- if (input.overrideLimitChecks) Right(true) else transferRepo.validateLimits(newTeamPickeeIdsSet, league.leagueId)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(user.money, None)))) else
                 updateDBCardTransfer(
                   sell, buy, currentTeamIds, user, periodStart, periodEnd, userIsLateStart
@@ -270,7 +284,7 @@ class TransferController @Inject()(
               newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
               _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
               _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
-              _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamIds, league.leagueId)
+              _ <- if (input.overrideLimitChecks) Right(true) else transferRepo.validateLimits(newTeamIds, league.leagueId)
               out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
                 updateDBTransfer(
                   league.leagueId, sellOrWildcard, buy, pickees, user,
@@ -306,7 +320,7 @@ class TransferController @Inject()(
             newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
             _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
             _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
-            _ <- if (input.overrideLimitChecks) Right(true) else validateLimits(newTeamIds, league.leagueId)
+            _ <- if (input.overrideLimitChecks) Right(true) else transferRepo.validateLimits(newTeamIds, league.leagueId)
             out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
               updateDBTransfer(
                 league.leagueId, sellOrWildcard, buy, pickees, user,
@@ -391,16 +405,6 @@ class TransferController @Inject()(
         f"Exceeds maximum team size of $leagueTeamSize"
       ))
     }
-  }
-
-  private def validateLimits(newTeamIds: Set[Long], leagueId: Long)(implicit c: Connection): Either[Result, Any] = {
-    // TODO errrm this is a bit messy
-    transferRepo.pickeeLimitsInvalid(leagueId, newTeamIds) match {
-        case None => Right(true)
-        case Some((name, max_)) => Left(BadRequest(
-          f"Exceeds $name limit: max $max_ allowed"  // TODO what limit does it exceed
-        ))
-      }
   }
 
   private def validateUniquePickees(newTeamIds: List[Long]): Either [Result, Set[Long]] = {

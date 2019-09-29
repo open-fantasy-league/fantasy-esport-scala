@@ -21,8 +21,8 @@ class TeamRouter @Inject()(controller: TeamController) extends SimpleRouter {
     case GET(p"/league/$leagueId") =>
       controller.getAllTeamsReq(leagueId)
 
-//    case GET(p"/league/$leagueId/cards") =>
-//      controller.getAllCardsReq(leagueId)
+    case GET(p"/league/$leagueId/cards") =>
+      controller.getAllCardsReq(leagueId)
   }
 
 }

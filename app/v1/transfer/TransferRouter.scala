@@ -21,11 +21,15 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case POST(p"/leagues/$leagueId/users/$userId/appendQueue/$pickeeId") =>
       controller.appendDraftQueueReq(userId, leagueId, pickeeId)
 
+    // TODO delete/remove
     case POST(p"/leagues/$leagueId/users/$userId/removeQueue/$pickeeId") =>
       controller.deleteDraftQueueReq(userId, leagueId, pickeeId)
 
     case POST(p"/leagues/$leagueId/users/$userId/draft/$pickeeId") =>
       controller.draftReq(userId, leagueId, pickeeId)
+
+    case POST(p"/leagues/$leagueId/users/$userId/draftQueueAutopick/$autopick") =>
+      controller.draftQueueAutopickReq(userId, leagueId, autopick)
 
     case GET(p"/leagues/$leagueId/draftOrder") =>
       controller.getDraftOrderReq(leagueId)

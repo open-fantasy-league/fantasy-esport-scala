@@ -102,7 +102,7 @@ class LeagueController @Inject()(
           "cardPackCost" -> optional(bigDecimal(10, 1)),
           "cardPackSize" -> optional(number),
           "predictionWinMoney" -> optional(bigDecimal(10, 1)),
-          "draftStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm"))),
+          "draftStart" -> optional(of(localDateTimeFormat)),
           "draftChoiceSecs" -> optional(number)
         )(TransferInput.apply)(TransferInput.unapply),
         "limits" -> list(mapping(
@@ -307,58 +307,63 @@ class LeagueController @Inject()(
       Future.successful(BadRequest(badForm.errorsAsJson))
     }
 
+    def extraInputValidation(input: LeagueFormInput) = Right(true)
+
     def success(input: LeagueFormInput): Future[Result] = {
       Future{
         db.withTransaction { implicit c =>
           try {
-            val newLeague = leagueRepo.insert(input)
-            (input.prizeDescription, input.prizeEmail) match {
-              case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.leagueId, d, e)
-              case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
-              case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
-              case _ => ;
-            }
-            println(newLeague)
-            println(newLeague.leagueId)
-            val limitNamesToIds = leagueRepo.insertLimits(newLeague.leagueId, input.limits)
-            val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
-            pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
-
-            val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points", None)
-            val statFieldIds = List(pointsFieldId) ++ input.stats.map({
-              es => {
-                val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name, es.description)
-                if (!input.manuallyCalculatePoints) {
-                  if (es.allFactionPoints.isDefined) {
-                    leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get, es.noCardBonus)
-                  }
-                  else {
-                    es.separateFactionPoints.foreach(
-                      sfp => leagueRepo.insertScoringField(statFieldId, Some(limitNamesToIds(sfp.name)), sfp.value, es.noCardBonus)
-                    )
-                  }
-                }
-                statFieldId
+            val validation = extraInputValidation(input)
+            if (validation.isLeft) validation.left.get else {
+              val newLeague = leagueRepo.insert(input)
+              (input.prizeDescription, input.prizeEmail) match {
+                case (Some(d), Some(e)) => leagueRepo.insertLeaguePrize(newLeague.leagueId, d, e)
+                case (Some(d), None) => return Future.successful(BadRequest("Must enter prize email with description"))
+                case (None, Some(e)) => return Future.successful(BadRequest("Must enter prize description with email"))
+                case _ => ;
               }
-            })
+              println(newLeague)
+              println(newLeague.leagueId)
+              val limitNamesToIds = leagueRepo.insertLimits(newLeague.leagueId, input.limits)
+              val newPickeeIds = input.pickees.map(pickeeRepo.insertPickee(newLeague.leagueId, _))
+              pickeeRepo.insertPickeeLimits(input.pickees, newPickeeIds, limitNamesToIds)
 
-            val newUsers = input.users.map(u => userRepo.insertUser(newLeague, u.userId, u.username))
-            val newPickeeStatIds = statFieldIds.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
-            val newUserStatIds = statFieldIds.flatMap(sf => newUsers.map(nlu => userRepo.insertUserStat(sf, nlu.userId)))
+              val pointsFieldId = leagueRepo.insertStatField(newLeague.leagueId, "points", None)
+              val statFieldIds = List(pointsFieldId) ++ input.stats.map({
+                es => {
+                  val statFieldId = leagueRepo.insertStatField(newLeague.leagueId, es.name, es.description)
+                  if (!input.manuallyCalculatePoints) {
+                    if (es.allFactionPoints.isDefined) {
+                      leagueRepo.insertScoringField(statFieldId, Option.empty[Long], es.allFactionPoints.get, es.noCardBonus)
+                    }
+                    else {
+                      es.separateFactionPoints.foreach(
+                        sfp => leagueRepo.insertScoringField(statFieldId, Some(limitNamesToIds(sfp.name)), sfp.value, es.noCardBonus)
+                      )
+                    }
+                  }
+                  statFieldId
+                }
+              })
 
-            newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Option.empty[Int]))
-            newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, None))
-            var nextPeriodId: Option[Long] = None
-            // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
-            input.periods.zipWithIndex.reverse.foreach({ case (p, i) => {
-              val newPeriodId = leagueRepo.insertPeriod(newLeague.leagueId, p, i + 1, nextPeriodId)
-              nextPeriodId = Some(newPeriodId)
-              newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Some(i + 1)))
-              newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, Some(i + 1)))
+              val newUsers = input.users.map(u => userRepo.insertUser(newLeague, u.userId, u.username))
+              val newPickeeStatIds = statFieldIds.flatMap(sf => newPickeeIds.map(np => pickeeRepo.insertPickeeStat(sf, np)))
+              val newUserStatIds = statFieldIds.flatMap(sf => newUsers.map(nlu => userRepo.insertUserStat(sf, nlu.userId)))
+
+              newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Option.empty[Int]))
+              newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, None))
+              var nextPeriodId: Option[Long] = None
+              // have to be inserted 'back to front', so that we can know and specify id of nextPeriod, and link them.
+              input.periods.zipWithIndex.reverse.foreach({ case (p, i) => {
+                val newPeriodId = leagueRepo.insertPeriod(newLeague.leagueId, p, i + 1, nextPeriodId)
+                nextPeriodId = Some(newPeriodId)
+                newPickeeStatIds.foreach(npId => pickeeRepo.insertPickeeStatDaily(npId, Some(i + 1)))
+                newUserStatIds.foreach(nluid => userRepo.insertUserStatDaily(nluid, Some(i + 1)))
+              }
+              })
+
+              Created(Json.toJson(newLeague))
             }
-            })
-
-            Created(Json.toJson(newLeague))
           } catch {case e: Throwable => {        val sw = new StringWriter
             e.printStackTrace(new PrintWriter(sw))
             println(sw.toString)}; c.rollback(); InternalServerError("Something went wrong")}

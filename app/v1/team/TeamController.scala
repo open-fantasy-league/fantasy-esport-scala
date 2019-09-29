@@ -40,7 +40,7 @@ class TeamController @Inject()(cc: ControllerComponents, userRepo: UserRepo, tea
         showLastXPeriodStats <- IdParser.parseIntId(request.getQueryString("lastXPeriodStats"), "lastXPeriodStats")
         overallStats = request.getQueryString("overallStats").isDefined
         out = db.withConnection { implicit c => Json.toJson(
-          teamRepo.getUserCards(request.user.userId, showLastXPeriodStats, request.league.currentPeriodId, overallStats)
+          teamRepo.getUserCards(request.league.leagueId, Some(request.user.userId), showLastXPeriodStats, request.league.currentPeriodId, overallStats)
         ) }
       } yield Ok(out)).fold(identity, identity)
     }
@@ -52,6 +52,12 @@ class TeamController @Inject()(cc: ControllerComponents, userRepo: UserRepo, tea
         period <- IdParser.parseIntId(request.getQueryString("period"), "period")
         out = db.withConnection { implicit c =>Json.toJson(teamRepo.getAllUserTeam(request.league.leagueId, period))}
       } yield Ok(out)).fold(identity, identity)
+    }
+  }
+
+  def getAllCardsReq(leagueId: String) = (new LeagueAction(leagueId)).async { implicit request =>
+    Future {
+        db.withConnection { implicit c => Ok(Json.toJson(teamRepo.getUserCards(request.league.leagueId, None, None, None, false)))}
     }
   }
 }

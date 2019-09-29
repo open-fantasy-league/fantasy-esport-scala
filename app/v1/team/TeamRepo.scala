@@ -34,9 +34,10 @@ class TeamExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExe
 
 trait TeamRepo{
   def getUserTeam(userId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[CardOut]
-  def getUserCards(userId: Long, showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats:Boolean)
+  def getUserCards(leagueId: Long, userId: Option[Long], showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats:Boolean)
                   (implicit c: Connection): Iterable[CardOut]
   def getAllUserTeam(leagueId: Long, period: Option[Int]=Option.empty[Int])(implicit c: Connection): Iterable[TeamOut]
+  //def getAllUserCards(leagueId: Long)(implicit c: Connection): Iterable[CardOut]
   def cardsInTeam(cardIds: List[Long], currentPeriod: Option[Int])(implicit c: Connection): Boolean
   def getUserTeamForPeriod(
                             userId: Long, startPeriod: Int,
@@ -113,7 +114,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     }})
   }
 
-  override def getUserCards(userId: Long, showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats: Boolean)
+  override def getUserCards(leagueId: Long, userId: Option[Long], showLastXPeriodStats: Option[Int], currentPeriodId: Option[Long], showOverallStats: Boolean)
                            (implicit c: Connection): Iterable[CardOut] = {
     val currentPeriodValue = currentPeriodId.flatMap(x => leagueRepo.getPeriod(x).map(_.value))
     var extraSelects = ""
@@ -154,7 +155,7 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
     logger.info(s"showLastXPeriodStats: ${showLastXPeriodStats.mkString("")}")
     logger.warn(s"currentPeriodValue: ${currentPeriodValue.mkString("")}")
     val rows =
-      SQL(s"""select c.card_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
+      SQL(s"""select c.card_id, u.external_user_id, p.pickee_id as internal_pickee_id, p.external_pickee_id, p.pickee_name, p.price,
         c.colour, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description, cbm.multiplier,
         l.name as limit_name, lt.name as limit_type_name
          $extraSelects
@@ -165,9 +166,10 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
         left join pickee_limit pl using(pickee_id)
         left join "limit" l using(limit_id)
         left join limit_type lt using(limit_type_id)
+        join useru u using(user_id)
         $extraJoins
-  where c.user_id = $userId and not c.recycled;
-  """).on("periodValues" -> periodValues).as(CardWithBonusRowAndLimitsAndStats.parser.*)
+  where ({userId} is null OR c.user_id = {userId}) and not c.recycled and u.league_id = {leagueId};
+  """).on("periodValues" -> periodValues, "userId" -> userId, "leagueId" -> leagueId).as(CardWithBonusRowAndLimitsAndStats.parser.*)
     rows.groupBy(_.cardId).map({
       case (cardId, v) => {
         val head = v.head
@@ -189,7 +191,8 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
         })
         CardOut(
           cardId, head.internalPickeeId, head.externalPickeeId, head.pickeeName, head.price, head.colour,
-          bonuses, limits, overallStats, if (showingRecentPeriodStats) recentPeriodStats else Map()
+          bonuses, limits, overallStats, if (showingRecentPeriodStats) recentPeriodStats else Map(),
+          externalUserId=Some(head.externalUserId)
         )
       }
     })
@@ -241,5 +244,28 @@ class TeamRepoImpl @Inject()()(implicit ec: TeamExecutionContext, leagueRepo: Le
         }))
     })
   }
+
+//  override def getAllUserCards(leagueId: Long)(implicit c: Connection): Iterable[CardOut] = {
+//    val q =
+//      """select c.card_id, u.external_user_id, u.username, user_id,
+//        true, p.pickee_id as internal_pickee_id, p.external_pickee_id, c.colour,
+//        p.pickee_name, p.price as pickee_price, sf.stat_field_id, sf.name as stat_field_name, sf.description as stat_field_description,
+//        cbm.multiplier,
+//        l.name as limit_name, lt.name as limit_type_name
+//        from card c
+//        left join card_bonus_multiplier cbm using (c.card_id)
+//        left join stat_field sf using (stat_field_id)
+//                    join pickee p using(pickee_id)
+//                    join useru u using(user_id)
+//                              left join pickee_limit pl using(pickee_id)
+//           left join "limit" l using(limit_id)
+//           left join limit_type lt using(limit_type_id)
+//    where lu.league_id = {leagueId};
+//    """
+//    println(q)
+//    val out = SQL(q).on("leagueId" -> leagueId).as(CardWithBonusRowAndLimits.parser.*)
+//    println(out.mkString(","))
+//    teamRowsToOut(out)
+//  }
 }
 
