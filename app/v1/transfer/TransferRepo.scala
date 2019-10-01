@@ -252,11 +252,11 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
 
   override def deleteDraftQueue(userId: Long, pickeeId: Long)(implicit c: Connection) = {
     // TODO delete on non-existing
-    SQL"""update draft_queue set pickee_ids = array_remove(pickee_ids, $pickeeId) where user_id = $userId"""
+    SQL"""update draft_queue set pickee_ids = array_remove(pickee_ids, $pickeeId) where user_id = $userId""".executeUpdate()
   }
 
   override def draftQueueAutopick(userId: Long, setAutopick: Boolean)(implicit c: Connection) = {
-    SQL"""update draft_queue set autopick = $setAutopick where user_id = $userId"""
+    SQL"""update draft_queue set autopick = $setAutopick where user_id = $userId""".executeUpdate()
     // TODO should turning autopick on whilst it is your go trigger a draft of top of list?
 //    if (setAutopick) {
 //      val nextDrafterIds: List[Long] = SQL"select unnest(user_ids) as user_id from draft_order where league_id = $leagueId"
@@ -327,9 +327,11 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   override def getDraftQueue(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[DraftQueueRow] = {
     val draftInfo = getDraftInfo(leagueId)
     skipMissedDrafts(leagueId, draftInfo)
+    // https://stackoverflow.com/a/23838131
     SQL"""
          select external_pickee_id, pickee_name, pickee_id from pickee
-         join (select unnest(pickee_ids) as pickee_id from draft_queue where user_id = $userId) sub using(pickee_id);
+         join (select unnest(pickee_ids) as pickee_id, generate_subscripts(pickee_ids, 1) as queue_idx
+         from draft_queue where user_id = $userId) sub using(pickee_id) order by queue_idx;
       """.as(DraftQueueRow.parser.*)
   }
 

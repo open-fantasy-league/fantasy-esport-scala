@@ -19,7 +19,9 @@ class TasksCustomExecutionContext @Inject()(actorSystem: ActorSystem)
 
 class BackgroundDraftTask @Inject()(actorSystem: ActorSystem, transferRepo: TransferRepo)(
   implicit ec: TasksCustomExecutionContext, db: Database){
-
+  //TODO what to do about scenario where they move draft back/forward and scheduled wrong.
+  // I guess if moved back, numMissed is 0 and nextDeadline has updated so we gucci
+  // If moved forward then we've scheduled it twice, but thats fine, 2nd one doesnt do anything like above
   run()
 
   def run(): Unit = {

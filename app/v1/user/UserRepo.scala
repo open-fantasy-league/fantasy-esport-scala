@@ -256,6 +256,10 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
         newUserStatIds.foreach(sid => insertUserStatDaily(sid, Some(p.value)))
       )
 
+      if (league.system == "draft"){
+        SQL"insert into draft_queue VALUES(${newUser.userId}, ARRAY[]::bigint)".executeInsert()
+      }
+
       newUser
     }
   }
