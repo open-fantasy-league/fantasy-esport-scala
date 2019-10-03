@@ -120,7 +120,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
   override def getPickees(pickeeIds: List[Long])(implicit c: Connection): Iterable[PickeeRow] = {
     SQL"""select pickee_id as internal_pickee_id, external_pickee_id, pickee_name, price, active from pickee
-          where pickee_id = ANY($pickeeIds)""".as(PickeeRow.parser.*)
+          where pickee_id = ANY(ARRAY[$pickeeIds])""".as(PickeeRow.parser.*)
   }
 
 

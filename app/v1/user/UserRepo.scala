@@ -145,7 +145,7 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
   override def getUsers(userIds: List[Long])(implicit c: Connection): Iterable[UserRow] = {
     // TODO check ANY handling
     SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
-      from useru where user_id = ANY($userIds)""".as(UserRow.parser.*)
+      from useru where user_id = ANY(ARRAY[$userIds])""".as(UserRow.parser.*)
   }
 
   override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {

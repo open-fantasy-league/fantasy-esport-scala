@@ -145,6 +145,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   }
 
   override def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut= {
+    logger.info(s"Generating card for userId: $userId, pickeeId: $pickeeId, colour: $colour")
     val rnd = scala.util.Random
     val newCard = SQL(
       """insert into card(user_id, pickee_id, colour) values({userId},{pickeeId},{colour})
@@ -281,7 +282,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Long)
                           (implicit c: Connection): Either[Result, Iterable[UserPickee]] = {
     val draftInfo = getDraftInfo(leagueId)
-    skipMissedDrafts(leagueId, draftInfo)
+    sliceDrafts(leagueId, draftInfo.numMissed)
     if (draftInfo.unstarted) {
       return Left(BadRequest(s"Draft doesn't start until ${draftInfo.draftStart}"))
     }
@@ -294,12 +295,12 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     // TODO for yield this shit
     val validated = validateLimits(currentTeam.map(_.internalPickeeId).toSet + internalPickeeId, leagueId)
     if (validated.isRight) {
-      generateCard(leagueId, userId, internalPickeeId, "YOU FUKIN WOT M8")
-      val takenCardIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
+      generateCard(leagueId, userId, internalPickeeId, "FUKINWOTM8")
+      val takenPickeeIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
         as(SqlParser.long("pickee_id").*).toSet
-      val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds, takenCardIds)
-      sliceDraftOrder(leagueId, drafts.size + 1)
-      setNewDraftDeadline(leagueId)
+      val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds.tail, takenPickeeIds)
+      // The +1 is due to extra draft of original caller, not because of 1-based indexing
+      setNewDraftDeadline(leagueId, drafts.size + 1)
       val users = userRepo.getUsers(List(userId) ++ drafts.keys.toList)
       val pickees = pickeeRepo.getPickees(List(internalPickeeId) ++ drafts.keys.toList)
       val out = users.zip(pickees).map({case (uid, pid) => UserPickee(uid, pid)})
@@ -307,26 +308,29 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     } else Left(validated.left.get)
   }
 
-  private def draftAutopickUsersRecursively(leagueId: Long, userIds: Iterable[Long], takenCardIds: Set[Long])
+  private def draftAutopickUsersRecursively(leagueId: Long, userIds: Iterable[Long], takenPickeeIds: Set[Long])
                                        (implicit c: Connection): Map[Long, Long] = {
+    // TODO can draft same card twice?
     val userId = userIds.head
     val queue ~ autopick = SQL"select pickee_ids, autopick from draft_queue where user_id = $userId".
       as((SqlParser.array[Long]("pickee_ids") ~ SqlParser.bool("autopick")).single)
+    logger.info(s"Recursive pick. Autopick: $autopick\nDraft queue: ${queue.mkString}")
+    logger.info(s"takenPickeeIds: ${takenPickeeIds.mkString}")
     if (!autopick) return Map()
     val currentTeam = teamRepo.getUserCards(leagueId, Some(userId), None, None, false)
     val firstUntakenPickeeId = queue.find(
-      pid => !takenCardIds.contains(pid) && validateLimits(currentTeam.map(_.internalPickeeId).toSet + pid, leagueId).isRight)
+      pid => !takenPickeeIds.contains(pid) && validateLimits(currentTeam.map(_.internalPickeeId).toSet + pid, leagueId).isRight)
     if (firstUntakenPickeeId.isDefined) {
-      generateCard(leagueId, userId, firstUntakenPickeeId.get, "YOU FUKIN WOT M8")
-      SQL"update from draft_queue set pickee_ids = array_remove(pickee_ids, $firstUntakenPickeeId) where user_id = $userId".executeUpdate()
+      generateCard(leagueId, userId, firstUntakenPickeeId.get, "FUKINWOTM8")
+      SQL"update draft_queue set pickee_ids = array_remove(pickee_ids, $firstUntakenPickeeId) where user_id = $userId".executeUpdate()
       Map[Long, Long](userId -> firstUntakenPickeeId.get) ++
-        draftAutopickUsersRecursively(leagueId, userIds.tail, takenCardIds + firstUntakenPickeeId.get)
+        draftAutopickUsersRecursively(leagueId, userIds.tail, takenPickeeIds + firstUntakenPickeeId.get)
     } else Map()
   }
 
   override def getDraftQueue(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[DraftQueueRow] = {
     val draftInfo = getDraftInfo(leagueId)
-    skipMissedDrafts(leagueId, draftInfo)
+    // dont need to skip/modify draft order as background task doing that
     // https://stackoverflow.com/a/23838131
     SQL"""
          select external_pickee_id, pickee_name, pickee_id from pickee
@@ -383,16 +387,15 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
         })
         logger.info(s"draft pick: $pick")
         pick.map({
-          case _ ~ pid => generateCard(leagueId, userId, pid, "YOU FUKIN WOT M8")
+          case _ ~ pid => generateCard(leagueId, userId, pid, "FUKINWOTM8")
         })
       }
       val nextDrafterIds: List[Long] = SQL"select unnest(user_ids) as user_id from draft_order where league_id = $leagueId"
         .as(SqlParser.long("user_id").*).tail
-        val takenCardIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
+        val takenPickeeIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
           as(SqlParser.long("pickee_id").*).toSet
-        val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds, takenCardIds)
-        sliceDraftOrder(leagueId, drafts.size + 1)
-        setNewDraftDeadline(leagueId)
+        val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds.tail, takenPickeeIds)
+        setNewDraftDeadline(leagueId, drafts.size+1)
 
 
 //      val queuePickeeIds = SQL"""
@@ -412,18 +415,16 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
 //        })
 //        logger.info(s"draft pick: $pick")
 //        pick.map({
-//          case _ ~ pid => generateCard(leagueId, userId, pid, "YOU FUKIN WOT M8")
+//          case _ ~ pid => generateCard(leagueId, userId, pid, "FUKINWOTM8")
 //        })
 //      }
-      setNewDraftDeadline(leagueId)
     }
   }
 
-  private def skipMissedDrafts(leagueId: Long, draftInfo: DraftInfo)(implicit c: Connection) = {
-    // FInd out since the last call how many users must have missed their go
-    if (draftInfo.numMissed > 0){
-      SQL"""update draft_order set user_ids = user_ids[${draftInfo.numMissed}:] where league_id = $leagueId".executeUpdate()""".executeUpdate()
-    }
+  private def sliceDrafts(leagueId: Long, numSkips: Int)(implicit c: Connection): Long = {
+    if (numSkips > 0){
+      SQL"update draft_order set user_ids = user_ids[${numSkips+1}:] where league_id = $leagueId".executeUpdate()
+    } else 0
   }
 
   private def getDraftInfo(leagueId: Long)(implicit c: Connection): DraftInfo = {
@@ -436,18 +437,14 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
       """.as(parser.single)
   }
 
-  private def setNewDraftDeadline(leagueId: Long)(implicit c: Connection): Option[LocalDateTime] = {
-    val updated = SQL"update draft_order set user_ids = user_ids[1:] where array_length(user_ids, 1) > 0 and league_id = $leagueId and returning user_ids".executeUpdate()
+  private def setNewDraftDeadline(leagueId: Long, numDrafted: Int)(implicit c: Connection): Option[LocalDateTime] = {
+    val updated = sliceDrafts(leagueId, numDrafted)
     // Update deadline for next user in list
     if (updated == 1) {
       Some(SQL"""update draft_system
          set next_draft_deadline = now() + interval '1 second' * choice_timer
          where league_id = $leagueId returning next_draft_deadline as datetime""".as(Macro.namedParser[DatetimeRow].single).datetime)
     } else None
-  }
-
-  private def sliceDraftOrder(leagueId: Long, num: Int)(implicit c: Connection) = {
-    SQL"update draft_order set user_ids = user_ids[$num:] where league_id = $leagueId".executeUpdate()
   }
 }
 
