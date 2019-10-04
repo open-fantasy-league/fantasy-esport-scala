@@ -30,6 +30,8 @@ case class DetailedLeagueRow(
                             packSize: Option[Int],
                             draftStart: Option[LocalDateTime],
                             choiceTimer: Option[Int],
+                            nextDraftDeadline: Option[LocalDateTime],
+                            manualDraft: Option[Boolean],
                              started: Boolean,
                              ended: Boolean,
                              periodValue: Option[Int],
@@ -82,6 +84,8 @@ case class PublicLeagueRow(
                           packSize: Option[Int],
                           draftStart: Option[LocalDateTime],
                           choiceTimer: Option[Int],
+                          nextDraftDeadline: Option[LocalDateTime],
+                          manualDraft: Option[Boolean],
                           predictionWinMoney: Option[BigDecimal],
                           started: Boolean,
                           ended: Boolean,
@@ -112,6 +116,10 @@ object PublicLeagueRow{
         "url" -> {if (league.urlVerified) league.url else ""},
         "noWildcardForLateRegister" -> league.noWildcardForLateRegister,
         "system" -> league.system,
+        "draftStart" -> league.draftStart,
+        "draftChoiceSeconds" -> league.choiceTimer,
+        "nextDraftDeadline" -> league.nextDraftDeadline,
+        "manualDraft" -> league.manualDraft,
         "recycleValue" -> league.recycleValue,
         "packCost" -> league.packCost,
         "packSize" -> league.packSize,
@@ -129,7 +137,7 @@ object PublicLeagueRow{
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.benchSize,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
       row.noWildcardForLateRegister, row.system, row.recycleValue, row.packCost, row.packSize, row.draftStart, row.choiceTimer,
-      row.predictionWinMoney, row.started, row.ended, row.numPeriods,
+      row.nextDraftDeadline, row.manualDraft, row.predictionWinMoney, row.started, row.ended, row.numPeriods,
       if (row.currentPeriodId.isDefined) Some(PeriodRow(
         row.currentPeriodId.get, row.leagueId, row.currentPeriodValue.get, row.currentPeriodStart.get, row.currentPeriodEnd.get,
         row.currentPeriodMultiplier.get, row.currentPeriodOnStartCloseTransferWindow.get, row.currentPeriodOnEndOpenTransferWindow.get
@@ -163,7 +171,8 @@ case class LeagueRow(leagueId: Long,
                      recycleValue: Option[BigDecimal] = None,
                      packCost: Option[BigDecimal] = None,
                      packSize: Option[Int] = None,
-                     predictionWinMoney: Option[BigDecimal] = None
+                     predictionWinMoney: Option[BigDecimal] = None,
+                     nextDraftDeadline: Option[LocalDateTime] = None,
 )
 
 case class LeagueStatFieldRow(statFieldId: Long, leagueId: Long, name: String, description: Option[String])

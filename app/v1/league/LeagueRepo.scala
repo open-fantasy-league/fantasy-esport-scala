@@ -125,17 +125,16 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   private val detailedLeagueParser: RowParser[DetailedLeagueRow] = Macro.namedParser[DetailedLeagueRow](ColumnNaming.SnakeCase)
 
   override def get(leagueId: Long)(implicit c: Connection): Option[LeagueRow] = {
-    SQL(
-      s"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
-        |period_description, transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open,
-        |force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
-        | no_wildcard_for_late_register, system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points,
-        | draft_start, choice_timer
-        | from league l
-        | left join card_system using(league_id)
-        | left join transfer_system using(league_id)
-        | left join draft_system using(league_id)
-        | where league_id = $leagueId;""".stripMargin).as(leagueParser.singleOpt)
+    SQL"""select l.league_id, league_name, api_key, game_id, is_private, tournament_id, pickee_description,
+        period_description, transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open,
+        force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
+         no_wildcard_for_late_register, system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points,
+         draft_start, choice_timer, next_draft_deadline, manual_draft
+         from league l
+         left join card_system using(league_id)
+         left join transfer_system using(league_id)
+         left join draft_system using(league_id)
+         where league_id = $leagueId""".as(leagueParser.singleOpt)
   }
 
 
@@ -168,7 +167,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, system, recycle_value,
           pack_size, pack_cost, prediction_win_money, (current_period_id is not null) as started,
-          draft_start, choice_timer,
+          draft_start, choice_timer, next_draft_deadline, manual_draft,
           (current_period_id is not null and upper(current_period.timespan) < now()) as ended,
           (select count(*) from period where league_id = $leagueId) as num_periods,
            current_period_id,

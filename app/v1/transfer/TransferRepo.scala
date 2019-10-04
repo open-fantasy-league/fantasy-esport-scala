@@ -422,6 +422,10 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   }
 
   private def sliceDrafts(leagueId: Long, numSkips: Int)(implicit c: Connection): Long = {
+    // TODO this skips over autopick users if one before is not autopick
+    // maybe just say this is not a defined scenario?
+    // would only occur if someone cocks up draft-timing
+    // re-draft option?
     if (numSkips > 0){
       SQL"update draft_order set user_ids = user_ids[${numSkips+1}:] where league_id = $leagueId".executeUpdate()
     } else 0

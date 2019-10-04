@@ -141,7 +141,10 @@ class TransferController @Inject()(
   def getDraftOrderReq(leagueId: String) = new LeagueAction(leagueId).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        Ok(Json.toJson(transferRepo.getDraftOrder(request.league.leagueId)))
+        Ok(Json.obj(
+          "order" -> transferRepo.getDraftOrder(request.league.leagueId),
+          "nextDraftDeadline" -> request.league.nextDraftDeadline
+        ))
       }
     }
   }
