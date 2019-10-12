@@ -10,10 +10,11 @@ import play.api.mvc.Result
 import play.api.mvc.Results.{BadRequest, InternalServerError}
 import anorm._
 import anorm.~
-import anorm.{ Macro, RowParser }, Macro.ColumnNaming
+import anorm.{ Macro, RowParser, ToParameterList}, Macro.ColumnNaming
 
 import akka.actor.ActorSystem
 import models._
+import utils.Utils._
 
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -70,6 +71,9 @@ object LeagueFull{
         "url" -> {if (league.league.urlVerified) league.league.url else ""},
         "scoring" -> league.scoring,
         "numPeriods" -> league.league.numPeriods,
+        "draftStart" -> league.league.draftStart,
+        "nextDraftDeadline" -> league.league.nextDraftDeadline,
+        "choiceTimer" -> league.league.choiceTimer
       )
     }
   }
@@ -80,7 +84,7 @@ trait LeagueRepo{
   def get(leagueId: Long)(implicit c: Connection): Option[LeagueRow]
   def getWithRelated(leagueId: Long, showPeriods: Boolean, showScoring: Boolean, showStatfields: Boolean, showLimits: Boolean)(implicit c: Connection): LeagueFull
   def insert(formInput: LeagueFormInput)(implicit c: Connection): LeagueRow
-  def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
+  def update(leagueId: Long, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow
   def getStatFields(leagueId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def getScoringStatFieldsForPickee(leagueId: Long, pickeeId: Long)(implicit c: Connection): Iterable[LeagueStatFieldRow]
   def isStarted(league: LeagueRow): Boolean
@@ -286,52 +290,42 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     )
   }
 
-  override def update(league: LeagueRow, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow = {
+  override def update(leagueId: Long, input: UpdateLeagueFormInput)(implicit c: Connection): LeagueRow = {
+    logger.info(input.league.mkString(", "))
+    logger.info(input.draft.mkString(", "))
     // TODO update update!!! hehe
-    var setString: String = ""
-    var params: collection.mutable.Seq[NamedParameter] =
-      collection.mutable.Seq(NamedParameter("leagueId", league.leagueId))
-    if (input.name.isDefined) {
-      setString += ", league_name = '{leagueName}'"
-      params = params :+ NamedParameter("leagueName", input.name.get)
-    }
-    if (input.isPrivate.isDefined) {
-      setString += ", is_private = {isPrivate}"
-      params = params :+ NamedParameter("isPrivate", input.isPrivate.get)
-    }
-    if (input.transferOpen.isDefined) {
-      setString += ", transfer_open = {transferOpen}"
-      params = params :+ NamedParameter("transferOpen", input.transferOpen.get)
-    }
-    if (input.forceFullTeams.isDefined) {
-      setString += ", force_full_teams = {forceFullTeams}"
-      params = params :+ NamedParameter("forceFullTeams", input.forceFullTeams.get)
-    }
-    if (input.periodDescription.isDefined) {
-      setString += ", period_description = '{periodDescription}'"
-      params = params :+ NamedParameter("periodDescription", input.periodDescription.get)
-    }
-    if (input.pickeeDescription.isDefined) {
-      setString += ", pickee_description = '{pickeeDescription}'"
-      params = params :+ NamedParameter("pickeeDescription", input.pickeeDescription.get)
-    }
-    if (input.applyPointsAtStartTime.isDefined) {
-      setString += ", apply_points_at_start_time = {applyPointsAtStartTime}"
-      params = params :+ NamedParameter("applyPointsAtStartTime", input.applyPointsAtStartTime.get)
-    }
-    if (input.url.isDefined) {
-      setString += ", url = {url}"
-      params = params :+ NamedParameter("url", input.url.get)
-      setString += ", url_verified = false"
-    }
-    setString = setString.tail  // remove starting comma
-    SQL(
-      "update league set " + setString + " WHERE league_id = {leagueId}"
-    ).on(params:_*).executeUpdate()
-    // TODO returning, or overwrite league row
 
+    def dynamicUpdate(tableName: String, params: List[NamedParameter]) ={
+      val updates = params.map(p => {
+        val snakeName = camelToSnake(p.name)
+        s"$snakeName = CASE WHEN {${p.name}} IS NULL THEN l.$snakeName ELSE {${p.name}} END"
+      })
+      val sql = s"""UPDATE $tableName l set ${updates.mkString(", ")} where league_id = $leagueId"""
+      SQL(sql).on(params: _*).executeUpdate()
+    }
+
+    def hackDraftUpdate(input: UpdateLeagueFormDraftInput) ={
+      input.draftStart.foreach(x =>
+        SQL"""UPDATE draft_system set draft_start = $x where league_id = $leagueId""".executeUpdate()
+      )
+      input.nextDraftDeadline.foreach(x =>
+        SQL"""UPDATE draft_system set next_draft_deadline = $x where league_id = $leagueId""".executeUpdate()
+      )
+      input.choiceTimer.foreach(x =>
+        SQL"""UPDATE draft_system set choice_timer = $x where league_id = $leagueId""".executeUpdate())
+    }
+
+    input.league.map(x => dynamicUpdate("league", Macro.toParameters[UpdateLeagueFormBasicInput](x)))
+    if (input.league.flatMap(_.url).isDefined){
+      SQL"""UPDATE league set url_verified = false where league_id = $leagueId"""
+    }
+    input.transfer.map(x => dynamicUpdate("transfer_system", Macro.toParameters[UpdateLeagueFormTransferInput](x)))
+    input.card.map(x => dynamicUpdate("card_system", Macro.toParameters[UpdateLeagueFormCardInput](x)))
+    // input.draft.map(x => dynamicUpdate("draft_system", Macro.toParameters[UpdateLeagueFormDraftInput](x)))
+    // why the fuck does this fail?
+    input.draft.foreach(hackDraftUpdate)
     // TODO update transfer/card settings
-    get(league.leagueId).get
+    get(leagueId).get
   }
 
   override def isStarted(league: LeagueRow): Boolean = league.currentPeriodId.nonEmpty

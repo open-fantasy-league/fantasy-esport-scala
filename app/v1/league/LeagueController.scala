@@ -28,6 +28,7 @@ case class UpdatePeriodInput(start: Option[LocalDateTime], end: Option[LocalDate
                              onEndEliminateUsersTo: Option[Int]
                             )
 
+
 case class LimitInput(name: String, max: Option[Int], benchMax: Option[Int])
 
 case class LimitTypeInput(name: String, description: Option[String], max: Option[Int], benchMax: Option[Int], types: List[LimitInput])
@@ -54,16 +55,31 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
                            applyPointsAtStartTime: Boolean, url: Option[String]
                           )
 
-case class UpdateLeagueFormInput(name: Option[String], isPrivate: Option[Boolean],
-                                 tournamentId: Option[Int], transferOpen: Option[Boolean],
-                                 forceFullTeams: Option[Boolean],
-                                 url: Option[String], transferLimit: Option[Int],
-                                 transferWildcard: Option[Boolean],
-                                 periodDescription: Option[String],
-                                 pickeeDescription: Option[String],
-                                 applyPointsAtStartTime: Option[Boolean], noWildcardForLateRegister: Option[Boolean],
-                                 recycleValue: Option[Double]
-                                 )
+
+case class UpdateLeagueFormDraftInput(draftStart: Option[LocalDateTime], nextDraftDeadline: Option[LocalDateTime], choiceTimer: Option[Int])
+case class FuckingBullshit(draftStart: Option[String], nextDraftDeadline: Option[String], choiceTimer: Option[Int])
+
+case class UpdateLeagueFormBasicInput(leagueName: Option[String], isPrivate: Option[Boolean],
+                                      tournamentId: Option[Int],
+                                      forceFullTeams: Option[Boolean],
+                                      url: Option[String],
+                                      periodDescription: Option[String],
+                                      pickeeDescription: Option[String],
+                                      applyPointsAtStartTime: Option[Boolean]
+                                     )
+
+case class UpdateLeagueFormTransferInput(transferOpen: Option[Boolean],
+                                      transferLimit: Option[Int],
+                                      transferWildcard: Option[Boolean],
+                                      noWildcardForLateRegister: Option[Boolean],
+                                     )
+
+case class UpdateLeagueFormCardInput(recycleValue: Option[Double])
+
+case class UpdateLeagueFormInput(
+                                  league: Option[UpdateLeagueFormBasicInput], draft: Option[UpdateLeagueFormDraftInput],
+                                  transfer: Option[UpdateLeagueFormTransferInput], card: Option[UpdateLeagueFormCardInput]
+                                )
 
 class LeagueController @Inject()(
                                   cc: ControllerComponents,
@@ -155,19 +171,30 @@ class LeagueController @Inject()(
   private val updateForm: Form[UpdateLeagueFormInput] = {
     Form(
       mapping(
-        "name" -> optional(nonEmptyText),
-        "isPrivate" -> optional(boolean),
-        "tournamentId" -> optional(number),
-        "transferOpen" -> optional(boolean),
-        "forceFullTeams" -> optional(boolean),
-        "url" -> optional(nonEmptyText),
-        "transferLimit" -> optional(number),
-        "transferWildcard" -> optional(boolean),
-        "periodDescription" -> optional(nonEmptyText),
-        "pickeeDescription" -> optional(nonEmptyText),
-        "applyPointsAtStartTime" -> optional(boolean),
-        "noWildcardForLateRegister" -> optional(boolean),
-        "recycleValue" -> optional(of(doubleFormat))
+        "league" -> optional(mapping(
+          "leagueName" -> optional(nonEmptyText),
+          "isPrivate" -> optional(boolean),
+          "tournamentId" -> optional(number),
+          "forceFullTeams" -> optional(boolean),
+          "url" -> optional(nonEmptyText),
+          "periodDescription" -> optional(nonEmptyText),
+          "pickeeDescription" -> optional(nonEmptyText),
+          "applyPointsAtStartTime" -> optional(boolean)
+        )(UpdateLeagueFormBasicInput.apply)(UpdateLeagueFormBasicInput.unapply)),
+        "draft" -> optional(mapping(
+          "draftStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
+        "nextDraftDeadline" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
+          "choiceTimer" -> optional(number)
+        )(UpdateLeagueFormDraftInput.apply)(UpdateLeagueFormDraftInput.unapply)),
+        "transfer" -> optional(mapping(
+          "transferOpen" -> optional(boolean),
+          "transferLimit" -> optional(number),
+          "transferWildcard" -> optional(boolean),
+          "noWildcardForLateRegister" -> optional(boolean)
+        )(UpdateLeagueFormTransferInput.apply)(UpdateLeagueFormTransferInput.unapply)),
+        "card" -> optional(mapping(
+          "recycleValue" -> optional(of(doubleFormat))
+        )(UpdateLeagueFormCardInput.apply)(UpdateLeagueFormCardInput.unapply))
       )(UpdateLeagueFormInput.apply)(UpdateLeagueFormInput.unapply)
     )
   }
@@ -380,11 +407,12 @@ class LeagueController @Inject()(
     }
 
     def success(input: UpdateLeagueFormInput) = Future(
-      if (leagueRepo.isStarted(league) && (input.transferLimit.isDefined || input.transferWildcard.isDefined)){
+      if (leagueRepo.isStarted(league) &&
+        (input.transfer.flatMap(_.transferLimit).isDefined || input.transfer.flatMap(_.transferWildcard).isDefined)){
         BadRequest("Cannot update transfer limits or wildcard after league has started")
       } else{
         db.withConnection { implicit c =>
-          Ok(Json.toJson(leagueRepo.update(league, input)))
+          Ok(Json.toJson(leagueRepo.update(league.leagueId, input)))
         }
       }
     )
