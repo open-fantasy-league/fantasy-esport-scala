@@ -3,6 +3,7 @@ package v1.transfer
 import java.sql.Connection
 import java.time.LocalDateTime
 
+import scala.math.min
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
 import play.api.mvc.Result
@@ -18,7 +19,7 @@ import v1.team.TeamRepo
 import v1.user.UserRepo
 
 case class DraftQueueInternalRow(draftQueueId: Long, pickeeId: Long, childId: Option[Long])
-case class DraftInfo(numMissed: Int, unstarted: Boolean, draftStart: LocalDateTime, nextDraftDeadline: LocalDateTime)
+case class DraftInfo(numMissed: Int, unstarted: Boolean, draftStart: LocalDateTime, nextDraftDeadline: LocalDateTime, paused: Boolean)
 case class DraftSystem(leagueId: Long, nextDraftDeadline: LocalDateTime)
 case class DatetimeRow(datetime: LocalDateTime)
 
@@ -37,7 +38,8 @@ trait TransferRepo{
             )(implicit c: Connection): Long
   def generateCard(leagueId: Long, userId: Long, pickeeId: Long, colour: String)(implicit c: Connection): CardOut
   def moneyAfterPack(userId: Long)(implicit c: Connection): Double
-  def buyCardPack(leagueId: Long, userId: Long, packSize: Int, packCost: BigDecimal)(implicit c: Connection): Either[String, Iterable[CardOut]]
+  def buyCardPack(leagueId: Long, userId: Long, packSize: Int, packCost: BigDecimal)(implicit c: Connection):
+    Either[String, Iterable[CardOut]]
   def generateCardPack(leagueId: Long, userId: Long, packSize: Int)(implicit c: Connection): Iterable[CardOut]
   def insertCardBonus(cardId: Long, statFieldId: Long, multiplier: Double)(implicit c: Connection)
   def recycleCards(leagueId: Long, userId: Long, cardId: List[Long], recycleValue: BigDecimal)
@@ -55,6 +57,8 @@ trait TransferRepo{
 
   def getDraftDeadlines()(implicit c: Connection): List[DraftSystem]
   def draftDeadlineReached(leagueId: Long)(implicit c: Connection): Option[LocalDateTime]
+  def manualDraft(leagueId: Long, input: ManualDraftFormInput)(implicit  c: Connection): Either[Result, Iterable[CardOut]]
+  def setDraftPaused(leagueId: Long, paused: Boolean)(implicit  c: Connection)
 
 }
 
@@ -282,9 +286,13 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   override def draftPickee(userId: Long, leagueId: Long, internalPickeeId: Long)
                           (implicit c: Connection): Either[Result, Iterable[UserPickee]] = {
     val draftInfo = getDraftInfo(leagueId)
-    sliceDrafts(leagueId, draftInfo.numMissed)
+    // min to avoid the skip someone with autopick on scenario
+    sliceDrafts(leagueId, min(1, draftInfo.numMissed))
     if (draftInfo.unstarted) {
       return Left(BadRequest(s"Draft doesn't start until ${draftInfo.draftStart}"))
+    }
+    if (draftInfo.paused) {
+      return Left(BadRequest(s"Draft currently paused. Commissioner needs to unpause"))
     }
     val nextDrafterIds: List[Long] = SQL"select unnest(user_ids) as user_id from draft_order where league_id = $leagueId"
       .as(SqlParser.long("user_id").*)
@@ -292,12 +300,16 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     if (nextDrafterIds.isEmpty || nextDrafterIds.head != userId)
       return Left(BadRequest("User not next in draft order"))
     val currentTeam = teamRepo.getUserCards(leagueId, Some(userId), None, None, false)
+    var takenPickeeIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
+      as(SqlParser.long("pickee_id").*).toSet
+    if (takenPickeeIds.contains(internalPickeeId)){
+      return Left(BadRequest("Another team already has that player"))
+    }
     // TODO for yield this shit
     val validated = validateLimits(currentTeam.map(_.internalPickeeId).toSet + internalPickeeId, leagueId)
     if (validated.isRight) {
       generateCard(leagueId, userId, internalPickeeId, "FUKINWOTM8")
-      val takenPickeeIds = SQL"select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId".
-        as(SqlParser.long("pickee_id").*).toSet
+      takenPickeeIds = takenPickeeIds + internalPickeeId
       val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds.tail, takenPickeeIds)
       // The +1 is due to extra draft of original caller, not because of 1-based indexing
       setNewDraftDeadline(leagueId, drafts.size + 1)
@@ -329,8 +341,6 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   }
 
   override def getDraftQueue(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[DraftQueueRow] = {
-    val draftInfo = getDraftInfo(leagueId)
-    // dont need to skip/modify draft order as background task doing that
     // https://stackoverflow.com/a/23838131
     SQL"""
          select external_pickee_id, pickee_name, pickee_id from pickee
@@ -360,13 +370,14 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     val parser = Macro.namedParser[DraftSystem](ColumnNaming.SnakeCase)
     // get rid of nulls as theyre finished drafts
     // partial index on the null?
-    SQL"select league_id, next_draft_deadline from draft_system where next_draft_deadline is not null".as(parser.*)
+    SQL"select league_id, next_draft_deadline from draft_system where next_draft_deadline is not null and not manual_draft".as(parser.*)
   }
 
   override def draftDeadlineReached(leagueId: Long)(implicit c: Connection): Option[LocalDateTime] = {
     val draftInfo = getDraftInfo(leagueId)
     // Someone made a draft, or turned autopick on, rather than timer elapsing
-    if (draftInfo.numMissed == 0){
+    // If draft paused we dont want to take any action either
+    if (draftInfo.numMissed == 0 || draftInfo.paused){
       Some(draftInfo.nextDraftDeadline)
     }
     else{
@@ -396,36 +407,12 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
           as(SqlParser.long("pickee_id").*).toSet
         val drafts = draftAutopickUsersRecursively(leagueId, nextDrafterIds.tail, takenPickeeIds)
         setNewDraftDeadline(leagueId, drafts.size+1)
-
-
-//      val queuePickeeIds = SQL"""
-//        select user_id, queued_pickee_id from (select unnest(pickee_ids) as queued_pickee_id from draft_queue
-//          join (select user_ids[0] as user_id from draft_order where league_id = $leagueId) next_drafter using(user_id)
-//        ) as pickee_queue
-//        where not exists(
-//          select p.pickee_id from pickee p join card using(pickee_id) where league_id = $leagueId and pickee_id = queued_pickee_id
-//        )
-//        """.as((SqlParser.long("user_id") ~ SqlParser.long("queued_pickee_id")).*)
-//      logger.info(s"queuePickeeIds: ${queuePickeeIds.mkString}")
-//      if (queuePickeeIds.nonEmpty){
-//        val userId = queuePickeeIds.head._1
-//        val currentTeam = teamRepo.getUserCards(leagueId, Some(userId), None, None, false)
-//        val pick = queuePickeeIds.find({
-//          case _ ~ pid => validateLimits(currentTeam.map(_.internalPickeeId).toSet + pid, leagueId).isRight
-//        })
-//        logger.info(s"draft pick: $pick")
-//        pick.map({
-//          case _ ~ pid => generateCard(leagueId, userId, pid, "FUKINWOTM8")
-//        })
-//      }
     }
   }
 
   private def sliceDrafts(leagueId: Long, numSkips: Int)(implicit c: Connection): Long = {
-    // TODO this skips over autopick users if one before is not autopick
-    // maybe just say this is not a defined scenario?
-    // would only occur if someone cocks up draft-timing
-    // re-draft option?
+    // TODO this can skip over autopick users if one before is not autopick
+    // have limited this to max 1 in caller.
     if (numSkips > 0){
       SQL"update draft_order set user_ids = user_ids[${numSkips+1}:] where league_id = $leagueId".executeUpdate()
     } else 0
@@ -436,7 +423,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     val parser: RowParser[DraftInfo] = Macro.namedParser[DraftInfo](ColumnNaming.SnakeCase)
     SQL"""
          select (GREATEST(0, floor(extract (epoch from (now() - next_draft_deadline)) / choice_timer)::integer)) as num_missed, draft_start > now() as unstarted,
-         draft_start, next_draft_deadline
+         draft_start, next_draft_deadline, paused
          from draft_system where league_id = $leagueId
       """.as(parser.single)
   }
@@ -449,6 +436,29 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
          set next_draft_deadline = now() + interval '1 second' * choice_timer
          where league_id = $leagueId returning next_draft_deadline as datetime""".as(Macro.namedParser[DatetimeRow].single).datetime)
     } else None
+  }
+
+  override def manualDraft(leagueId: Long, input: ManualDraftFormInput)(implicit  c: Connection):
+  Either[Result, Iterable[CardOut]] = {
+    val allPickees = pickeeRepo.getAllPickees(leagueId)
+    Right(input.teams.flatMap(t => t.pickees.map(p => {
+      val internalPickee = allPickees.find(p2 => p2.pickeeName == p)
+      if (internalPickee.isEmpty){
+        return Left(BadRequest(s"Pickee could not be found: $p"))
+      } else {
+        val internalPickeeId = internalPickee.get.internalPickeeId
+        generateCard(leagueId, t.userId, internalPickeeId, "FUKINWOTM8")
+      }
+    })))
+  }
+
+  override def setDraftPaused(leagueId: Long, paused: Boolean)(implicit  c: Connection) = {
+    SQL"""update draft_system set paused = $paused""".executeUpdate()
+    if (!paused){
+      // If unpausing we need to reset deadline, as it will still have been ticking towards it when paused
+      // (even though no actions will have been taken)
+      SQL"""update draft_system set next_draft_deadline = now() + interval '1 second' * choice_timer""".executeUpdate()
+    }
   }
 }
 

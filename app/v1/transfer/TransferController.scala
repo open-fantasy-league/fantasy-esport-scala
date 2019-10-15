@@ -27,6 +27,10 @@ case class TransferFormInput(buy: List[Long], sell: List[Long], isCheck: Boolean
 
 case class TransferSuccess(updatedMoney: BigDecimal, remainingTransfers: Option[Int])
 
+
+case class ManualDraftFormInput(teams: List[TeamFormInput])
+case class TeamFormInput(userId: Long, pickees: List[String])
+
 object TransferSuccess{
   implicit val implicitWrites = new Writes[TransferSuccess] {
     def writes(t: TransferSuccess): JsValue = {
@@ -58,6 +62,17 @@ class TransferController @Inject()(
       "applyEndPeriod" -> optional(number),
     "overrideLimitChecks" -> default(boolean, false)
     )(TransferFormInput.apply)(TransferFormInput.unapply)
+    )
+  }
+
+  private val manualDraftForm: Form[ManualDraftFormInput] = {
+    Form(
+      mapping("teams" -> list(mapping(
+        "userId" -> of(longFormat),
+        "pickees" -> list(nonEmptyText)
+      )(TeamFormInput.apply)(TeamFormInput.unapply)
+      )
+      )(ManualDraftFormInput.apply)(ManualDraftFormInput.unapply)
     )
   }
 
@@ -482,6 +497,45 @@ class TransferController @Inject()(
         case _ => Right(true)
       }
       case _ => Left(BadRequest(f"League does not have wildcards"))
+    }
+  }
+
+  def reportManualDraftReq(leagueId: String) = (new AuthAction() andThen Auther.AuthLeagueAction(leagueId)
+    andThen Auther.PermissionCheckAction).async { implicit request =>
+    db.withConnection { implicit c => processJsonManualDraft(request.league)}
+  }
+
+  private def processJsonManualDraft[A](league: LeagueRow)(implicit request: Request[A]): Future[Result] = {
+    def failure(badForm: Form[ManualDraftFormInput]) = {
+      Future.successful(BadRequest(badForm.errorsAsJson))
+    }
+
+    def success(input: ManualDraftFormInput) = Future(
+      db.withConnection { implicit c =>
+        transferRepo.manualDraft(league.leagueId, input).fold(identity, x => Ok(Json.toJson(x)))
+      }
+    )
+
+    manualDraftForm.bindFromRequest().fold(failure, success)
+  }
+
+  def pauseDraftReq(leagueId: String) = (new AuthAction() andThen
+    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
+    Future {
+        val pause = request.getQueryString("pause")
+        val unpause = request.getQueryString("unpause")
+        (pause, unpause) match{
+          case (None, None) => BadRequest("Must specify either pause/unpause as query string parameter")
+          case (Some(_), None) => db.withConnection { implicit c =>
+            transferRepo.setDraftPaused(request.league.leagueId, true)
+            Ok("success")
+          }
+          case (None, Some(_)) => db.withConnection { implicit c =>
+            transferRepo.setDraftPaused(request.league.leagueId, false)
+            Ok("success")
+          }
+          case (Some(_), Some(_)) => BadRequest("You've gone and specified to both pause and unpause you lemon")
+        }
     }
   }
 }

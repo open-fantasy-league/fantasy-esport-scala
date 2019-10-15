@@ -128,7 +128,9 @@ class Auther @Inject()(leagueRepo: LeagueRepo, db: Database){
   def PermissionCheckAction(implicit ec: ExecutionContext) = new ActionFilter[AuthLeagueRequest] {
     def executionContext = ec
     def filter[A](input: AuthLeagueRequest[A]) = Future.successful {
-      if (input.league.apiKey != input.apiKey.getOrElse(""))
+      // Let the admin api-key always have access
+      // This means my frontend doesnt need to query/lookup commissioner api-key, can just use admin
+      if (!List(input.league.apiKey, adminKey).contains(input.apiKey.getOrElse("")))
         Some(Forbidden(f"Must specify correct API key associated with this league, for this request. i.e. v1/leagues/1/startDay?apiKey=AASSSDDD"))
       else
         None

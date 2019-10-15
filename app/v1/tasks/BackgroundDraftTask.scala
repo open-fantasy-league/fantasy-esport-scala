@@ -4,13 +4,14 @@ import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 import javax.inject.Inject
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Cancellable}
 import play.api.db.Database
 import play.api.libs.concurrent.CustomExecutionContext
 
 import scala.concurrent.duration._
 import java.util.concurrent.TimeUnit
-import v1.transfer.TransferRepo
+
+import v1.transfer.{DraftSystem, TransferRepo}
 
 
 
@@ -22,33 +23,42 @@ class BackgroundDraftTask @Inject()(actorSystem: ActorSystem, transferRepo: Tran
   //TODO what to do about scenario where they move draft back/forward and scheduled wrong.
   // I guess if moved back, numMissed is 0 and nextDeadline has updated so we gucci
   // If moved forward then we've scheduled it twice, but thats fine, 2nd one doesnt do anything like above
+  private var scheduledDrafts = Map[Long, (LocalDateTime, Cancellable)]()
+
+
   run()
 
-  def run(): Unit = {
-    val deadlines = db.withConnection { implicit c => transferRepo.getDraftDeadlines() }
-    // TODO handle missed ones due to restart
-    //deadlines.withFilter(_.nextDraftDeadline.isBefore(LocalDateTime.now())).map()
-    deadlines.foreach(d => recursiveSchedule(d.leagueId, d.nextDraftDeadline))
+  def run()= {
+    actorSystem.scheduler.schedule(initialDelay = 0.seconds, interval = 10.seconds){
+      val deadlines = db.withConnection { implicit c => transferRepo.getDraftDeadlines()}
+      deadlines.foreach(updateSchedule)
+    }
   }
 
-  def recursiveSchedule(leagueId: Long, deadline: LocalDateTime): Unit = {
-    println(s"scheduling $leagueId draft check ${deadline.toString}")
-    var nextDeadline: Option[LocalDateTime] = None
-    actorSystem.scheduler.scheduleOnce(
-      FiniteDuration(LocalDateTime.now().getNano - deadline.getNano, TimeUnit.NANOSECONDS)
-    ) {
-      db.withConnection { implicit c => {nextDeadline = transferRepo.draftDeadlineReached(leagueId)} }
+  def updateSchedule(draft: DraftSystem) = {
+    val currentDraft = scheduledDrafts.get(draft.leagueId)
+    currentDraft match{
+      case None => {
+        val schedule = actorSystem.scheduler.scheduleOnce(
+          FiniteDuration(LocalDateTime.now().getNano - draft.nextDraftDeadline.getNano, TimeUnit.NANOSECONDS)
+        ) {
+          db.withConnection { implicit c => {transferRepo.draftDeadlineReached(draft.leagueId)} }
+        }
+        scheduledDrafts = scheduledDrafts + (draft.leagueId -> (draft.nextDraftDeadline, schedule))
+      }
+      case Some(d) => {
+        // Only cancel and refresh schedule if old one out of date
+        if (d._1 != draft.nextDraftDeadline){
+          d._2.cancel()
+          val schedule = actorSystem.scheduler.scheduleOnce(
+            FiniteDuration(LocalDateTime.now().getNano - draft.nextDraftDeadline.getNano, TimeUnit.NANOSECONDS)
+          ) {
+            db.withConnection { implicit c => {transferRepo.draftDeadlineReached(draft.leagueId)} }
+          }
+          scheduledDrafts = scheduledDrafts + (draft.leagueId -> (draft.nextDraftDeadline, schedule))
+        }
+      }
     }
-    nextDeadline.foreach(d => recursiveSchedule(leagueId, d))
-  }
 
-//  actorSystem.scheduler.schedule(initialDelay = 5.seconds, interval = 4.hours) {
-//    process()
-//  }
-
-  def process(): Unit = {
-    for (_ <- 0 until 100) {
-      println("This originally executed 5 minutes after the server started and will execute again in 4 hours")
-    }
   }
 }
