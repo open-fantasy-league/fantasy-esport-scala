@@ -32,6 +32,7 @@ case class DetailedLeagueRow(
                             choiceTimer: Option[Int],
                             nextDraftDeadline: Option[LocalDateTime],
                             manualDraft: Option[Boolean],
+                            draftPaused: Option[Boolean],
                              started: Boolean,
                              ended: Boolean,
                              periodValue: Option[Int],
@@ -86,6 +87,7 @@ case class PublicLeagueRow(
                           choiceTimer: Option[Int],
                           nextDraftDeadline: Option[LocalDateTime],
                           manualDraft: Option[Boolean],
+                          draftPaused: Option[Boolean],
                           predictionWinMoney: Option[BigDecimal],
                           started: Boolean,
                           ended: Boolean,
@@ -120,6 +122,7 @@ object PublicLeagueRow{
         "draftChoiceSeconds" -> league.choiceTimer,
         "nextDraftDeadline" -> league.nextDraftDeadline,
         "manualDraft" -> league.manualDraft,
+        "draftPaused" -> league.draftPaused,
         "recycleValue" -> league.recycleValue,
         "packCost" -> league.packCost,
         "packSize" -> league.packSize,
@@ -137,7 +140,7 @@ object PublicLeagueRow{
       row.transferLimit, row.transferWildcard, row.startingMoney, row.teamSize, row.benchSize,
       row.transferOpen, row.forceFullTeams, row.url, row.urlVerified, row.applyPointsAtStartTime,
       row.noWildcardForLateRegister, row.system, row.recycleValue, row.packCost, row.packSize, row.draftStart, row.choiceTimer,
-      row.nextDraftDeadline, row.manualDraft, row.predictionWinMoney, row.started, row.ended, row.numPeriods,
+      row.nextDraftDeadline, row.manualDraft, row.draftPaused, row.predictionWinMoney, row.started, row.ended, row.numPeriods,
       if (row.currentPeriodId.isDefined) Some(PeriodRow(
         row.currentPeriodId.get, row.leagueId, row.currentPeriodValue.get, row.currentPeriodStart.get, row.currentPeriodEnd.get,
         row.currentPeriodMultiplier.get, row.currentPeriodOnStartCloseTransferWindow.get, row.currentPeriodOnEndOpenTransferWindow.get

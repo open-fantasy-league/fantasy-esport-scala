@@ -143,12 +143,13 @@ class TransferController @Inject()(
     Future {
       db.withTransaction { implicit c =>
         // TODO rollback!
+        tryOrResponseRollback({
         (for {
           pickeeId <- IdParser.parseIntId(Some(pickeeIdStr), "pickee", required=true)
           internalPickeeId = pickeeRepo.getInternalId(request.league.leagueId, pickeeId.get)
           drafted <- transferRepo.draftPickee(request.user.userId, request.league.leagueId, internalPickeeId.get)
           out = Ok(Json.toJson(drafted))
-        } yield out).fold(identity, identity)
+        } yield out).fold(identity, identity)}, c, InternalServerError("Something went wrong")).fold(identity, identity)
       }
     }
   }
@@ -519,23 +520,23 @@ class TransferController @Inject()(
     manualDraftForm.bindFromRequest().fold(failure, success)
   }
 
-  def pauseDraftReq(leagueId: String) = (new AuthAction() andThen
-    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
-    Future {
-        val pause = request.getQueryString("pause")
-        val unpause = request.getQueryString("unpause")
-        (pause, unpause) match{
-          case (None, None) => BadRequest("Must specify either pause/unpause as query string parameter")
-          case (Some(_), None) => db.withConnection { implicit c =>
-            transferRepo.setDraftPaused(request.league.leagueId, true)
-            Ok("success")
-          }
-          case (None, Some(_)) => db.withConnection { implicit c =>
-            transferRepo.setDraftPaused(request.league.leagueId, false)
-            Ok("success")
-          }
-          case (Some(_), Some(_)) => BadRequest("You've gone and specified to both pause and unpause you lemon")
-        }
-    }
-  }
+//  def pauseDraftReq(leagueId: String) = (new AuthAction() andThen
+//    Auther.AuthLeagueAction(leagueId) andThen Auther.PermissionCheckAction).async { implicit request =>
+//    Future {
+//        val pause = request.getQueryString("pause")
+//        val unpause = request.getQueryString("unpause")
+//        (pause, unpause) match{
+//          case (None, None) => BadRequest("Must specify either pause/unpause as query string parameter")
+//          case (Some(_), None) => db.withConnection { implicit c =>
+//            transferRepo.setDraftPaused(request.league.leagueId, true)
+//            Ok("success")
+//          }
+//          case (None, Some(_)) => db.withConnection { implicit c =>
+//            transferRepo.setDraftPaused(request.league.leagueId, false)
+//            Ok("success")
+//          }
+//          case (Some(_), Some(_)) => BadRequest("You've gone and specified to both pause and unpause you lemon")
+//        }
+//    }
+//  }
 }

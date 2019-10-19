@@ -19,7 +19,7 @@ import v1.team.TeamRepo
 import v1.user.UserRepo
 
 case class DraftQueueInternalRow(draftQueueId: Long, pickeeId: Long, childId: Option[Long])
-case class DraftInfo(numMissed: Int, unstarted: Boolean, draftStart: LocalDateTime, nextDraftDeadline: LocalDateTime, paused: Boolean)
+case class DraftInfo(missed: Boolean, unstarted: Boolean, draftStart: LocalDateTime, nextDraftDeadline: LocalDateTime, paused: Boolean)
 case class DraftSystem(leagueId: Long, nextDraftDeadline: LocalDateTime)
 case class DatetimeRow(datetime: LocalDateTime)
 
@@ -287,7 +287,9 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
                           (implicit c: Connection): Either[Result, Iterable[UserPickee]] = {
     val draftInfo = getDraftInfo(leagueId)
     // min to avoid the skip someone with autopick on scenario
-    sliceDrafts(leagueId, min(1, draftInfo.numMissed))
+    if (draftInfo.missed) {
+      sliceDrafts(leagueId, 1)
+    }
     if (draftInfo.unstarted) {
       return Left(BadRequest(s"Draft doesn't start until ${draftInfo.draftStart}"))
     }
@@ -370,20 +372,21 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
     val parser = Macro.namedParser[DraftSystem](ColumnNaming.SnakeCase)
     // get rid of nulls as theyre finished drafts
     // partial index on the null?
-    SQL"select league_id, next_draft_deadline from draft_system where next_draft_deadline is not null and not manual_draft".as(parser.*)
+    SQL"select league_id, next_draft_deadline from draft_system where next_draft_deadline is not null and not manual_draft and not paused".as(parser.*)
   }
 
   override def draftDeadlineReached(leagueId: Long)(implicit c: Connection): Option[LocalDateTime] = {
     val draftInfo = getDraftInfo(leagueId)
     // Someone made a draft, or turned autopick on, rather than timer elapsing
     // If draft paused we dont want to take any action either
-    if (draftInfo.numMissed == 0 || draftInfo.paused){
+    logger.debug(s"draftInfo.numMissed: ${draftInfo.missed}")
+    if (!draftInfo.missed || draftInfo.paused){
       Some(draftInfo.nextDraftDeadline)
     }
     else{
       val queuePickeeIds = SQL"""
-        select user_id, queued_pickee_id from (select unnest(pickee_ids) as queued_pickee_id from draft_queue
-          join (select user_ids[0] as user_id from draft_order where league_id = $leagueId) next_drafter using(user_id)
+        select user_id, queued_pickee_id from (select unnest(pickee_ids) as queued_pickee_id, user_id from draft_queue
+          join (select user_ids[1] as user_id from draft_order where league_id = $leagueId) next_drafter using(user_id)
         ) as pickee_queue
         where not exists(
           select p.pickee_id from pickee p join card using(pickee_id) where league_id = $leagueId and pickee_id = queued_pickee_id
@@ -421,11 +424,15 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   private def getDraftInfo(leagueId: Long)(implicit c: Connection): DraftInfo = {
     // FInd out since the last call how many users must have missed their go
     val parser: RowParser[DraftInfo] = Macro.namedParser[DraftInfo](ColumnNaming.SnakeCase)
-    SQL"""
-         select (GREATEST(0, floor(extract (epoch from (now() - next_draft_deadline)) / choice_timer)::integer)) as num_missed, draft_start > now() as unstarted,
+    logger.debug("\n\n\n\n\n\n\ntime now: ")
+    logger.debug(LocalDateTime.now.toString)
+    val out = SQL"""
+         select now() > next_draft_deadline as missed, draft_start > now() as unstarted,
          draft_start, next_draft_deadline, paused
          from draft_system where league_id = $leagueId
       """.as(parser.single)
+    logger.debug(s"nextDraftDeadline was: ${out.nextDraftDeadline.toString}")
+    out
   }
 
   private def setNewDraftDeadline(leagueId: Long, numDrafted: Int)(implicit c: Connection): Option[LocalDateTime] = {
@@ -453,11 +460,11 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   }
 
   override def setDraftPaused(leagueId: Long, paused: Boolean)(implicit  c: Connection) = {
-    SQL"""update draft_system set paused = $paused""".executeUpdate()
+    SQL"""update draft_system set paused = $paused where league_id = $leagueId""".executeUpdate()
     if (!paused){
       // If unpausing we need to reset deadline, as it will still have been ticking towards it when paused
       // (even though no actions will have been taken)
-      SQL"""update draft_system set next_draft_deadline = now() + interval '1 second' * choice_timer""".executeUpdate()
+      SQL"""update draft_system set next_draft_deadline = now() + interval '1 second' * choice_timer where league_id = $leagueId""".executeUpdate()
     }
   }
 }

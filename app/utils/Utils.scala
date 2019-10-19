@@ -55,6 +55,8 @@ object TryHelper {
     }
     catch {
       case e: Exception => {
+        // TODO use an implicit logger?
+        println("Rolling back transaction")
         c.rollback()
         // https://alvinalexander.com/scala/how-convert-stack-trace-exception-string-print-logger-logging-log4j-slf4j
         val sw = new StringWriter

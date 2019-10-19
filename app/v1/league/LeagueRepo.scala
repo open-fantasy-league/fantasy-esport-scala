@@ -10,7 +10,7 @@ import play.api.mvc.Result
 import play.api.mvc.Results.{BadRequest, InternalServerError}
 import anorm._
 import anorm.~
-import anorm.{ Macro, RowParser, ToParameterList}, Macro.ColumnNaming
+import anorm.{ Macro, RowParser}, Macro.ColumnNaming
 
 import akka.actor.ActorSystem
 import models._
@@ -73,7 +73,9 @@ object LeagueFull{
         "numPeriods" -> league.league.numPeriods,
         "draftStart" -> league.league.draftStart,
         "nextDraftDeadline" -> league.league.nextDraftDeadline,
-        "choiceTimer" -> league.league.choiceTimer
+        "choiceTimer" -> league.league.choiceTimer,
+        "manualDraft" -> league.league.manualDraft,
+        "draftPaused" -> league.league.draftPaused
       )
     }
   }
@@ -133,7 +135,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         period_description, transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open,
         force_full_teams, url, url_verified, current_period_id, apply_points_at_start_time,
          no_wildcard_for_late_register, system, recycle_value, pack_size, pack_cost, prediction_win_money, manually_calculate_points,
-         draft_start, choice_timer, next_draft_deadline, manual_draft
+         draft_start, choice_timer, next_draft_deadline, manual_draft, paused as draft_paused
          from league l
          left join card_system using(league_id)
          left join transfer_system using(league_id)
@@ -171,7 +173,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           transfer_limit, transfer_wildcard, starting_money, team_size, bench_size, transfer_open, force_full_teams,
           url, url_verified, apply_points_at_start_time, no_wildcard_for_late_register, system, recycle_value,
           pack_size, pack_cost, prediction_win_money, (current_period_id is not null) as started,
-          draft_start, choice_timer, next_draft_deadline, manual_draft,
+          draft_start, choice_timer, next_draft_deadline, manual_draft, paused as draft_paused,
           (current_period_id is not null and upper(current_period.timespan) < now()) as ended,
           (select count(*) from period where league_id = $leagueId) as num_periods,
            current_period_id,
@@ -313,6 +315,22 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       )
       input.choiceTimer.foreach(x =>
         SQL"""UPDATE draft_system set choice_timer = $x where league_id = $leagueId""".executeUpdate())
+      input.manualDraft.foreach(x =>
+        SQL"""UPDATE draft_system set manual_draft = $x where league_id = $leagueId""".executeUpdate())
+
+      input.paused.foreach(x => {
+        SQL"""update draft_system set paused = $x where league_id = $leagueId""".executeUpdate()
+        // TODO can be one update
+        if (!x) {
+          // If unpausing we need to reset deadline, as it will still have been ticking towards it when paused
+          // (even though no actions will have been taken)
+          SQL"""update draft_system set next_draft_deadline = now() + interval '1 second' * choice_timer where league_id = $leagueId""".executeUpdate()
+        }
+      })
+
+      input.order.foreach(x => {
+        SQL"""update draft_order set user_ids = array[$x]""".executeUpdate()
+      })
     }
 
     input.league.map(x => dynamicUpdate("league", Macro.toParameters[UpdateLeagueFormBasicInput](x)))

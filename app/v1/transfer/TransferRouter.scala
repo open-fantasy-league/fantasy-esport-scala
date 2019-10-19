@@ -49,8 +49,8 @@ class TransferRouter @Inject()(controller: TransferController) extends SimpleRou
     case POST(p"/leagues/$leagueId/reportDraft/") =>
       controller.reportManualDraftReq(leagueId)
 
-    case POST(p"/leagues/$leagueId/pauseDraft/") =>
-      controller.pauseDraftReq(leagueId)
+//    case POST(p"/leagues/$leagueId/pauseDraft/") =>
+//      controller.pauseDraftReq(leagueId)
   }
 
 }

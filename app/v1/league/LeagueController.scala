@@ -56,9 +56,10 @@ case class LeagueFormInput(name: String, gameId: Option[Long], isPrivate: Boolea
                           )
 
 
-case class UpdateLeagueFormDraftInput(draftStart: Option[LocalDateTime], nextDraftDeadline: Option[LocalDateTime], choiceTimer: Option[Int])
-case class FuckingBullshit(draftStart: Option[String], nextDraftDeadline: Option[String], choiceTimer: Option[Int])
-
+case class UpdateLeagueFormDraftInput(draftStart: Option[LocalDateTime], nextDraftDeadline: Option[LocalDateTime],
+                                      choiceTimer: Option[Int], manualDraft: Option[Boolean],
+                                      paused: Option[Boolean], order: Option[List[Long]]
+                                     )
 case class UpdateLeagueFormBasicInput(leagueName: Option[String], isPrivate: Option[Boolean],
                                       tournamentId: Option[Int],
                                       forceFullTeams: Option[Boolean],
@@ -184,7 +185,10 @@ class LeagueController @Inject()(
         "draft" -> optional(mapping(
           "draftStart" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
         "nextDraftDeadline" -> optional(of(localDateTimeFormat("yyyy-MM-dd HH:mm:ss"))),
-          "choiceTimer" -> optional(number)
+          "choiceTimer" -> optional(number),
+          "manualDraft" -> optional(boolean),
+          "paused" -> optional(boolean),
+          "order" -> optional(list(of(longFormat)))
         )(UpdateLeagueFormDraftInput.apply)(UpdateLeagueFormDraftInput.unapply)),
         "transfer" -> optional(mapping(
           "transferOpen" -> optional(boolean),
