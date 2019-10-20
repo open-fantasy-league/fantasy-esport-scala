@@ -305,11 +305,11 @@ class LeagueController @Inject()(
     }
   }
 
-  def setDraftOrderReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId)
+  def generateDraftOrderReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId)
     andThen auther.PermissionCheckAction).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
-        Ok(Json.toJson(leagueRepo.setDraftOrder(request.league.leagueId, request.league.teamSize + request.league.benchSize)))
+        Ok(Json.toJson(leagueRepo.generateDraftOrder(request.league.leagueId, request.league.teamSize + request.league.benchSize)))
       }
     }
   }

@@ -116,6 +116,7 @@ trait UserRepo{
   def joinUser(externalUserId: Long, username: String, league: LeagueRow): UserRow
   def userInLeague(externalUserId: Long, leagueId: Long)(implicit c: Connection): Boolean
   def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int
+  //def externalToInternalIds(externalIds: Iterable[Long])(implicit c: Connection): Iterable[Long]
 }
 
 @Singleton
@@ -272,5 +273,9 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
   override def setlateEntryLockTs(userId: Long)(implicit c: Connection): Int = {
     SQL"""update useru set late_entry_lock_ts = now() where user_id = $userId""".executeUpdate()
   }
+
+//  override def externalToInternalIds(externalIds: Iterable[Long])(implicit c: Connection): Iterable[Long] = {
+//    SQL""""""
+//  }
 }
 

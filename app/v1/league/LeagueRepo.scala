@@ -120,7 +120,7 @@ trait LeagueRepo{
   def getStatField(statFieldId: Long)(implicit c: Connection): Option[LeagueStatFieldRow]
   def getPointsForStat(statFieldId: Long, limitIds: Iterable[Long])(implicit c: Connection): Option[Double]
   def getScoringRules(leagueId: Long)(implicit c: Connection): Iterable[ScoringRow]
-  def setDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long]
+  def generateDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long]
   def setWaiverOrder(leagueId: Long, userIds: Iterable[Long~Long])(implicit c: Connection): Iterable[Long]
 }
 
@@ -329,7 +329,19 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
       })
 
       input.order.foreach(x => {
-        SQL"""update draft_order set user_ids = array[$x]""".executeUpdate()
+        SQL"""
+             with internal_user_ids as (
+              select user_id, ord from useru u
+               JOIN unnest(array[$x]) WITH ORDINALITY t(id, ord) on
+               (u.league_id = $leagueId AND t.id = u.external_user_id)
+               ORDER by t.ord
+             )
+             insert into draft_order(league_id, user_ids) VALUES  ($leagueId,
+              (select array_agg(user_id order by ord) from internal_user_ids))
+             ON CONFLICT (league_id) DO
+             update set user_ids = (select array_agg(user_id order by ord) from internal_user_ids)
+              where EXCLUDED.league_id = $leagueId
+          """.executeUpdate()
       })
     }
 
@@ -645,14 +657,14 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
           where league_id = $leagueId;""".as(ScoringRow.parser.*)
   }
 
-  override def setDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long] = {
+  override def generateDraftOrder(leagueId: Long, maxPickees: Int)(implicit c: Connection): Iterable[Long] = {
     val randomUserIds = SQL"""select user_id, external_user_id from useru where league_id = $leagueId order by random()"""
       .as((SqlParser.long("user_id") ~ SqlParser.long("external_user_id")).*)
     val reversedUserIds = randomUserIds.reverse
     val draftOrder = (0 to maxPickees).map(i => {
       val userIds = if (i % 2 == 0) randomUserIds else reversedUserIds
       if (i == 1){
-        setWaiverOrder(leagueId, userIds)  // TODO this shouldnt be confined to setdraftorder
+        setWaiverOrder(leagueId, userIds)  // TODO this shouldnt be confined to generateDraftOrder
       }
       userIds
     }).toList.flatten
