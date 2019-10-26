@@ -24,6 +24,7 @@ class AdminController @Inject()(
   def allRolloverPeriodReq() = (new AuthAction() andThen auther.AdminCheckAction).async { implicit request =>
     Future {
       db.withConnection { implicit c =>
+        implicit val processWaiverPickeesFunc: (Long, Int, Int) => Unit = transferRepo.processWaiverPickees
         val currentTime = LocalDateTime.now()
         leagueRepo.startPeriods(currentTime)
         leagueRepo.endPeriods(currentTime)

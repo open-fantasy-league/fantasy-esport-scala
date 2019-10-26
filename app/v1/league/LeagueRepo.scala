@@ -19,7 +19,8 @@ import utils.Utils._
 class LeagueExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 case class NameAndDescription(name: String, description: Option[String])
-case class PostPeriodHookInfo(onEndOpenTransferWindow: Boolean, onEndEliminateUsersTo: Option[Int])
+case class PostPeriodHookInfo(onEndOpenTransferWindow: Boolean, onEndEliminateUsersTo: Option[Int], value: Int)
+case class PostPeriodHookRow(leagueId: Long, periodId: Long, teamSize: Int)
 
 object NameAndDescription{
   implicit val implicitWrites = new Writes[NameAndDescription] {
@@ -109,11 +110,12 @@ trait LeagueRepo{
   def postStartPeriodHook(leagueId: Long, periodId: Long, periodValue: Int, timestamp: LocalDateTime)(
     implicit c: Connection
   )
-  def postEndPeriodHook(leagueIds: Iterable[Long], periodIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection)
+  def postEndPeriodHook(info: Iterable[PostPeriodHookRow], timestamp: LocalDateTime)
+                       (implicit c: Connection, processWaiverPickeesFunc: (Long, Int, Int) => Unit)
   def updateHistoricRanks(leagueId: Long)(implicit c: Connection)
   def eliminateUsersTo(leagueId: Long, eliminateTo: Int)(implicit c: Connection): Unit
   def startPeriods(currentTime: LocalDateTime)(implicit c: Connection)
-  def endPeriods(currentTime: LocalDateTime)(implicit c: Connection)
+  def endPeriods(currentTime: LocalDateTime)(implicit c: Connection, processWaiverPickeeFunc: (Long, Int, Int) => Unit)
   def insertLimits(leagueId: Long, limits: Iterable[LimitTypeInput])(implicit c: Connection): Map[String, Long]
   def getStatFieldId(leagueId: Long, statFieldName: String)(implicit c: Connection): Option[Long]
   def getStatFieldName(statFieldId: Long)(implicit c: Connection): Option[String]
@@ -508,34 +510,32 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     ).on(params:_*).executeUpdate()
   }
 
-  override def postEndPeriodHook(leagueIds: Iterable[Long], periodIds: Iterable[Long], timestamp: LocalDateTime)(implicit c: Connection): Unit = {
+  override def postEndPeriodHook(info: Iterable[PostPeriodHookRow], timestamp: LocalDateTime)(
+    implicit c: Connection, processWaiverPickeesFunc: (Long, Int, Int) => Unit): Unit = {
     println("tmp")
-    // TODO batch
-    println(s"""end period league: ${leagueIds.mkString(",")}, periodId: ${periodIds.mkString(",")}""")
-
     val parser = Macro.namedParser[PostPeriodHookInfo](ColumnNaming.SnakeCase)
-    val hookInfo = periodIds.map(periodId => {
+    info.foreach(x => {
+      println(s"""end period league: ${x.leagueId}, periodId: ${x.periodId}""")
       val q =
         """update period set ended = true, timespan = tstzrange(lower(timespan), {timestamp})
-    where period_id = {periodId} returning on_end_open_transfer_window, on_end_eliminate_users_to;
+    where period_id = {periodId} returning on_end_open_transfer_window, on_end_eliminate_users_to, value;
     """
-      SQL(q).on("periodId" -> periodId, "timestamp" -> timestamp).as(
+      val hookInfo = SQL(q).on("periodId" -> x.periodId, "timestamp" -> timestamp).as(
         parser.single)
-    })
-    leagueIds.zip(hookInfo).foreach({ case (lid, hookInfo) =>
       if (hookInfo.onEndOpenTransferWindow) {
-        SQL"update league set transfer_open = true where league_id = $lid".executeUpdate()
+        SQL"update league set transfer_open = true where league_id = ${x.leagueId}".executeUpdate()
       }
       if (hookInfo.onEndEliminateUsersTo.isDefined){
-        eliminateUsersTo(lid, hookInfo.onEndEliminateUsersTo.get)
+        eliminateUsersTo(x.leagueId, hookInfo.onEndEliminateUsersTo.get)
+        processWaiverPickeesFunc(x.leagueId, x.teamSize, hookInfo.value)
       }
     })
   }
 
   override def updateHistoricRanks(leagueId: Long)(implicit c: Connection): Unit = {
     SQL"""
-       with rankings as (select user_stat_id, rank(PARTITION BY stat_field_id)
-       OVER (order by value desc, useru.user_id) as ranking from useru
+       with rankings as (select user_stat_id, dense_rank()
+       OVER (PARTITION BY stat_field_id order by value desc, useru.user_id) as ranking from useru
         join user_stat using(user_id)
          join user_stat_period using(user_stat_id)
           where league_id = $leagueId and period is null
@@ -545,15 +545,26 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   }
 
   override def eliminateUsersTo(leagueId: Long, eliminateTo: Int)(implicit c: Connection): Unit = {
-    SQL"""
-       with rankings as (select user_stat_id, rank(PARTITION BY stat_field_id)
-       OVER (order by value desc, useru.user_id) as ranking from useru
-        join user_stat using(user_id)
+    // TODO secondary ranking
+    val eliminatedUserIds = SQL"""
+       with rankings as (select user_stat_id, dense_rank()
+       OVER (order by value desc, useru.user_id) as ranking from useru u
+        join user_stat us using(user_id)
          join user_stat_period using(user_stat_id)
-          where league_id = $leagueId and period is null
-           order by value desc)
-           update useru u set eliminated = true where ranking > $eliminateTo;
-        """.executeUpdate()
+         join stat_field sf using(stat_field_id)
+          where u.league_id = $leagueId and period is null and sf.name = 'points'
+           order by ranking)
+           update useru u set eliminated = true where ranking > $eliminateTo returning user_id;
+        """.as(SqlParser.long("user_id").*)
+    // set recycled so that views of old team are still valid/dont error
+    SQL"""update card set recycled = true where user_id in array[$eliminatedUserIds]""".executeUpdate()
+    SQL"""
+         update team join card using(card_id) set timespan = tstzrange(lower(timespan), (
+         select value from period join league on (league.currentPeriodId = period.periodId)
+          where league.league_id = $leagueId
+         ))
+         where user_id in array[$eliminatedUserIds]
+      """.executeUpdate()
   }
 
   override def postStartPeriodHook(leagueId: Long, periodId: Long, periodValue: Int, timestamp: LocalDateTime)(
@@ -571,14 +582,11 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
     if (periodValue > 1) updateHistoricRanks(leagueId)
   }
 
-  override def endPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
-    val q =
-      """select l.league_id, period_id from league l join period p on (
-        |l.current_period_id = p.period_id and p.ended = false and upper(p.timespan) <= {currentTime} and p.next_period_id is not null);""".stripMargin
-    val (leagueIds, periodIds) = SQL(q).on("currentTime" -> currentTime).as(
-      (SqlParser.long("league_id") ~ SqlParser.long("period_id")).*
-    ).map(x => (x._1, x._2)).unzip
-    postEndPeriodHook(leagueIds, periodIds, currentTime)
+  override def endPeriods(currentTime: LocalDateTime)(implicit c: Connection, processWaiverPickeeFunc: (Long, Int, Int) => Unit) = {
+    val parser: RowParser[PostPeriodHookRow] = Macro.namedParser[PostPeriodHookRow](ColumnNaming.SnakeCase)
+    val info = SQL"""select l.league_id, period_id, team_size from league l join period p on (
+        l.current_period_id = p.period_id and p.ended = false and upper(p.timespan) <= $currentTime and p.next_period_id is not null)""".as(parser.*)
+    postEndPeriodHook(info, currentTime)
   }
   override def startPeriods(currentTime: LocalDateTime)(implicit c: Connection) = {
     // looking for period that a) isnt current period, b) isnt old ended period (so must be future period!)

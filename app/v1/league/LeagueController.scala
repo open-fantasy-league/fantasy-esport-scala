@@ -1,6 +1,7 @@
 package v1.league
 
 import java.io.{PrintWriter, StringWriter}
+import java.sql.Connection
 import java.time.LocalDateTime
 
 import javax.inject.Inject
@@ -18,6 +19,7 @@ import auth.{UserAction, _}
 import models._
 import v1.user.{UserFormInput, UserRepo}
 import v1.pickee.{PickeeFormInput, PickeeRepo}
+import v1.transfer.TransferRepo
 
 case class PeriodInput(
                         start: LocalDateTime, end: LocalDateTime, multiplier: Double, onStartCloseTransferWindow: Boolean,
@@ -85,7 +87,7 @@ case class UpdateLeagueFormInput(
 class LeagueController @Inject()(
                                   cc: ControllerComponents,
                                   userRepo: UserRepo, pickeeRepo: PickeeRepo,
-                                  auther: Auther
+                                  auther: Auther, transferRepo: TransferRepo
                                 )(implicit ec: ExecutionContext, leagueRepo: LeagueRepo, db: Database) extends AbstractController(cc)
   with play.api.i18n.I18nSupport{  //https://www.playframework.com/documentation/2.6.x/ScalaForms#Passing-MessagesProvider-to-Form-Helpers
 
@@ -269,11 +271,15 @@ class LeagueController @Inject()(
 
   def endPeriodReq(leagueId: String) = (new AuthAction() andThen auther.AuthLeagueAction(leagueId) andThen auther.PermissionCheckAction).async {implicit request =>
     Future {
-      db.withConnection { implicit c =>
+      db.withTransaction { implicit c =>
+        implicit val processWaiverPickeesFunc: (Long, Int, Int) => Unit = transferRepo.processWaiverPickees
         leagueRepo.getCurrentPeriod(request.league) match {
           case Some(p) if !p.ended => {
-            leagueRepo.postEndPeriodHook(List(request.league.leagueId), List(p.periodId), LocalDateTime.now())
-            Ok("Successfully ended day")
+            tryOrResponseRollback({
+              leagueRepo.postEndPeriodHook(List(
+                PostPeriodHookRow(request.league.leagueId, p.periodId, request.league.teamSize)
+              ), LocalDateTime.now())
+            }, c, InternalServerError("We dun goofed")).fold(identity, x => Ok("Successfully ended day"))
           }
           case _ => BadRequest("Period already ended (Must start next period first)")
         }

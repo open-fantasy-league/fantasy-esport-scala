@@ -2,7 +2,7 @@ import sbt.Keys._
 
 scalaVersion in ThisBuild := "2.12.6"
 
-crossScalaVersions := Seq("2.11.12", "2.12.4")
+//crossScalaVersions := Seq("2.11.12", "2.12.4")
 
 resolvers += Resolver.sbtPluginRepo("releases")
 
@@ -22,7 +22,7 @@ libraryDependencies += filters
 
 libraryDependencies ++=  Seq(
   jdbc,
-  "org.squeryl" %% "squeryl" % "0.9.10",
+  //"org.squeryl" %% "squeryl" % "0.9.10",
   "org.playframework.anorm" %% "anorm" % "2.6.4",
 //  "mysql" % "mysql-connector-java" % "5.1.10",
 //  "com.h2database" % "h2" % "1.4.196",

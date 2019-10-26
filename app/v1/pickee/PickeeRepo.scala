@@ -65,6 +65,8 @@ trait PickeeRepo{
   def updateLimits(leagueId: Long, externalPickeeId: Long, updatedLimits: List[NameValueInput])(implicit c: Connection)
   def getRandomPickeesFromDifferentFactions(leagueId: Long, packSize: Int)(implicit c: Connection): Iterable[Long]
   def getUserCards(leagueId: Long, userId: Long)(implicit c: Connection): Iterable[CardRow]
+  def takenPickeeIds(leagueId: Long, periodVal: Long = 0)(implicit c: Connection): Set[Long]
+  def removePickeeFromQueues(pickeeId: Long)(implicit c: Connection)
 }
 
 @Singleton
@@ -230,6 +232,19 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
         |select card_id, user_id, pickee_id, colour from card
         |join pickee using(pickee_id) where user_id = {userId} and league_id = {leagueId} and not recycled
       """.stripMargin).on("userId" -> userId, "leagueId" -> leagueId).as(CardRow.parser.*)
+  }
+
+  override def takenPickeeIds(leagueId: Long, periodVal: Long=0)(implicit c: Connection): Set[Long] = {
+    SQL"""select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId and not recycled
+         union select pickee_id from pickee where waiver_cooldown_until_period_end >= periodVal
+       """.
+      as(SqlParser.long("pickee_id").*).toSet
+  }
+
+  override def removePickeeFromQueues(pickeeId: Long)(implicit c: Connection)= {
+    // pickeeId is unique. It's unique and not re-used across different leagues
+    // so we dont need to filter by leagueId or userId at all
+    SQL"""update draft_queue dq set pickee_ids = array_remove(pickee_ids, $pickeeId)""".executeUpdate()
   }
 }
 

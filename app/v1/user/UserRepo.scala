@@ -96,7 +96,7 @@ trait UserRepo{
   def update(userId: Long, leagueId: Long, input: UpdateUserFormInput)(implicit c: Connection): Unit
   def get(leagueId: Long, externalUserId: Long)(implicit c: Connection): Option[UserRow]
   def getUsers(userIds: List[Long])(implicit c: Connection): Iterable[UserRow]
-  def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow]
+  def getAllUsersForLeague(leagueId: Long, eliminated: Option[Boolean]=None)(implicit c: Connection): Iterable[UserRow]
   def insertUser(league: LeagueRow, userId: Long, username: String)(implicit c: Connection): UserRow
   def insertUserStat(statFieldId: Long, userId: Long)(implicit c: Connection): Long
   def insertUserStatDaily(userStatId: Long, period: Option[Int])(implicit c: Connection): Long
@@ -149,9 +149,13 @@ class UserRepoImpl @Inject()(db: Database, teamRepo: TeamRepo, pickeeRepo: Picke
       from useru where user_id = ANY(ARRAY[$userIds])""".as(UserRow.parser.*)
   }
 
-  override def getAllUsersForLeague(leagueId: Long)(implicit c: Connection): Iterable[UserRow] = {
-    SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
+  override def getAllUsersForLeague(leagueId: Long, eliminated: Option[Boolean]=None)(implicit c: Connection): Iterable[UserRow] = {
+    eliminated match{
+      case None => SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
       from useru where league_id = $leagueId""".as(UserRow.parser.*)
+      case Some(elim) => SQL"""select user_id, username, external_user_id, money, entered, remaining_transfers, used_wildcard, late_entry_lock_ts, eliminated
+      from useru where league_id = $leagueId and eliminated = $elim""".as(UserRow.parser.*)
+    }
   }
 
   override def insertUser(league: LeagueRow, externalUserId: Long, username: String)(implicit c: Connection): UserRow = {
