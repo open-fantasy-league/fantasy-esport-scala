@@ -334,7 +334,7 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
         SQL"""
              with internal_user_ids as (
               select user_id, ord from useru u
-               JOIN unnest(array[$x]) WITH ORDINALITY t(id, ord) on
+               JOIN unnest(ARRAY[$x]) WITH ORDINALITY t(id, ord) on
                (u.league_id = $leagueId AND t.id = u.external_user_id)
                ORDER by t.ord
              )
@@ -547,23 +547,26 @@ class LeagueRepoImpl @Inject()(implicit ec: LeagueExecutionContext) extends Leag
   override def eliminateUsersTo(leagueId: Long, eliminateTo: Int)(implicit c: Connection): Unit = {
     // TODO secondary ranking
     val eliminatedUserIds = SQL"""
-       with rankings as (select user_stat_id, dense_rank()
-       OVER (order by value desc, useru.user_id) as ranking from useru u
+       with rankings as (select u.user_id, dense_rank()
+       OVER (order by value desc, u.user_id) as ranking from useru u
         join user_stat us using(user_id)
          join user_stat_period using(user_stat_id)
          join stat_field sf using(stat_field_id)
           where u.league_id = $leagueId and period is null and sf.name = 'points'
            order by ranking)
-           update useru u set eliminated = true where ranking > $eliminateTo returning user_id;
+           update useru u set eliminated = true from rankings r
+           where r.user_id = u.user_id and ranking > $eliminateTo returning u.user_id;
         """.as(SqlParser.long("user_id").*)
     // set recycled so that views of old team are still valid/dont error
-    SQL"""update card set recycled = true where user_id in array[$eliminatedUserIds]""".executeUpdate()
+
+    SQL"""update card set recycled = true where user_id = ANY(ARRAY[$eliminatedUserIds])""".executeUpdate()
     SQL"""
-         update team join card using(card_id) set timespan = tstzrange(lower(timespan), (
-         select value from period join league on (league.currentPeriodId = period.periodId)
+         update team t set timespan = int4range(lower(timespan), (
+         select value from period join league on (league.current_period_id = period.period_id)
           where league.league_id = $leagueId
          ))
-         where user_id in array[$eliminatedUserIds]
+         from card c
+         where c.card_id = t.card_id AND user_id = ANY(ARRAY[$eliminatedUserIds])
       """.executeUpdate()
   }
 

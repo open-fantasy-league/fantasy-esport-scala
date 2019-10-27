@@ -486,22 +486,37 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
   override def processWaiverPickees(leagueId: Long, teamSize: Int, periodVal: Int)(implicit c: Connection): Unit = {
     // i dont like map and toSet
     var usersToFill = userRepo.getAllUsersForLeague(leagueId, Some(false)).map(_.userId).toSet
+    logger.info(s"usersToFill: ${usersToFill.mkString(",")}")
     while (usersToFill.nonEmpty) {
-      val userId =
+      logger.debug(s"usersToFill now: ${usersToFill.mkString(",")}")
+      // Have to be careful.
+      // As the top priority might have full team, we dont want to knock them down order without giving them a pick
+      // Therefore record index of first unpicked, so we can just nudge them to the back
+      val userId ~ indx =
         SQL"""
-             select user_ids[1] as user_id from waiver_order where league_id = $leagueId
-          """.as(SqlParser.long("user_id").single)
+             select * from (select unnest(user_ids) as user_id, generate_subscripts(user_ids, 1) as queue_idx
+             from waiver_order
+             where league_id = $leagueId) sub where user_id IN ($usersToFill)
+             order by queue_idx limit 1
+          """.as((SqlParser.long("user_id") ~ SqlParser.int("queue_idx")).single)
+//        SQL"""
+//             select user_ids[1] as user_id from waiver_order where league_id = $leagueId and user_id = ANY($usersToFill)
+//          """.as(SqlParser.long("user_id").single)
+      logger.debug(s"userId: $userId")
       val queue = getDraftQueue(leagueId, userId)
       val currentTeam = teamRepo.getUserCards(leagueId, Some(userId), None, None, false)
       val takenPickeeIds = pickeeRepo.takenPickeeIds(leagueId, periodVal)
       val firstUntakenPickeeId = queue.find(
         q => !takenPickeeIds.contains(q.pickeeId) && validateLimits(currentTeam.map(_.internalPickeeId).toSet + q.pickeeId, leagueId).isRight)
+      logger.debug(s"firstUntakenPickeeId: $firstUntakenPickeeId")
+      logger.debug(s"currentTeam.size: ${currentTeam.size}. teamSize: $teamSize")
       if (firstUntakenPickeeId.isDefined) {
         generateCard(leagueId, userId, firstUntakenPickeeId.get.pickeeId, "FUKINWOTM8")
         pickeeRepo.removePickeeFromQueues(firstUntakenPickeeId.get.pickeeId)
 
+        // Nudge user getting a new pickee to back of waiver_order list
         SQL"""
-             update waiver_order set user_ids = user_ids[2:] || user_ids[1] where league_id = $leagueId
+             update waiver_order set user_ids = user_ids[:$indx-1] || user_ids[$indx+1:] || user_ids[$indx] where league_id = $leagueId
           """.executeUpdate()
       }
       else if (currentTeam.size < teamSize) {

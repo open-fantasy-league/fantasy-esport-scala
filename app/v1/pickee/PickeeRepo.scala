@@ -236,7 +236,7 @@ class PickeeRepoImpl @Inject()()(implicit ec: PickeeExecutionContext) extends Pi
 
   override def takenPickeeIds(leagueId: Long, periodVal: Long=0)(implicit c: Connection): Set[Long] = {
     SQL"""select pickee_id from pickee join card using(pickee_id) where league_id = $leagueId and not recycled
-         union select pickee_id from pickee where waiver_cooldown_until_period_end >= periodVal
+         union select pickee_id from pickee where waiver_cooldown_until_period_end >= $periodVal
        """.
       as(SqlParser.long("pickee_id").*).toSet
   }

@@ -22,8 +22,7 @@ class TasksCustomExecutionContext @Inject()(actorSystem: ActorSystem)
 
 class BackgroundDraftTask @Inject()(actorSystem: ActorSystem, transferRepo: TransferRepo)(
   implicit ec: TasksCustomExecutionContext, db: Database){
-  // TODO if draft is in the past does it schedule it right?
-
+  private val CHECK_DEADLINE_INTERVAL_SECS = 10
   //TODO what to do about scenario where they move draft back/forward and scheduled wrong.
   // I guess if moved back, numMissed is 0 and nextDeadline has updated so we gucci
   // If moved forward then we've scheduled it twice, but thats fine, 2nd one doesnt do anything like above
@@ -43,7 +42,7 @@ class BackgroundDraftTask @Inject()(actorSystem: ActorSystem, transferRepo: Tran
   run()
 
   def run()= {
-    actorSystem.scheduler.schedule(initialDelay = 0.seconds, interval = 10.seconds){
+    actorSystem.scheduler.schedule(initialDelay = 0.seconds, interval = CHECK_DEADLINE_INTERVAL_SECS.seconds){
       val deadlines = db.withConnection { implicit c => transferRepo.getDraftDeadlines()}
       deadlines.foreach(updateSchedule)
     }
