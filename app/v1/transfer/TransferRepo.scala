@@ -62,6 +62,7 @@ trait TransferRepo{
   def manualDraft(leagueId: Long, input: ManualDraftFormInput)(implicit  c: Connection): Either[Result, Iterable[CardOut]]
   def setDraftPaused(leagueId: Long, paused: Boolean)(implicit  c: Connection)
   def processWaiverPickees(leagueId: Long, teamSize: Int, periodVal: Int)(implicit c: Connection)
+  def releaseDraftPickees(leagueId: Long, pickeeIds: Set[Long], untilPeriodEnd: Int)(implicit c: Connection)
 
 }
 
@@ -521,7 +522,7 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
       }
       else if (currentTeam.size < teamSize) {
         // Give them a random valid untaken pickee
-        val untakenPickees: Set[Long] = pickeeRepo.getAllPickees(leagueId).map(_.internalPickeeId).toSet -- takenPickeeIds
+        val untakenPickees: Set[Long] = pickeeRepo.getAllPickees(leagueId, active=Some(true)).map(_.internalPickeeId).toSet -- takenPickeeIds
         if (untakenPickees.isEmpty) return
         val untakenPickeesArr = untakenPickees.toArray[Long]
         val randomPickeeId: Long = untakenPickeesArr(Random.nextInt(takenPickeeIds.size))
@@ -531,6 +532,11 @@ class TransferRepoImpl @Inject()(pickeeRepo: PickeeRepo, userRepo: UserRepo, tea
         usersToFill = usersToFill - userId
       }
     }
+  }
+
+  override def releaseDraftPickees(leagueId: Long, pickeeIds: Set[Long], untilPeriodEnd: Int)(implicit c: Connection) = {
+    SQL"""update card set recycled = true where pickee_id = ANY(ARRAY[$pickeeIds])""".executeUpdate()
+    SQL"""update pickee set waiver_cooldown_until_period_end = $untilPeriodEnd where league_id = $leagueId""".executeUpdate()
   }
 
 }

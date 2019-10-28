@@ -278,37 +278,32 @@ class TransferController @Inject()(
           }
           else if (league.system == "draft"){
             (for {
+              // TODO add waiver_hold stuff
               _ <- validateDuplicates(input.sell, sell, input.buy, buy)
               leagueStarted = leagueRepo.isStarted(league)
               _ <- if (league.transferOpen) Right(true) else Left(BadRequest("Transfers not currently open for this league"))
-              currentPeriod = leagueRepo.getCurrentPeriod(league)
-              userIsLateStart = currentPeriod.isDefined && user.entered.isAfter(currentPeriod.get.start)
-              defaultPeriod <- if (userIsLateStart)
-                currentPeriod.toRight(InternalServerError("Couldnt find current period")) else
-                leagueRepo.getNextPeriod(league)
+              defaultPeriod <- leagueRepo.getNextPeriod(league)
               periodStart = input.applyStartPeriod.getOrElse(defaultPeriod.value)
               periodEnd = input.applyEndPeriod
-              _ <- validateNewUserCantChangeDuringPeriod(userIsLateStart, user.lateEntryLockTs, input.isCheck)
-              applyWildcard <- shouldApplyWildcard(input.wildcard, league.transferWildcard.get, user.usedWildcard, sell)
               newRemaining <- updatedRemainingTransfers(leagueStarted, user.remainingTransfers, sell)
-              pickees = pickeeRepo.getAllPickees(league.leagueId).toList
-              newMoney <- updatedMoney(user.money, pickees, sell, buy, applyWildcard, league.startingMoney)
+              pickees = pickeeRepo.getAllPickees(league.leagueId, active=Some(true)).toList
               currentTeamIds <- tryOrResponse(teamRepo.getUserTeam(user.userId).map(_.externalPickeeId).toSet
                 , InternalServerError("Missing pickee externalPickeeId"))
               _ = println(s"currentTeamIds: ${currentTeamIds.mkString(",")}")
-              sellOrWildcard = if (applyWildcard) currentTeamIds else sell
-              _ = println(s"sellOrWildcard: ${sellOrWildcard.mkString(",")}")
               // use empty set as otherwis you cant rebuy heroes whilst applying wildcard
-              _ <- validateIds(if (applyWildcard) Set() else currentTeamIds, pickees.map(_.externalPickeeId).toSet, sell, buy)
-              newTeamIds = (currentTeamIds -- sellOrWildcard) ++ buy
+              takenPickees = pickeeRepo.takenPickeeIds(league.leagueId, periodStart)
+              _ <- if (buy.intersect(takenPickees).nonEmpty)
+                Left(BadRequest("Cannot buy pickee that is owned by someone else or has waiver cooldown")) else Right(true)
+              _ <- validateIds(currentTeamIds, pickees.map(_.externalPickeeId).toSet, sell, buy)
+              newTeamIds = (currentTeamIds -- sell) ++ buy
               _ = println(s"newTeamIds: ${newTeamIds.mkString(",")}")
               _ <- updatedTeamSize(newTeamIds, league.teamSize, input.isCheck, league.forceFullTeams)
               _ <- if (input.overrideLimitChecks) Right(true) else transferRepo.validateLimits(newTeamIds, league.leagueId)
-              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))) else
+              out <- if (input.isCheck) Right(Ok(Json.toJson(TransferSuccess(BigDecimal(0), newRemaining)))) else
                 updateDBTransfer(
-                  league.leagueId, sellOrWildcard, buy, pickees, user,
-                  leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
-                  newRemaining, applyWildcard, periodStart, periodEnd)
+                  league.leagueId, sell, buy, pickees, user,
+                  leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), BigDecimal(0),
+                  newRemaining, false, periodStart, periodEnd, league.system)
             } yield out).fold(identity, identity)
           }
           else{
@@ -344,7 +339,7 @@ class TransferController @Inject()(
               updateDBTransfer(
                 league.leagueId, sellOrWildcard, buy, pickees, user,
                 leagueRepo.getCurrentPeriod(league).map(_.value).getOrElse(0), newMoney,
-                newRemaining, applyWildcard, periodStart, periodEnd)
+                newRemaining, applyWildcard, periodStart, periodEnd, league.system)
           } yield out).fold(identity, identity) }
         }
       }
@@ -444,7 +439,7 @@ class TransferController @Inject()(
   private def updateDBTransfer(
                                 leagueId: Long, toSell: Set[Long], toBuy: Set[Long], pickees: Iterable[PickeeRow], user: UserRow,
                                 period: Int, newMoney: BigDecimal, newRemaining: Option[Int],
-                                applyWildcard: Boolean, periodStart: Int, periodEnd: Option[Int]
+                                applyWildcard: Boolean, periodStart: Int, periodEnd: Option[Int], system: String
                               )(implicit c: Connection): Either[Result, Result] = {
     tryOrResponseRollback({
       val currentTime = LocalDateTime.now()
@@ -469,6 +464,7 @@ class TransferController @Inject()(
       userRepo.updateFromTransfer(
         user.userId, newMoney, newRemaining, applyWildcard
       )
+      if (system == "draft") transferRepo.releaseDraftPickees(leagueId, toSell, periodStart)
       Ok(Json.toJson(TransferSuccess(newMoney, newRemaining)))
     }, c, InternalServerError("Unexpected error whilst processing transfer")
     )
